@@ -96,9 +96,13 @@ jobs:
           done
           cp build.log diagnostics/build.log
 
+      - name: Inspect focused APIs
+        shell: bash
+        run: bash ci/inspect-extra.sh diagnostics
+
       - name: Upload diagnostics
         uses: actions/upload-artifact@v4
         with:
-          name: mc26.2-api-diagnostics
+          name: mc26.2-api-diagnostics-extra
           path: diagnostics/
           if-no-files-found: error
