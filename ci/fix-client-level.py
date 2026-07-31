@@ -5,10 +5,6 @@ root = Path("project/src/main/java/io/github/kyzderp/armorstandpet")
 entity_path = root / "entity/PetArmorStandEntity.java"
 source = entity_path.read_text(encoding="utf-8")
 
-# The 26.2 port used a covariant ServerLevel return here. That is invalid for
-# an entity type that is also instantiated in ClientLevel from spawn packets:
-# the generated bridge method calls the override and casts ClientLevel to
-# ServerLevel during Entity's constructor (Fabric permission context).
 pattern = re.compile(
     r"(@Override\s+public\s+)ServerLevel(\s+level\s*\(\s*\)\s*\{\s*)"
     r"return\s+\(ServerLevel\)\s*super\.level\s*\(\s*\)\s*;"
@@ -30,11 +26,9 @@ if count != 1:
     raise SystemExit(f"Expected exactly one unsafe ServerLevel level() override, found {count}")
 entity_path.write_text(updated, encoding="utf-8")
 
-# These are the server-only call sites identified by compilation after making
-# level() side-safe. Route only those operations through the checked helper.
 replacements = {
     "entity/StandFactory.java": [("original.level()", "original.serverLevel()", 1)],
-    "types/Pet.java": [("this.stand.level()", "this.stand.serverLevel()", 5)],
+    "types/Pet.java": [("this.stand.level()", "this.stand.serverLevel()", 7)],
     "types/DemonPet.java": [("this.stand.level()", "this.stand.serverLevel()", 2)],
     "storage/PetStorage.java": [("stand.level()", "stand.serverLevel()", 1)],
     "tasks/WalkPlayerTask.java": [("this.pet.getStand().level()", "this.pet.getStand().serverLevel()", 2)],
@@ -54,7 +48,7 @@ for relative, file_replacements in replacements.items():
         changed_calls += found
     path.write_text(text, encoding="utf-8")
 
-if changed_calls != 13:
-    raise SystemExit(f"Expected to redirect 13 server-only level calls, redirected {changed_calls}")
+if changed_calls != 15:
+    raise SystemExit(f"Expected to redirect 15 server-only level calls, redirected {changed_calls}")
 
-print("Made entity level() client-safe and redirected 13 server-only callers to serverLevel()")
+print("Made entity level() client-safe and redirected 15 server-only callers to serverLevel()")
