@@ -25,7 +25,8 @@ import net.minecraft.world.level.Level;
 
 /**
  * Gives a pet one intentionally narrow wolf-like combat behavior:
- * when its owner attacks a mob, the pet chases and attacks that same mob.
+ * when its owner attacks a mob, an explicitly combat-enabled pet chases and
+ * attacks that same mob.
  *
  * This class deliberately does not listen for the owner taking damage, so the
  * pet never retaliates merely because a mob hurt its owner.
@@ -71,7 +72,7 @@ public final class OwnerAttackCombatController
 
 		String worldName = level.dimension().identifier().toString();
 		Pet pet = OwnerToPet.get(worldName, owner.getName().getString());
-		if (pet == null || pet.isSitting)
+		if (pet == null || !pet.combatEnabled || pet.isSitting)
 			return;
 
 		PetArmorStandEntity stand = pet.getStand();
@@ -91,6 +92,19 @@ public final class OwnerAttackCombatController
 				new AttackState(pet, target, now + PURSUIT_TIMEOUT_TICKS, now));
 	}
 
+	/** Cancels an active pursuit when /aspet combat off is used. */
+	public static void disable(Pet pet)
+	{
+		if (pet == null)
+			return;
+		PetArmorStandEntity stand = pet.getStand();
+		if (stand == null)
+			return;
+		AttackState state = ACTIVE_ATTACKS.remove(stand.getUUID());
+		if (state != null)
+			release(state);
+	}
+
 	private static void onServerTick(MinecraftServer server)
 	{
 		Iterator<Map.Entry<UUID, AttackState>> iterator = ACTIVE_ATTACKS.entrySet().iterator();
@@ -102,7 +116,8 @@ public final class OwnerAttackCombatController
 			PetArmorStandEntity stand = pet.getStand();
 			Mob target = state.target;
 
-			if (stand == null || stand.isDeadOrDying()
+			if (!pet.combatEnabled
+					|| stand == null || stand.isDeadOrDying()
 					|| !stand.getUUID().equals(entry.getKey())
 					|| target == null || target.isRemoved() || !target.isAlive()
 					|| pet.isSitting)
@@ -164,6 +179,11 @@ public final class OwnerAttackCombatController
 	private static void finish(Iterator<Map.Entry<UUID, AttackState>> iterator, AttackState state)
 	{
 		iterator.remove();
+		release(state);
+	}
+
+	private static void release(AttackState state)
+	{
 		state.pet.isBusy = false;
 		if (state.pet.getStand() != null && !state.pet.getStand().isDeadOrDying())
 			state.pet.walkFlat();
