@@ -1,4 +1,4 @@
-name: Inspect Minecraft 26.2 APIs
+name: Build ArmorStandPet 26.2
 
 on:
   push:
@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 jobs:
-  inspect:
+  build:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
@@ -36,7 +36,7 @@ jobs:
           run-id: 30643325011
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Restore project and migrated source
+      - name: Restore and port project
         shell: bash
         run: |
           set -euo pipefail
@@ -45,64 +45,42 @@ jobs:
           mkdir -p /tmp/asp-src
           tar -xJf /tmp/asp.tar.xz -C /tmp/asp-src
           cp -a /tmp/asp-src/armorstandpet-fabric ./project
+
           (cd /tmp/migrated-artifact && sha256sum --check migrated-src.tar.gz.sha256)
           rm -rf project/src
           tar -xzf /tmp/migrated-artifact/migrated-src.tar.gz -C project
+
+          base64 --decode ci/asp-port.patch.xz.b64 > /tmp/asp-port.patch.xz
+          echo 'c65adafe5136df3c2cf0209dd09a9cb0c2d3b7de4644d5611029c11d0ef07565  /tmp/asp-port.patch.xz' | sha256sum --check
+          xz --decompress --stdout /tmp/asp-port.patch.xz > /tmp/asp-port.patch
+          (cd project && patch --batch --forward -p1 < /tmp/asp-port.patch)
+
           cp -a ci/overrides/. project/
+          test -f project/build.gradle
+          test -f project/src/main/resources/fabric.mod.json
 
-      - name: Resolve dependencies and capture compiler diagnostics
-        shell: bash
-        run: |
-          set +e
-          cd project
-          gradle compileJava compileClientJava --continue --stacktrace --no-daemon --console=plain 2>&1 | tee ../build.log
-          exit 0
+      - name: Build production JAR
+        working-directory: project
+        run: gradle clean build --stacktrace --no-daemon --console=plain
 
-      - name: Inspect Minecraft and Fabric APIs
+      - name: Validate and collect production JAR
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p diagnostics
-          MCJAR=''
-          while IFS= read -r jar; do
-            if jar tf "$jar" 2>/dev/null | grep -qx 'net/minecraft/world/entity/Entity.class'; then
-              MCJAR="$jar"
-              break
-            fi
-          done < <(find ~/.gradle/caches -type f -name '*.jar' | sort)
-          if [ -z "$MCJAR" ]; then
-            echo 'Minecraft jar not found' >&2
-            exit 1
-          fi
-          echo "$MCJAR" > diagnostics/minecraft-jar.txt
-          jar tf "$MCJAR" | grep -Ei 'Click(Type|Action)|Rotations.class|Value(Input|Output)|TeleportTransition|EntityType\$Builder|ServerPlayer.class|ArmorStand.class' > diagnostics/relevant-classes.txt || true
-          for cls in \
-            net.minecraft.world.entity.Entity \
-            net.minecraft.server.level.ServerPlayer \
-            net.minecraft.server.level.ServerLevel \
-            net.minecraft.world.entity.decoration.ArmorStand \
-            'net.minecraft.world.entity.EntityType$Builder' \
-            net.minecraft.world.entity.EntityType \
-            net.minecraft.world.inventory.AbstractContainerMenu \
-            net.minecraft.world.inventory.ClickType \
-            net.minecraft.world.level.storage.ValueInput \
-            net.minecraft.world.level.storage.ValueOutput \
-            net.minecraft.world.level.portal.TeleportTransition \
-            net.minecraft.core.Rotations \
-            net.minecraft.core.Registry \
-            net.minecraft.resources.Identifier; do
-            echo "===== $cls =====" >> diagnostics/javap.txt
-            javap -classpath "$MCJAR" -protected "$cls" >> diagnostics/javap.txt 2>&1 || true
+          mkdir -p artifact
+          find project/build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*-sources.jar' ! -name '*-dev.jar' -exec cp {} artifact/ \;
+          test -n "$(find artifact -maxdepth 1 -type f -name '*.jar' -print -quit)"
+          for jar in artifact/*.jar; do
+            unzip -t "$jar"
+            unzip -p "$jar" fabric.mod.json | grep -q '"id": "armorstandpet"'
+            jar tf "$jar" | grep -q 'io/github/kyzderp/armorstandpet/ASPetMod.class'
           done
-          cp build.log diagnostics/build.log
+          sha256sum artifact/*.jar | tee artifact/SHA256SUMS.txt
+          ls -lah artifact
 
-      - name: Inspect focused APIs
-        shell: bash
-        run: bash ci/inspect-extra.sh diagnostics
-
-      - name: Upload diagnostics
+      - name: Upload finished mod
         uses: actions/upload-artifact@v4
         with:
-          name: mc26.2-api-diagnostics-extra
-          path: diagnostics/
+          name: armorstandpet-fabric-26.2
+          path: artifact/
           if-no-files-found: error
