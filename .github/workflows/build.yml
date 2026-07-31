@@ -69,10 +69,12 @@ jobs:
           python3 ci/fix-client-level.py
           python3 ci/fix-command-args.py
           python3 ci/add-owner-attack-combat.py
+          python3 ci/add-combat-toggle.py
           test -f project/build.gradle
           test -f project/src/main/resources/fabric.mod.json
           test -f project/src/client/java/io/github/kyzderp/armorstandpet/client/PetArmorStandRenderer.java
           test -f project/src/main/java/io/github/kyzderp/armorstandpet/combat/OwnerAttackCombatController.java
+          test -f project/src/main/java/io/github/kyzderp/armorstandpet/normalcommands/CombatCommand.java
 
       - name: Build production JAR
         working-directory: project
@@ -90,6 +92,7 @@ jobs:
             unzip -p "$jar" fabric.mod.json | grep -q '"id": "armorstandpet"'
             jar tf "$jar" | grep -q 'io/github/kyzderp/armorstandpet/ASPetMod.class'
             jar tf "$jar" | grep -q 'io/github/kyzderp/armorstandpet/normalcommands/ASPetCommand.class'
+            jar tf "$jar" | grep -q 'io/github/kyzderp/armorstandpet/normalcommands/CombatCommand.class'
             jar tf "$jar" | grep -q 'io/github/kyzderp/armorstandpet/admincommands/ASPetAdminCommand.class'
             jar tf "$jar" | grep -q 'io/github/kyzderp/armorstandpet/client/PetArmorStandRenderer.class'
             jar tf "$jar" | grep -q 'io/github/kyzderp/armorstandpet/combat/OwnerAttackCombatController.class'
@@ -100,7 +103,16 @@ jobs:
             grep -q 'EntityTypes.ARMOR_STAND' artifact/PetArmorStandRenderer.javap.txt
             javap -classpath "$jar" -p -c io.github.kyzderp.armorstandpet.listeners.PlayerActionListener | tee artifact/PlayerActionListener.javap.txt
             grep -q 'OwnerAttackCombatController.onOwnerAttack' artifact/PlayerActionListener.javap.txt
+            javap -classpath "$jar" -p -c io.github.kyzderp.armorstandpet.types.Pet | tee artifact/Pet.javap.txt
+            grep -q 'boolean combatEnabled' artifact/Pet.javap.txt
+            grep -q 'PetData.combatEnabled' artifact/Pet.javap.txt
+            javap -classpath "$jar" -p -c io.github.kyzderp.armorstandpet.normalcommands.ASPetCommand | tee artifact/ASPetCommand.javap.txt
+            grep -q 'CombatCommand' artifact/ASPetCommand.javap.txt
+            javap -classpath "$jar" -p -c io.github.kyzderp.armorstandpet.normalcommands.CombatCommand | tee artifact/CombatCommand.javap.txt
+            grep -q 'OwnerAttackCombatController.disable' artifact/CombatCommand.javap.txt
+            grep -q 'ASPetMod.saveAllPets' artifact/CombatCommand.javap.txt
             javap -classpath "$jar" -p -c io.github.kyzderp.armorstandpet.combat.OwnerAttackCombatController | tee artifact/OwnerAttackCombatController.javap.txt
+            grep -q 'Pet.combatEnabled' artifact/OwnerAttackCombatController.javap.txt
             grep -q 'DamageSources.mobAttack' artifact/OwnerAttackCombatController.javap.txt
             grep -q 'Mob.hurtServer' artifact/OwnerAttackCombatController.javap.txt
           done
