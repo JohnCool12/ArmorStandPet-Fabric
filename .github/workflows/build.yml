@@ -75,6 +75,17 @@ jobs:
         working-directory: project
         run: gradle clean build --stacktrace --no-daemon --console=plain
 
+      - name: Inspect vanilla armor stand renderer
+        working-directory: project
+        shell: bash
+        run: |
+          set -euo pipefail
+          CP="$(gradle -q printClientCompileClasspath --no-daemon | tail -n 1)"
+          javap -classpath "$CP" -p -c net.minecraft.client.renderer.entity.ArmorStandRenderer
+          javap -classpath "$CP" -p -c net.minecraft.client.renderer.entity.state.ArmorStandRenderState
+          javap -classpath "$CP" -p -c net.minecraft.client.renderer.entity.layers.HumanoidArmorLayer
+          javap -classpath "$CP" -p -c net.minecraft.client.renderer.entity.layers.ItemInHandLayer
+
       - name: Validate and collect production JAR
         shell: bash
         run: |
