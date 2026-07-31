@@ -36,14 +36,16 @@ import net.minecraft.world.level.Level;
 public final class OwnerAttackCombatController
 {
 	private static final float ATTACK_DAMAGE = 4.0F;
-	// The previous 10-tick interval was 0.5 seconds. Twenty-five ticks is
-	// exactly 2.5 times slower, or one attack every 1.25 seconds.
-	private static final long ATTACK_COOLDOWN_TICKS = 25L;
+	// Twenty game ticks is exactly one second at the normal server tick rate.
+	private static final long ATTACK_COOLDOWN_TICKS = 20L;
 	private static final long ATTACK_ANIMATION_TICKS = 7L;
+	// Normal WalkPlayerTask takes one speed-sized step every three ticks. Using
+	// the same cadence here makes combat pursuit obey /aspet speed identically.
+	private static final long MOVEMENT_STEP_INTERVAL_TICKS = 3L;
 	private static final long PURSUIT_TIMEOUT_TICKS = 300L;
 	private static final double ATTACK_RANGE_SQUARED = 4.0D;
 	private static final double MAX_PURSUIT_RANGE_SQUARED = 1600.0D;
-	private static final EulerAngle LEFT_ARM_ATTACK_POSE = new EulerAngle(-0.65D, 0.0D, -0.1D);
+	private static final EulerAngle LEFT_ARM_ATTACK_POSE = new EulerAngle(-0.9D, 0.0D, -0.1D);
 
 	private static final Map<UUID, AttackState> ACTIVE_ATTACKS = new HashMap<>();
 	private static boolean registered;
@@ -95,7 +97,7 @@ public final class OwnerAttackCombatController
 
 		long now = level.getGameTime();
 		ACTIVE_ATTACKS.put(stand.getUUID(),
-				new AttackState(pet, target, now + PURSUIT_TIMEOUT_TICKS, now));
+				new AttackState(pet, target, now + PURSUIT_TIMEOUT_TICKS, now, now));
 	}
 
 	/** Cancels an active pursuit when /aspet combat off is used. */
@@ -165,12 +167,14 @@ public final class OwnerAttackCombatController
 
 			if (distanceSquared > ATTACK_RANGE_SQUARED)
 			{
-				// Keep the original pet movement and animation instead of introducing
-				// a second navigation system. Stationary pet types remain stationary.
-				if (pet.isMobile)
+				// takeStep() uses the pet's saved /aspet speed value. Matching the
+				// normal follow task's three-tick interval keeps the actual travel
+				// speed identical while combat still starts immediately.
+				if (pet.isMobile && now >= state.nextMovementTick)
 				{
-					pet.takeStep();
 					pet.animateWalk();
+					pet.takeStep();
+					state.nextMovementTick = now + MOVEMENT_STEP_INTERVAL_TICKS;
 				}
 				continue;
 			}
@@ -233,14 +237,17 @@ public final class OwnerAttackCombatController
 		private final Mob target;
 		private final long expiresAtTick;
 		private long nextAttackTick;
+		private long nextMovementTick;
 		private long animationResetTick;
 
-		private AttackState(Pet pet, Mob target, long expiresAtTick, long nextAttackTick)
+		private AttackState(Pet pet, Mob target, long expiresAtTick,
+				long nextAttackTick, long nextMovementTick)
 		{
 			this.pet = pet;
 			this.target = target;
 			this.expiresAtTick = expiresAtTick;
 			this.nextAttackTick = nextAttackTick;
+			this.nextMovementTick = nextMovementTick;
 		}
 	}
 }
