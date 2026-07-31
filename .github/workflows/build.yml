@@ -68,9 +68,11 @@ jobs:
           cp -a ci/overrides/. project/
           python3 ci/fix-client-level.py
           python3 ci/fix-command-args.py
+          python3 ci/add-owner-attack-combat.py
           test -f project/build.gradle
           test -f project/src/main/resources/fabric.mod.json
           test -f project/src/client/java/io/github/kyzderp/armorstandpet/client/PetArmorStandRenderer.java
+          test -f project/src/main/java/io/github/kyzderp/armorstandpet/combat/OwnerAttackCombatController.java
 
       - name: Build production JAR
         working-directory: project
@@ -90,11 +92,17 @@ jobs:
             jar tf "$jar" | grep -q 'io/github/kyzderp/armorstandpet/normalcommands/ASPetCommand.class'
             jar tf "$jar" | grep -q 'io/github/kyzderp/armorstandpet/admincommands/ASPetAdminCommand.class'
             jar tf "$jar" | grep -q 'io/github/kyzderp/armorstandpet/client/PetArmorStandRenderer.class'
+            jar tf "$jar" | grep -q 'io/github/kyzderp/armorstandpet/combat/OwnerAttackCombatController.class'
             javap -classpath "$jar" -p io.github.kyzderp.armorstandpet.entity.PetArmorStandEntity | tee artifact/PetArmorStandEntity.javap.txt
             ! grep -q 'ServerLevel level()' artifact/PetArmorStandEntity.javap.txt
             grep -q 'net.minecraft.world.level.Level level()' artifact/PetArmorStandEntity.javap.txt
             javap -classpath "$jar" -p -c io.github.kyzderp.armorstandpet.client.PetArmorStandRenderer | tee artifact/PetArmorStandRenderer.javap.txt
             grep -q 'EntityTypes.ARMOR_STAND' artifact/PetArmorStandRenderer.javap.txt
+            javap -classpath "$jar" -p -c io.github.kyzderp.armorstandpet.listeners.PlayerActionListener | tee artifact/PlayerActionListener.javap.txt
+            grep -q 'OwnerAttackCombatController.onOwnerAttack' artifact/PlayerActionListener.javap.txt
+            javap -classpath "$jar" -p -c io.github.kyzderp.armorstandpet.combat.OwnerAttackCombatController | tee artifact/OwnerAttackCombatController.javap.txt
+            grep -q 'DamageSources.mobAttack' artifact/OwnerAttackCombatController.javap.txt
+            grep -q 'Mob.hurtServer' artifact/OwnerAttackCombatController.javap.txt
           done
           sha256sum artifact/*.jar | tee artifact/SHA256SUMS.txt
           ls -lah artifact
