@@ -70,6 +70,7 @@ jobs:
           python3 ci/fix-command-args.py
           python3 ci/add-owner-attack-combat.py
           python3 ci/add-combat-toggle.py
+          python3 ci/add-combat-preemption.py
           test -f project/build.gradle
           test -f project/src/main/resources/fabric.mod.json
           test -f project/src/client/java/io/github/kyzderp/armorstandpet/client/PetArmorStandRenderer.java
@@ -111,7 +112,16 @@ jobs:
             javap -classpath "$jar" -p -c io.github.kyzderp.armorstandpet.normalcommands.CombatCommand | tee artifact/CombatCommand.javap.txt
             grep -q 'OwnerAttackCombatController.disable' artifact/CombatCommand.javap.txt
             grep -q 'ASPetMod.saveAllPets' artifact/CombatCommand.javap.txt
-            javap -classpath "$jar" -p -c io.github.kyzderp.armorstandpet.combat.OwnerAttackCombatController | tee artifact/OwnerAttackCombatController.javap.txt
+            javap -classpath "$jar" -p io.github.kyzderp.armorstandpet.tasks.ASPetTask | tee artifact/ASPetTask.javap.txt
+            grep -q 'Pet getPet()' artifact/ASPetTask.javap.txt
+            javap -classpath "$jar" -p -c io.github.kyzderp.armorstandpet.scheduler.TickScheduler | tee artifact/TickScheduler.javap.txt
+            grep -q 'cancelPetTasks' artifact/TickScheduler.javap.txt
+            grep -q 'ASPetTask.getPet' artifact/TickScheduler.javap.txt
+            javap -classpath "$jar" -p -constants -c io.github.kyzderp.armorstandpet.combat.OwnerAttackCombatController | tee artifact/OwnerAttackCombatController.javap.txt
+            grep -q 'ATTACK_COOLDOWN_TICKS = 25l' artifact/OwnerAttackCombatController.javap.txt
+            grep -q 'ATTACK_ANIMATION_TICKS = 7l' artifact/OwnerAttackCombatController.javap.txt
+            grep -q 'TickScheduler.cancelPetTasks' artifact/OwnerAttackCombatController.javap.txt
+            grep -q 'PetArmorStandEntity.setLeftArmPose' artifact/OwnerAttackCombatController.javap.txt
             grep -q 'Pet.combatEnabled' artifact/OwnerAttackCombatController.javap.txt
             grep -q 'DamageSources.mobAttack' artifact/OwnerAttackCombatController.javap.txt
             grep -q 'Mob.hurtServer' artifact/OwnerAttackCombatController.javap.txt
