@@ -5,8 +5,10 @@
 package io.github.kyzderp.armorstandpet.combat;
 
 import io.github.kyzderp.armorstandpet.entity.PetArmorStandEntity;
+import io.github.kyzderp.armorstandpet.scheduler.TickScheduler;
 import io.github.kyzderp.armorstandpet.struct.OwnerToPet;
 import io.github.kyzderp.armorstandpet.types.Pet;
+import io.github.kyzderp.armorstandpet.util.EulerAngle;
 import io.github.kyzderp.armorstandpet.util.Pos;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -34,10 +36,14 @@ import net.minecraft.world.level.Level;
 public final class OwnerAttackCombatController
 {
 	private static final float ATTACK_DAMAGE = 4.0F;
-	private static final long ATTACK_COOLDOWN_TICKS = 10L;
+	// The previous 10-tick interval was 0.5 seconds. Twenty-five ticks is
+	// exactly 2.5 times slower, or one attack every 1.25 seconds.
+	private static final long ATTACK_COOLDOWN_TICKS = 25L;
+	private static final long ATTACK_ANIMATION_TICKS = 7L;
 	private static final long PURSUIT_TIMEOUT_TICKS = 300L;
 	private static final double ATTACK_RANGE_SQUARED = 4.0D;
 	private static final double MAX_PURSUIT_RANGE_SQUARED = 1600.0D;
+	private static final EulerAngle LEFT_ARM_ATTACK_POSE = new EulerAngle(-0.65D, 0.0D, -0.1D);
 
 	private static final Map<UUID, AttackState> ACTIVE_ATTACKS = new HashMap<>();
 	private static boolean registered;
@@ -79,16 +85,16 @@ public final class OwnerAttackCombatController
 		if (stand == null || stand.isDeadOrDying())
 			return;
 
-		UUID standId = stand.getUUID();
-		// Do not interrupt an unrelated command/action already being performed.
-		// Re-hitting a mob while this controller owns the pet is allowed and
-		// simply refreshes or changes the target.
-		if (pet.isBusy && !ACTIVE_ATTACKS.containsKey(standId))
-			return;
-
+		// Combat is an imperative order. Cancel any queued walking, chasing,
+		// delayed callback or name-revert task belonging to this pet so an
+		// existing follow/command chain cannot continue moving it afterward.
+		TickScheduler.cancelPetTasks(pet);
+		restorePetName(pet, stand);
+		pet.walkFlat();
 		pet.isBusy = true;
+
 		long now = level.getGameTime();
-		ACTIVE_ATTACKS.put(standId,
+		ACTIVE_ATTACKS.put(stand.getUUID(),
 				new AttackState(pet, target, now + PURSUIT_TIMEOUT_TICKS, now));
 	}
 
@@ -140,6 +146,12 @@ public final class OwnerAttackCombatController
 				continue;
 			}
 
+			if (state.animationResetTick > 0L && now >= state.animationResetTick)
+			{
+				pet.walkFlat();
+				state.animationResetTick = 0L;
+			}
+
 			double distanceSquared = stand.distanceToSqr(target);
 			if (distanceSquared > MAX_PURSUIT_RANGE_SQUARED)
 			{
@@ -163,16 +175,35 @@ public final class OwnerAttackCombatController
 				continue;
 			}
 
-			pet.walkFlat();
+			// Keep the lifted arm visible for several ticks instead of flattening
+			// the pose immediately on the tick following a hit.
+			if (state.animationResetTick == 0L)
+				pet.walkFlat();
 			if (now < state.nextAttackTick)
 				continue;
 
+			stand.setLeftArmPose(LEFT_ARM_ATTACK_POSE);
 			stand.swing(InteractionHand.MAIN_HAND);
 			target.hurtServer(level, level.damageSources().mobAttack(stand), ATTACK_DAMAGE);
+			state.animationResetTick = now + ATTACK_ANIMATION_TICKS;
 			state.nextAttackTick = now + ATTACK_COOLDOWN_TICKS;
 
 			if (!target.isAlive() || target.isRemoved())
 				finish(iterator, state);
+		}
+	}
+
+	private static void restorePetName(Pet pet, PetArmorStandEntity stand)
+	{
+		if (pet.getName().isEmpty())
+		{
+			stand.setCustomNameString("");
+			stand.setCustomNameVisible(false);
+		}
+		else
+		{
+			stand.setCustomNameString(pet.getName());
+			stand.setCustomNameVisible(true);
 		}
 	}
 
@@ -202,6 +233,7 @@ public final class OwnerAttackCombatController
 		private final Mob target;
 		private final long expiresAtTick;
 		private long nextAttackTick;
+		private long animationResetTick;
 
 		private AttackState(Pet pet, Mob target, long expiresAtTick, long nextAttackTick)
 		{
