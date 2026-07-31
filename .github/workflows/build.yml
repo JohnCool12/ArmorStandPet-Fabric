@@ -66,6 +66,7 @@ jobs:
           (cd project && patch --batch --forward -p1 < /tmp/asp-port-fix2.patch)
 
           cp -a ci/overrides/. project/
+          python3 ci/fix-client-level.py
           test -f project/build.gradle
           test -f project/src/main/resources/fabric.mod.json
 
@@ -84,6 +85,9 @@ jobs:
             unzip -t "$jar"
             unzip -p "$jar" fabric.mod.json | grep -q '"id": "armorstandpet"'
             jar tf "$jar" | grep -q 'io/github/kyzderp/armorstandpet/ASPetMod.class'
+            javap -classpath "$jar" -p io.github.kyzderp.armorstandpet.entity.PetArmorStandEntity | tee artifact/PetArmorStandEntity.javap.txt
+            ! grep -q 'ServerLevel level()' artifact/PetArmorStandEntity.javap.txt
+            grep -q 'net.minecraft.world.level.Level level()' artifact/PetArmorStandEntity.javap.txt
           done
           sha256sum artifact/*.jar | tee artifact/SHA256SUMS.txt
           ls -lah artifact
