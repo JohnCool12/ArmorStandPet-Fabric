@@ -55,6 +55,11 @@ jobs:
           xz --decompress --stdout /tmp/asp-port.patch.xz > /tmp/asp-port.patch
           (cd project && patch --batch --forward -p1 < /tmp/asp-port.patch)
 
+          base64 --decode ci/asp-port-fix1.patch.xz.b64 > /tmp/asp-port-fix1.patch.xz
+          echo '44a7ac832a503236d845a234cfd791f495f4be0ce92c21b591c400ba4d6e30eb  /tmp/asp-port-fix1.patch.xz' | sha256sum --check
+          xz --decompress --stdout /tmp/asp-port-fix1.patch.xz > /tmp/asp-port-fix1.patch
+          (cd project && patch --batch --forward -p1 < /tmp/asp-port-fix1.patch)
+
           cp -a ci/overrides/. project/
           test -f project/build.gradle
           test -f project/src/main/resources/fabric.mod.json
