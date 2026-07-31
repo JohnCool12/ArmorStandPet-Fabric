@@ -3,6 +3,7 @@ name: Inspect Minecraft 26.2 APIs
 on:
   push:
     branches: [ci/build-jar]
+  pull_request:
   workflow_dispatch:
 
 permissions:
