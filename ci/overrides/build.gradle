@@ -10,13 +10,6 @@ base {
 	archivesName = project.archives_base_name
 }
 
-repositories {
-	maven {
-		name = 'JitPack'
-		url = 'https://jitpack.io'
-	}
-}
-
 loom {
 	splitEnvironmentSourceSets()
 
@@ -32,7 +25,6 @@ dependencies {
 	minecraft "com.mojang:minecraft:${project.minecraft_version}"
 	implementation "net.fabricmc:fabric-loader:${project.loader_version}"
 	implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
-	implementation include("me.lucko:fabric-permissions-api:${project.fabric_permissions_api_version}")
 }
 
 processResources {
