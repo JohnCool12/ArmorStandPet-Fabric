@@ -70,21 +70,11 @@ jobs:
           python3 ci/fix-command-args.py
           test -f project/build.gradle
           test -f project/src/main/resources/fabric.mod.json
+          test -f project/src/client/java/io/github/kyzderp/armorstandpet/client/PetArmorStandRenderer.java
 
       - name: Build production JAR
         working-directory: project
         run: gradle clean build --stacktrace --no-daemon --console=plain
-
-      - name: Inspect vanilla armor stand renderer
-        working-directory: project
-        shell: bash
-        run: |
-          set -euo pipefail
-          CP="$(gradle -q printClientCompileClasspath --no-daemon | tail -n 1)"
-          javap -classpath "$CP" -p -c net.minecraft.client.renderer.entity.ArmorStandRenderer
-          javap -classpath "$CP" -p -c net.minecraft.client.renderer.entity.state.ArmorStandRenderState
-          javap -classpath "$CP" -p -c net.minecraft.client.renderer.entity.layers.HumanoidArmorLayer
-          javap -classpath "$CP" -p -c net.minecraft.client.renderer.entity.layers.ItemInHandLayer
 
       - name: Validate and collect production JAR
         shell: bash
@@ -99,9 +89,12 @@ jobs:
             jar tf "$jar" | grep -q 'io/github/kyzderp/armorstandpet/ASPetMod.class'
             jar tf "$jar" | grep -q 'io/github/kyzderp/armorstandpet/normalcommands/ASPetCommand.class'
             jar tf "$jar" | grep -q 'io/github/kyzderp/armorstandpet/admincommands/ASPetAdminCommand.class'
+            jar tf "$jar" | grep -q 'io/github/kyzderp/armorstandpet/client/PetArmorStandRenderer.class'
             javap -classpath "$jar" -p io.github.kyzderp.armorstandpet.entity.PetArmorStandEntity | tee artifact/PetArmorStandEntity.javap.txt
             ! grep -q 'ServerLevel level()' artifact/PetArmorStandEntity.javap.txt
             grep -q 'net.minecraft.world.level.Level level()' artifact/PetArmorStandEntity.javap.txt
+            javap -classpath "$jar" -p -c io.github.kyzderp.armorstandpet.client.PetArmorStandRenderer | tee artifact/PetArmorStandRenderer.javap.txt
+            grep -q 'EntityTypes.ARMOR_STAND' artifact/PetArmorStandRenderer.javap.txt
           done
           sha256sum artifact/*.jar | tee artifact/SHA256SUMS.txt
           ls -lah artifact
