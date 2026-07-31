@@ -118,9 +118,13 @@ jobs:
             grep -q 'cancelPetTasks' artifact/TickScheduler.javap.txt
             grep -q 'ASPetTask.getPet' artifact/TickScheduler.javap.txt
             javap -classpath "$jar" -p -constants -c io.github.kyzderp.armorstandpet.combat.OwnerAttackCombatController | tee artifact/OwnerAttackCombatController.javap.txt
-            grep -q 'ATTACK_COOLDOWN_TICKS = 25l' artifact/OwnerAttackCombatController.javap.txt
+            grep -q 'ATTACK_COOLDOWN_TICKS = 20l' artifact/OwnerAttackCombatController.javap.txt
             grep -q 'ATTACK_ANIMATION_TICKS = 7l' artifact/OwnerAttackCombatController.javap.txt
+            grep -q 'MOVEMENT_STEP_INTERVAL_TICKS = 3l' artifact/OwnerAttackCombatController.javap.txt
+            grep -q -- '-0.9d' artifact/OwnerAttackCombatController.javap.txt
             grep -q 'TickScheduler.cancelPetTasks' artifact/OwnerAttackCombatController.javap.txt
+            grep -q 'Pet.animateWalk' artifact/OwnerAttackCombatController.javap.txt
+            grep -q 'Pet.takeStep' artifact/OwnerAttackCombatController.javap.txt
             grep -q 'PetArmorStandEntity.setLeftArmPose' artifact/OwnerAttackCombatController.javap.txt
             grep -q 'Pet.combatEnabled' artifact/OwnerAttackCombatController.javap.txt
             grep -q 'DamageSources.mobAttack' artifact/OwnerAttackCombatController.javap.txt
