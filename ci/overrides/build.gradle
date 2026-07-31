@@ -1,5 +1,5 @@
 plugins {
-	id 'fabric-loom' version '1.17-SNAPSHOT'
+	id 'net.fabricmc.fabric-loom' version '1.17-SNAPSHOT'
 	id 'maven-publish'
 }
 
@@ -11,7 +11,6 @@ base {
 }
 
 repositories {
-	// fabric-permissions-api
 	maven {
 		name = 'JitPack'
 		url = 'https://jitpack.io'
