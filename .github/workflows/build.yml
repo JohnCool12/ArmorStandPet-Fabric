@@ -1,0 +1,46 @@
+name: Build ArmorStandPet
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Reconstruct source
+        shell: bash
+        run: |
+          tr -d '[:space:]' < projectsrc.b64 | base64 --decode > projectsrc.zip
+          mkdir project
+          unzip -q projectsrc.zip -d project
+          test -f project/build.gradle
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.5.0'
+
+      - name: Build
+        working-directory: project
+        run: gradle build --stacktrace --warning-mode all
+
+      - name: Collect production jar
+        shell: bash
+        run: |
+          mkdir artifact
+          find project/build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*-sources.jar' -exec cp {} artifact/ \;
+          ls -lah artifact
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: armorstandpet-fabric-26.2
+          path: artifact/*.jar
+          if-no-files-found: error
