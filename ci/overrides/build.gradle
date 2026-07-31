@@ -46,9 +46,3 @@ java {
 
 	withSourcesJar()
 }
-
-tasks.register('printClientCompileClasspath') {
-	doLast {
-		println sourceSets.client.compileClasspath.asPath
-	}
-}
