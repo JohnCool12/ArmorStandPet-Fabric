@@ -95,7 +95,7 @@ jobs:
           javap -classpath "$jar" -p -c io.github.kyzderp.armorstandpet.combat.PetMortalityController | tee artifact/PetMortalityController.javap.txt
           grep -q 'PetArmorStandEntity.applyPetDefenses' artifact/PetMortalityController.javap.txt
           grep -q 'Pet.delete' artifact/PetMortalityController.javap.txt
-          grep -q 'LivingEntity.die' artifact/PetMortalityController.javap.txt
+          grep -q 'PetArmorStandEntity.die' artifact/PetMortalityController.javap.txt
           grep -q 'purgeLegacyDeadPets' artifact/PetMortalityController.javap.txt
           ! grep -q 'StandFactory.respawnFrom' artifact/PetMortalityController.javap.txt
 
