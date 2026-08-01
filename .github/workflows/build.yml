@@ -109,7 +109,7 @@ jobs:
             ! grep -q 'ServerLevel level()' artifact/PetArmorStandEntity.javap.txt
             grep -q 'net.minecraft.world.level.Level level()' artifact/PetArmorStandEntity.javap.txt
             grep -q 'PetMortalityController.hurt' artifact/PetArmorStandEntity.javap.txt
-            grep -q 'LivingEntity.isDeadOrDying' artifact/PetArmorStandEntity.javap.txt
+            grep -q 'ArmorStand.isDeadOrDying' artifact/PetArmorStandEntity.javap.txt
 
             javap -classpath "$jar" -p -c io.github.kyzderp.armorstandpet.client.PetArmorStandRenderer | tee artifact/PetArmorStandRenderer.javap.txt
             grep -q 'EntityTypes.ARMOR_STAND' artifact/PetArmorStandRenderer.javap.txt
