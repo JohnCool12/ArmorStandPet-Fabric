@@ -1,0 +1,72 @@
+name: Export reconstructed ArmorStandPet source
+
+on:
+  push:
+    branches: [port/1.21.1]
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download migrated sources
+        uses: actions/download-artifact@v4
+        with:
+          name: migrated-src
+          path: /tmp/migrated-artifact
+          run-id: 30643325011
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Reconstruct current complete project
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat ci/asp.tar.xz.b64.part-* | base64 --decode > /tmp/asp.tar.xz
+          mkdir -p /tmp/asp-src
+          tar -xJf /tmp/asp.tar.xz -C /tmp/asp-src
+          cp -a /tmp/asp-src/armorstandpet-fabric ./project
+
+          (cd /tmp/migrated-artifact && sha256sum --check migrated-src.tar.gz.sha256)
+          rm -rf project/src
+          tar -xzf /tmp/migrated-artifact/migrated-src.tar.gz -C project
+
+          base64 --decode ci/asp-port.patch.xz.b64 > /tmp/asp-port.patch.xz
+          xz --decompress --stdout /tmp/asp-port.patch.xz > /tmp/asp-port.patch
+          (cd project && patch --batch --forward -p1 < /tmp/asp-port.patch)
+
+          base64 --decode ci/asp-port-fix1.patch.xz.b64 > /tmp/asp-port-fix1.patch.xz
+          xz --decompress --stdout /tmp/asp-port-fix1.patch.xz > /tmp/asp-port-fix1.patch
+          (cd project && patch --batch --forward -p1 < /tmp/asp-port-fix1.patch)
+
+          base64 --decode ci/asp-port-fix2.patch.xz.b64 > /tmp/asp-port-fix2.patch.xz
+          xz --decompress --stdout /tmp/asp-port-fix2.patch.xz > /tmp/asp-port-fix2.patch
+          (cd project && patch --batch --forward -p1 < /tmp/asp-port-fix2.patch)
+
+          cp -a ci/overrides/. project/
+          python3 ci/fix-client-level.py
+          python3 ci/fix-command-args.py
+          python3 ci/add-owner-attack-combat.py
+          python3 ci/add-combat-toggle.py
+          python3 ci/add-combat-preemption.py
+          python3 ci/switch-right-arm-animation.py
+          python3 ci/remove-combat-timeout.py
+          python3 ci/add-pet-mortality.py
+          python3 ci/add-player-equipment-combat.py
+
+          tar -czf armorstandpet-complete-source.tar.gz -C project .
+          sha256sum armorstandpet-complete-source.tar.gz > armorstandpet-complete-source.tar.gz.sha256
+
+      - name: Upload reconstructed source
+        uses: actions/upload-artifact@v4
+        with:
+          name: armorstandpet-complete-source
+          path: |
+            armorstandpet-complete-source.tar.gz
+            armorstandpet-complete-source.tar.gz.sha256
+          if-no-files-found: error
