@@ -3,6 +3,7 @@ name: Export reconstructed ArmorStandPet source
 on:
   push:
     branches: [port/1.21.1]
+  pull_request:
   workflow_dispatch:
 
 permissions:
