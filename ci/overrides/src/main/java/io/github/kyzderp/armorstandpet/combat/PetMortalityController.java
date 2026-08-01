@@ -14,9 +14,14 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import net.minecraft.core.particles.ItemParticleOption;
+import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.sounds.SoundEvents;
 import net.minecraft.world.damagesource.DamageSource;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 
 /**
  * Keeps the legacy invincible behavior by default, but can give an individual
@@ -81,13 +86,26 @@ public final class PetMortalityController
 		TickScheduler.cancelPetTasks(pet);
 		pet.isBusy = false;
 
-		ServerPlayer owner = levelPlayer(stand.serverLevel(), pet.getOwner());
+		ServerLevel level = stand.serverLevel();
+		ServerPlayer owner = levelPlayer(level, pet.getOwner());
+		playVanillaBreakEffects(level, stand);
 		stand.setHealth(0.0F);
 		stand.die(source);
 		pet.delete(true, true);
 
 		if (owner != null)
 			ASPetMod.inform(owner, "Your armor stand pet has died permanently. Create a new pet to replace it.");
+	}
+
+	/** Reproduces the vanilla armor stand's break sound and item-fragment burst. */
+	private static void playVanillaBreakEffects(ServerLevel level, PetArmorStandEntity stand)
+	{
+		level.playSound(null, stand.getX(), stand.getY(), stand.getZ(),
+				SoundEvents.ARMOR_STAND_BREAK, stand.getSoundSource(), 1.0F, 1.0F);
+		level.sendParticles(
+				new ItemParticleOption(ParticleTypes.ITEM, new ItemStack(Items.ARMOR_STAND)),
+				stand.getX(), stand.getY() + (double) stand.getBbHeight() / 1.5D, stand.getZ(),
+				10, 0.0D, 0.0D, 0.0D, 0.05D);
 	}
 
 	/** Removes dead entries written by the earlier revivable-death build. */
