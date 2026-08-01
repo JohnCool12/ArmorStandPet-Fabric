@@ -73,7 +73,11 @@ jobs:
           python3 ci/add-player-equipment-combat.py
 
       - name: Apply Minecraft 1.21.1 compatibility layer
-        run: python3 ci/port-to-1.21.1.py
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 ci/port-to-1.21.1.py
+          python3 ci/fix-1.21.1-world-event.py
 
       - name: Build production JAR
         working-directory: project
