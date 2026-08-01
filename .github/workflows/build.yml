@@ -97,6 +97,9 @@ jobs:
           grep -q 'Pet.delete' artifact/PetMortalityController.javap.txt
           grep -q 'PetArmorStandEntity.die' artifact/PetMortalityController.javap.txt
           grep -q 'purgeLegacyDeadPets' artifact/PetMortalityController.javap.txt
+          grep -q 'SoundEvents.ARMOR_STAND_BREAK' artifact/PetMortalityController.javap.txt
+          grep -q 'ItemParticleOption' artifact/PetMortalityController.javap.txt
+          grep -q 'ServerLevel.sendParticles' artifact/PetMortalityController.javap.txt
           ! grep -q 'StandFactory.respawnFrom' artifact/PetMortalityController.javap.txt
 
           javap -classpath "$jar" -p -c io.github.kyzderp.armorstandpet.entity.PetArmorStandEntity | tee artifact/PetArmorStandEntity.javap.txt
@@ -114,6 +117,6 @@ jobs:
       - name: Upload final mod
         uses: actions/upload-artifact@v4
         with:
-          name: armorstandpet-fabric-26.2-permanent-death-equipment-combat
+          name: armorstandpet-fabric-26.2-vanilla-break-effects
           path: artifact/
           if-no-files-found: error
