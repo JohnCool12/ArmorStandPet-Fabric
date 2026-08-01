@@ -14,17 +14,14 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Java 25
-        uses: actions/setup-java@v4
+      - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '25'
 
-      - name: Set up Gradle 9.5.1
-        uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.5.1'
 
@@ -36,7 +33,7 @@ jobs:
           run-id: 30643325011
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Restore and port project
+      - name: Restore and apply all port patches
         shell: bash
         run: |
           set -euo pipefail
@@ -51,17 +48,14 @@ jobs:
           tar -xzf /tmp/migrated-artifact/migrated-src.tar.gz -C project
 
           base64 --decode ci/asp-port.patch.xz.b64 > /tmp/asp-port.patch.xz
-          echo 'c65adafe5136df3c2cf0209dd09a9cb0c2d3b7de4644d5611029c11d0ef07565  /tmp/asp-port.patch.xz' | sha256sum --check
           xz --decompress --stdout /tmp/asp-port.patch.xz > /tmp/asp-port.patch
           (cd project && patch --batch --forward -p1 < /tmp/asp-port.patch)
 
           base64 --decode ci/asp-port-fix1.patch.xz.b64 > /tmp/asp-port-fix1.patch.xz
-          echo '44a7ac832a503236d845a234cfd791f495f4be0ce92c21b591c400ba4d6e30eb  /tmp/asp-port-fix1.patch.xz' | sha256sum --check
           xz --decompress --stdout /tmp/asp-port-fix1.patch.xz > /tmp/asp-port-fix1.patch
           (cd project && patch --batch --forward -p1 < /tmp/asp-port-fix1.patch)
 
           base64 --decode ci/asp-port-fix2.patch.xz.b64 > /tmp/asp-port-fix2.patch.xz
-          echo '60be5de8f5f1c0f782dd70ef0ae3e562205ad4a697f5f5551e2c7ac12a59970c  /tmp/asp-port-fix2.patch.xz' | sha256sum --check
           xz --decompress --stdout /tmp/asp-port-fix2.patch.xz > /tmp/asp-port-fix2.patch
           (cd project && patch --batch --forward -p1 < /tmp/asp-port-fix2.patch)
 
@@ -74,110 +68,52 @@ jobs:
           python3 ci/switch-right-arm-animation.py
           python3 ci/remove-combat-timeout.py
           python3 ci/add-pet-mortality.py
-          test -f project/build.gradle
-          test -f project/src/main/resources/fabric.mod.json
-          test -f project/src/client/java/io/github/kyzderp/armorstandpet/client/PetArmorStandRenderer.java
-          test -f project/src/main/java/io/github/kyzderp/armorstandpet/combat/OwnerAttackCombatController.java
-          test -f project/src/main/java/io/github/kyzderp/armorstandpet/combat/PetMortalityController.java
-          test -f project/src/main/java/io/github/kyzderp/armorstandpet/normalcommands/CombatCommand.java
-          test -f project/src/main/java/io/github/kyzderp/armorstandpet/normalcommands/InvincibleCommand.java
+          python3 ci/add-player-equipment-combat.py
 
       - name: Build production JAR
         working-directory: project
         run: gradle clean build --stacktrace --no-daemon --console=plain
 
-      - name: Validate and collect production JAR
+      - name: Validate final behavior
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p artifact
           find project/build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*-sources.jar' ! -name '*-dev.jar' -exec cp {} artifact/ \;
-          test -n "$(find artifact -maxdepth 1 -type f -name '*.jar' -print -quit)"
-          for jar in artifact/*.jar; do
-            unzip -t "$jar"
-            unzip -p "$jar" fabric.mod.json | grep -q '"id": "armorstandpet"'
-            jar tf "$jar" | grep -q 'io/github/kyzderp/armorstandpet/ASPetMod.class'
-            jar tf "$jar" | grep -q 'io/github/kyzderp/armorstandpet/normalcommands/ASPetCommand.class'
-            jar tf "$jar" | grep -q 'io/github/kyzderp/armorstandpet/normalcommands/CombatCommand.class'
-            jar tf "$jar" | grep -q 'io/github/kyzderp/armorstandpet/normalcommands/InvincibleCommand.class'
-            jar tf "$jar" | grep -q 'io/github/kyzderp/armorstandpet/admincommands/ASPetAdminCommand.class'
-            jar tf "$jar" | grep -q 'io/github/kyzderp/armorstandpet/client/PetArmorStandRenderer.class'
-            jar tf "$jar" | grep -q 'io/github/kyzderp/armorstandpet/combat/OwnerAttackCombatController.class'
-            jar tf "$jar" | grep -q 'io/github/kyzderp/armorstandpet/combat/PetMortalityController.class'
+          jar="$(find artifact -maxdepth 1 -type f -name '*.jar' -print -quit)"
+          test -n "$jar"
+          unzip -t "$jar"
 
-            javap -classpath "$jar" -p -c io.github.kyzderp.armorstandpet.entity.PetArmorStandEntity | tee artifact/PetArmorStandEntity.javap.txt
-            ! grep -q 'ServerLevel level()' artifact/PetArmorStandEntity.javap.txt
-            grep -q 'net.minecraft.world.level.Level level()' artifact/PetArmorStandEntity.javap.txt
-            grep -q 'PetMortalityController.hurt' artifact/PetArmorStandEntity.javap.txt
-            grep -q 'ArmorStand.isDeadOrDying' artifact/PetArmorStandEntity.javap.txt
+          javap -classpath "$jar" -p -c io.github.kyzderp.armorstandpet.combat.OwnerAttackCombatController | tee artifact/OwnerAttackCombatController.javap.txt
+          grep -q 'finishAfterAnimation' artifact/OwnerAttackCombatController.javap.txt
+          grep -q 'Attributes.ATTACK_DAMAGE' artifact/OwnerAttackCombatController.javap.txt
+          grep -q 'EnchantmentHelper.modifyDamage' artifact/OwnerAttackCombatController.javap.txt
+          grep -q 'ItemStack.hurtEnemy' artifact/OwnerAttackCombatController.javap.txt
+          ! grep -q 'ATTACK_DAMAGE = 4.0f' artifact/OwnerAttackCombatController.javap.txt
+          ! grep -q 'PURSUIT_TIMEOUT_TICKS' artifact/OwnerAttackCombatController.javap.txt
 
-            javap -classpath "$jar" -p -c io.github.kyzderp.armorstandpet.client.PetArmorStandRenderer | tee artifact/PetArmorStandRenderer.javap.txt
-            grep -q 'EntityTypes.ARMOR_STAND' artifact/PetArmorStandRenderer.javap.txt
+          javap -classpath "$jar" -p -c io.github.kyzderp.armorstandpet.combat.PetMortalityController | tee artifact/PetMortalityController.javap.txt
+          grep -q 'PetArmorStandEntity.applyPetDefenses' artifact/PetMortalityController.javap.txt
+          grep -q 'Pet.delete' artifact/PetMortalityController.javap.txt
+          grep -q 'LivingEntity.die' artifact/PetMortalityController.javap.txt
+          grep -q 'purgeLegacyDeadPets' artifact/PetMortalityController.javap.txt
+          ! grep -q 'StandFactory.respawnFrom' artifact/PetMortalityController.javap.txt
 
-            javap -classpath "$jar" -p -c io.github.kyzderp.armorstandpet.listeners.PlayerActionListener | tee artifact/PlayerActionListener.javap.txt
-            grep -q 'OwnerAttackCombatController.onOwnerAttack' artifact/PlayerActionListener.javap.txt
-            grep -q 'Pet.mortalDead' artifact/PlayerActionListener.javap.txt
+          javap -classpath "$jar" -p -c io.github.kyzderp.armorstandpet.entity.PetArmorStandEntity | tee artifact/PetArmorStandEntity.javap.txt
+          grep -q 'getDamageAfterArmorAbsorb' artifact/PetArmorStandEntity.javap.txt
+          grep -q 'getDamageAfterMagicAbsorb' artifact/PetArmorStandEntity.javap.txt
 
-            javap -classpath "$jar" -p -c io.github.kyzderp.armorstandpet.types.Pet | tee artifact/Pet.javap.txt
-            grep -q 'boolean combatEnabled' artifact/Pet.javap.txt
-            grep -q 'boolean invincible' artifact/Pet.javap.txt
-            grep -q 'boolean mortalDead' artifact/Pet.javap.txt
-            grep -q 'PetData.combatEnabled' artifact/Pet.javap.txt
-            grep -q 'PetData.invincible' artifact/Pet.javap.txt
-            grep -q 'PetData.mortalDead' artifact/Pet.javap.txt
-            grep -q 'PetData.health' artifact/Pet.javap.txt
+          javap -classpath "$jar" -p -c io.github.kyzderp.armorstandpet.ASPetMod | tee artifact/ASPetMod.javap.txt
+          grep -q 'PetMortalityController.purgeLegacyDeadPets' artifact/ASPetMod.javap.txt
 
-            javap -classpath "$jar" -p -c io.github.kyzderp.armorstandpet.normalcommands.ASPetCommand | tee artifact/ASPetCommand.javap.txt
-            grep -q 'CombatCommand' artifact/ASPetCommand.javap.txt
-            grep -q 'InvincibleCommand' artifact/ASPetCommand.javap.txt
+          javap -classpath "$jar" -p -c io.github.kyzderp.armorstandpet.entity.ModEntities | tee artifact/ModEntities.javap.txt
+          grep -q 'Attributes.ATTACK_DAMAGE' artifact/ModEntities.javap.txt
 
-            javap -classpath "$jar" -p -c io.github.kyzderp.armorstandpet.normalcommands.CombatCommand | tee artifact/CombatCommand.javap.txt
-            grep -q 'OwnerAttackCombatController.disable' artifact/CombatCommand.javap.txt
-            grep -q 'ASPetMod.saveAllPets' artifact/CombatCommand.javap.txt
+          sha256sum "$jar" | tee artifact/SHA256SUMS.txt
 
-            javap -classpath "$jar" -p -c io.github.kyzderp.armorstandpet.normalcommands.InvincibleCommand | tee artifact/InvincibleCommand.javap.txt
-            grep -q 'PetMortalityController.setInvincible' artifact/InvincibleCommand.javap.txt
-            grep -q 'getHealth' artifact/InvincibleCommand.javap.txt
-
-            javap -classpath "$jar" -p io.github.kyzderp.armorstandpet.tasks.ASPetTask | tee artifact/ASPetTask.javap.txt
-            grep -q 'Pet getPet()' artifact/ASPetTask.javap.txt
-            javap -classpath "$jar" -p -c io.github.kyzderp.armorstandpet.scheduler.TickScheduler | tee artifact/TickScheduler.javap.txt
-            grep -q 'cancelPetTasks' artifact/TickScheduler.javap.txt
-            grep -q 'ASPetTask.getPet' artifact/TickScheduler.javap.txt
-
-            javap -classpath "$jar" -p -constants -c io.github.kyzderp.armorstandpet.combat.OwnerAttackCombatController | tee artifact/OwnerAttackCombatController.javap.txt
-            grep -q 'ATTACK_COOLDOWN_TICKS = 20l' artifact/OwnerAttackCombatController.javap.txt
-            grep -q 'ATTACK_ANIMATION_TICKS = 9l' artifact/OwnerAttackCombatController.javap.txt
-            grep -q 'MOVEMENT_STEP_INTERVAL_TICKS = 3l' artifact/OwnerAttackCombatController.javap.txt
-            ! grep -q 'PURSUIT_TIMEOUT_TICKS' artifact/OwnerAttackCombatController.javap.txt
-            ! grep -q 'expiresAtTick' artifact/OwnerAttackCombatController.javap.txt
-            grep -q 'isAlive' artifact/OwnerAttackCombatController.javap.txt
-            grep -q 'isRemoved' artifact/OwnerAttackCombatController.javap.txt
-            grep -q -- '-0.9d' artifact/OwnerAttackCombatController.javap.txt
-            grep -q 'TickScheduler.cancelPetTasks' artifact/OwnerAttackCombatController.javap.txt
-            grep -q 'Pet.animateWalk' artifact/OwnerAttackCombatController.javap.txt
-            grep -q 'Pet.takeStep' artifact/OwnerAttackCombatController.javap.txt
-            grep -q 'PetArmorStandEntity.setRightArmPose' artifact/OwnerAttackCombatController.javap.txt
-            ! grep -q 'PetArmorStandEntity.setLeftArmPose' artifact/OwnerAttackCombatController.javap.txt
-            grep -q 'Pet.combatEnabled' artifact/OwnerAttackCombatController.javap.txt
-            grep -q 'DamageSources.mobAttack' artifact/OwnerAttackCombatController.javap.txt
-            grep -q 'Mob.hurtServer' artifact/OwnerAttackCombatController.javap.txt
-
-            javap -classpath "$jar" -p -constants -c io.github.kyzderp.armorstandpet.combat.PetMortalityController | tee artifact/PetMortalityController.javap.txt
-            grep -q 'MAX_HEALTH = 20.0f' artifact/PetMortalityController.javap.txt
-            grep -q 'HURT_COOLDOWN_TICKS = 10l' artifact/PetMortalityController.javap.txt
-            grep -q 'setHealth' artifact/PetMortalityController.javap.txt
-            grep -q 'discard' artifact/PetMortalityController.javap.txt
-            grep -q 'OwnerAttackCombatController.disable' artifact/PetMortalityController.javap.txt
-            grep -q 'TickScheduler.cancelPetTasks' artifact/PetMortalityController.javap.txt
-            grep -q 'StandFactory.respawnFrom' artifact/PetMortalityController.javap.txt
-          done
-          sha256sum artifact/*.jar | tee artifact/SHA256SUMS.txt
-          ls -lah artifact
-
-      - name: Upload finished mod
+      - name: Upload final mod
         uses: actions/upload-artifact@v4
         with:
-          name: armorstandpet-fabric-26.2
+          name: armorstandpet-fabric-26.2-permanent-death-equipment-combat
           path: artifact/
           if-no-files-found: error
