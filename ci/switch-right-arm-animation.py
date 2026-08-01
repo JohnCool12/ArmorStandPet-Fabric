@@ -18,15 +18,16 @@ for old, new in replacements.items():
         raise SystemExit(f"Expected exactly one occurrence of {old!r}, found {count}")
     source = source.replace(old, new, 1)
 
-required = [
-    "ATTACK_ANIMATION_TICKS = 9L",
-    "RIGHT_ARM_ATTACK_POSE",
-    "new EulerAngle(-0.9D, 0.0D, 0.1D)",
-    "setRightArmPose(RIGHT_ARM_ATTACK_POSE)",
-]
-for text in required:
-    if source.count(text) != 1:
-        raise SystemExit(f"Expected exactly one final occurrence of {text!r}")
+required_counts = {
+    "ATTACK_ANIMATION_TICKS = 9L": 1,
+    "RIGHT_ARM_ATTACK_POSE": 2,
+    "new EulerAngle(-0.9D, 0.0D, 0.1D)": 1,
+    "setRightArmPose(RIGHT_ARM_ATTACK_POSE)": 1,
+}
+for text, expected in required_counts.items():
+    actual = source.count(text)
+    if actual != expected:
+        raise SystemExit(f"Expected {expected} final occurrence(s) of {text!r}, found {actual}")
 
 for forbidden in ["LEFT_ARM_ATTACK_POSE", "setLeftArmPose("]:
     if forbidden in source:
