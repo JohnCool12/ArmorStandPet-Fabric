@@ -12,6 +12,7 @@ import net.minecraft.resources.Identifier;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.MobCategory;
+import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.decoration.ArmorStand;
 
 public class ModEntities
@@ -33,7 +34,12 @@ public class ModEntities
 	{
 		// PetArmorStandEntity extends LivingEntity through ArmorStand. Minecraft
 		// 26.2 requires every custom living entity type to have an AttributeSupplier
-		// registered before its constructor runs. Reuse vanilla armor-stand defaults.
-		FabricDefaultAttributeRegistry.register(PET_ARMOR_STAND, ArmorStand.createAttributes().build());
+		// registered before its constructor runs. Reuse vanilla armor-stand defaults
+		// and add the player's unarmed base attack damage. Main-hand weapon attribute
+		// modifiers are then applied by LivingEntity's normal equipment system.
+		FabricDefaultAttributeRegistry.register(PET_ARMOR_STAND,
+				ArmorStand.createAttributes()
+						.add(Attributes.ATTACK_DAMAGE, 1.0D)
+						.build());
 	}
 }
