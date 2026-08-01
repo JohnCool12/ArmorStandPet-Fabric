@@ -20,7 +20,6 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.world.damagesource.DamageSource;
-import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 
 /**
@@ -103,7 +102,7 @@ public final class PetMortalityController
 		level.playSound(null, stand.getX(), stand.getY(), stand.getZ(),
 				SoundEvents.ARMOR_STAND_BREAK, stand.getSoundSource(), 1.0F, 1.0F);
 		level.sendParticles(
-				new ItemParticleOption(ParticleTypes.ITEM, new ItemStack(Items.ARMOR_STAND)),
+				new ItemParticleOption(ParticleTypes.ITEM, Items.ARMOR_STAND),
 				stand.getX(), stand.getY() + (double) stand.getBbHeight() / 1.5D, stand.getZ(),
 				10, 0.0D, 0.0D, 0.0D, 0.05D);
 	}
