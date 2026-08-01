@@ -6,10 +6,8 @@ package io.github.kyzderp.armorstandpet.combat;
 
 import io.github.kyzderp.armorstandpet.ASPetMod;
 import io.github.kyzderp.armorstandpet.entity.PetArmorStandEntity;
-import io.github.kyzderp.armorstandpet.entity.StandFactory;
 import io.github.kyzderp.armorstandpet.scheduler.TickScheduler;
 import io.github.kyzderp.armorstandpet.struct.OwnerToPet;
-import io.github.kyzderp.armorstandpet.struct.StandToOwner;
 import io.github.kyzderp.armorstandpet.types.Pet;
 import java.util.HashMap;
 import java.util.Map;
@@ -20,10 +18,10 @@ import net.minecraft.world.damagesource.DamageSource;
 
 /**
  * Keeps the legacy invincible behavior by default, but can give an individual
- * pet a normal 20-point health pool. Damage is intentionally simple and
- * predictable: armor does not alter the pool, and a short ten-tick hurt
- * cooldown prevents rapid multi-hit sources from deleting all health in one
- * server tick.
+ * pet a normal 20-point health pool. Vulnerable pets use Minecraft's normal
+ * armor, armor-toughness, armor-enchantment and equipment-durability logic.
+ * A short ten-tick hurt cooldown prevents rapid multi-hit sources from
+ * deleting all health during one server tick.
  */
 public final class PetMortalityController
 {
@@ -58,28 +56,36 @@ public final class PetMortalityController
 			return false;
 		NEXT_DAMAGE_TICK.put(stand.getUUID(), now + HURT_COOLDOWN_TICKS);
 
-		float remaining = Math.max(0.0F, stand.getHealth() - amount);
+		float appliedDamage = Math.max(0.0F, stand.applyPetDefenses(source, amount));
+		if (appliedDamage <= 0.0F)
+			return true;
+
+		float remaining = Math.max(0.0F, stand.getHealth() - appliedDamage);
 		stand.setHealth(remaining);
 		if (remaining <= 0.0F)
-			kill(pet, stand, worldName);
+			kill(pet, stand, source);
 		return true;
 	}
 
-	private static void kill(Pet pet, PetArmorStandEntity stand, String worldName)
+	/**
+	 * Performs a real LivingEntity death and then invokes the same permanent
+	 * deletion path as /aspet delete. This removes the entity, both lookup maps,
+	 * and the saved pet entry, so no command or lifecycle handler can revive it.
+	 */
+	private static void kill(Pet pet, PetArmorStandEntity stand, DamageSource source)
 	{
 		NEXT_DAMAGE_TICK.remove(stand.getUUID());
 		OwnerAttackCombatController.disable(pet);
 		TickScheduler.cancelPetTasks(pet);
 		pet.isBusy = false;
-		pet.mortalDead = true;
-		StandToOwner.remove(worldName, stand);
-		stand.setHealth(0.0F);
-		stand.discard();
 
 		ServerPlayer owner = levelPlayer(stand.serverLevel(), pet.getOwner());
+		stand.setHealth(0.0F);
+		stand.die(source);
+		pet.delete(true, true);
+
 		if (owner != null)
-			ASPetMod.inform(owner, "Your armor stand pet has died. Use /aspet invincible on or off to revive it.");
-		ASPetMod.saveAllPets();
+			ASPetMod.inform(owner, "Your armor stand pet has died permanently. Create a new pet to replace it.");
 	}
 
 	private static ServerPlayer levelPlayer(ServerLevel level, String name)
@@ -87,24 +93,15 @@ public final class PetMortalityController
 		return level.getServer().getPlayerList().getPlayerByName(name);
 	}
 
-	/**
-	 * Applies a mode change. A dead pet is rebuilt from its retained appearance
-	 * and equipment, then placed at its owner with a full 20-point health pool.
-	 */
+	/** Applies a mode change only to an existing, living pet. */
 	public static boolean setInvincible(Pet pet, ServerPlayer owner, boolean invincible)
 	{
 		if (pet == null || owner == null || pet.getStand() == null)
 			return false;
 
 		PetArmorStandEntity stand = pet.getStand();
-		String oldWorld = stand.serverLevel().dimension().identifier().toString();
-		if (pet.mortalDead || stand.isRemoved())
-		{
-			StandToOwner.remove(oldWorld, stand);
-			stand = StandFactory.respawnFrom(stand);
-			pet.setStand(stand);
-			StandToOwner.put(oldWorld, stand, pet.getOwner());
-		}
+		if (pet.mortalDead || stand.isRemoved() || stand.isDeadOrDying())
+			return false;
 
 		pet.mortalDead = false;
 		pet.invincible = invincible;
