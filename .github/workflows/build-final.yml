@@ -1,0 +1,118 @@
+name: Build final ArmorStandPet combat
+
+on:
+  push:
+    branches: [ci/build-jar]
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  build-final:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.5.1'
+
+      - name: Download migrated sources
+        uses: actions/download-artifact@v4
+        with:
+          name: migrated-src
+          path: /tmp/migrated-artifact
+          run-id: 30643325011
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Restore and apply all port patches
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat ci/asp.tar.xz.b64.part-* | base64 --decode > /tmp/asp.tar.xz
+          echo '3c3a2a9c821ef83ba5871678a59617b54800fb9c1926dcdb32de401881d45f8b  /tmp/asp.tar.xz' | sha256sum --check
+          mkdir -p /tmp/asp-src
+          tar -xJf /tmp/asp.tar.xz -C /tmp/asp-src
+          cp -a /tmp/asp-src/armorstandpet-fabric ./project
+
+          (cd /tmp/migrated-artifact && sha256sum --check migrated-src.tar.gz.sha256)
+          rm -rf project/src
+          tar -xzf /tmp/migrated-artifact/migrated-src.tar.gz -C project
+
+          base64 --decode ci/asp-port.patch.xz.b64 > /tmp/asp-port.patch.xz
+          xz --decompress --stdout /tmp/asp-port.patch.xz > /tmp/asp-port.patch
+          (cd project && patch --batch --forward -p1 < /tmp/asp-port.patch)
+
+          base64 --decode ci/asp-port-fix1.patch.xz.b64 > /tmp/asp-port-fix1.patch.xz
+          xz --decompress --stdout /tmp/asp-port-fix1.patch.xz > /tmp/asp-port-fix1.patch
+          (cd project && patch --batch --forward -p1 < /tmp/asp-port-fix1.patch)
+
+          base64 --decode ci/asp-port-fix2.patch.xz.b64 > /tmp/asp-port-fix2.patch.xz
+          xz --decompress --stdout /tmp/asp-port-fix2.patch.xz > /tmp/asp-port-fix2.patch
+          (cd project && patch --batch --forward -p1 < /tmp/asp-port-fix2.patch)
+
+          cp -a ci/overrides/. project/
+          python3 ci/fix-client-level.py
+          python3 ci/fix-command-args.py
+          python3 ci/add-owner-attack-combat.py
+          python3 ci/add-combat-toggle.py
+          python3 ci/add-combat-preemption.py
+          python3 ci/switch-right-arm-animation.py
+          python3 ci/remove-combat-timeout.py
+          python3 ci/add-pet-mortality.py
+          python3 ci/add-player-equipment-combat.py
+
+      - name: Build production JAR
+        working-directory: project
+        run: gradle clean build --stacktrace --no-daemon --console=plain
+
+      - name: Validate final behavior
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifact
+          find project/build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*-sources.jar' ! -name '*-dev.jar' -exec cp {} artifact/ \;
+          jar="$(find artifact -maxdepth 1 -type f -name '*.jar' -print -quit)"
+          test -n "$jar"
+          unzip -t "$jar"
+
+          javap -classpath "$jar" -p -c io.github.kyzderp.armorstandpet.combat.OwnerAttackCombatController | tee artifact/OwnerAttackCombatController.javap.txt
+          grep -q 'finishAfterAnimation' artifact/OwnerAttackCombatController.javap.txt
+          grep -q 'Attributes.ATTACK_DAMAGE' artifact/OwnerAttackCombatController.javap.txt
+          grep -q 'EnchantmentHelper.modifyDamage' artifact/OwnerAttackCombatController.javap.txt
+          grep -q 'ItemStack.hurtEnemy' artifact/OwnerAttackCombatController.javap.txt
+          ! grep -q 'ATTACK_DAMAGE = 4.0f' artifact/OwnerAttackCombatController.javap.txt
+          ! grep -q 'PURSUIT_TIMEOUT_TICKS' artifact/OwnerAttackCombatController.javap.txt
+
+          javap -classpath "$jar" -p -c io.github.kyzderp.armorstandpet.combat.PetMortalityController | tee artifact/PetMortalityController.javap.txt
+          grep -q 'PetArmorStandEntity.applyPetDefenses' artifact/PetMortalityController.javap.txt
+          grep -q 'Pet.delete' artifact/PetMortalityController.javap.txt
+          grep -q 'LivingEntity.die' artifact/PetMortalityController.javap.txt
+          grep -q 'purgeLegacyDeadPets' artifact/PetMortalityController.javap.txt
+          ! grep -q 'StandFactory.respawnFrom' artifact/PetMortalityController.javap.txt
+
+          javap -classpath "$jar" -p -c io.github.kyzderp.armorstandpet.entity.PetArmorStandEntity | tee artifact/PetArmorStandEntity.javap.txt
+          grep -q 'getDamageAfterArmorAbsorb' artifact/PetArmorStandEntity.javap.txt
+          grep -q 'getDamageAfterMagicAbsorb' artifact/PetArmorStandEntity.javap.txt
+
+          javap -classpath "$jar" -p -c io.github.kyzderp.armorstandpet.ASPetMod | tee artifact/ASPetMod.javap.txt
+          grep -q 'PetMortalityController.purgeLegacyDeadPets' artifact/ASPetMod.javap.txt
+
+          javap -classpath "$jar" -p -c io.github.kyzderp.armorstandpet.entity.ModEntities | tee artifact/ModEntities.javap.txt
+          grep -q 'Attributes.ATTACK_DAMAGE' artifact/ModEntities.javap.txt
+
+          sha256sum "$jar" | tee artifact/SHA256SUMS.txt
+
+      - name: Upload final mod
+        uses: actions/upload-artifact@v4
+        with:
+          name: armorstandpet-fabric-26.2-permanent-death-equipment-combat
+          path: artifact/
+          if-no-files-found: error
