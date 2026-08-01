@@ -9,7 +9,9 @@ import io.github.kyzderp.armorstandpet.entity.PetArmorStandEntity;
 import io.github.kyzderp.armorstandpet.scheduler.TickScheduler;
 import io.github.kyzderp.armorstandpet.struct.OwnerToPet;
 import io.github.kyzderp.armorstandpet.types.Pet;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import net.minecraft.server.level.ServerLevel;
@@ -86,6 +88,28 @@ public final class PetMortalityController
 
 		if (owner != null)
 			ASPetMod.inform(owner, "Your armor stand pet has died permanently. Create a new pet to replace it.");
+	}
+
+	/** Removes dead entries written by the earlier revivable-death build. */
+	public static void purgeLegacyDeadPets()
+	{
+		List<Pet> deadPets = new ArrayList<>();
+		for (Map<String, Pet> world : OwnerToPet.getAll().values())
+		{
+			for (Pet pet : new ArrayList<>(world.values()))
+			{
+				if (pet != null && pet.getStand() != null
+						&& (pet.mortalDead || pet.getStand().isDeadOrDying()))
+					deadPets.add(pet);
+			}
+		}
+
+		for (Pet pet : deadPets)
+		{
+			OwnerAttackCombatController.disable(pet);
+			TickScheduler.cancelPetTasks(pet);
+			pet.delete(true, true);
+		}
 	}
 
 	private static ServerPlayer levelPlayer(ServerLevel level, String name)
