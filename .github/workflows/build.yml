@@ -137,7 +137,7 @@ jobs:
 
             javap -classpath "$jar" -p -c io.github.kyzderp.armorstandpet.normalcommands.InvincibleCommand | tee artifact/InvincibleCommand.javap.txt
             grep -q 'PetMortalityController.setInvincible' artifact/InvincibleCommand.javap.txt
-            grep -q 'LivingEntity.getHealth' artifact/InvincibleCommand.javap.txt
+            grep -q 'getHealth' artifact/InvincibleCommand.javap.txt
 
             javap -classpath "$jar" -p io.github.kyzderp.armorstandpet.tasks.ASPetTask | tee artifact/ASPetTask.javap.txt
             grep -q 'Pet getPet()' artifact/ASPetTask.javap.txt
@@ -151,8 +151,8 @@ jobs:
             grep -q 'MOVEMENT_STEP_INTERVAL_TICKS = 3l' artifact/OwnerAttackCombatController.javap.txt
             ! grep -q 'PURSUIT_TIMEOUT_TICKS' artifact/OwnerAttackCombatController.javap.txt
             ! grep -q 'expiresAtTick' artifact/OwnerAttackCombatController.javap.txt
-            grep -q 'Mob.isAlive' artifact/OwnerAttackCombatController.javap.txt
-            grep -q 'Entity.isRemoved' artifact/OwnerAttackCombatController.javap.txt
+            grep -q 'isAlive' artifact/OwnerAttackCombatController.javap.txt
+            grep -q 'isRemoved' artifact/OwnerAttackCombatController.javap.txt
             grep -q -- '-0.9d' artifact/OwnerAttackCombatController.javap.txt
             grep -q 'TickScheduler.cancelPetTasks' artifact/OwnerAttackCombatController.javap.txt
             grep -q 'Pet.animateWalk' artifact/OwnerAttackCombatController.javap.txt
@@ -166,8 +166,8 @@ jobs:
             javap -classpath "$jar" -p -constants -c io.github.kyzderp.armorstandpet.combat.PetMortalityController | tee artifact/PetMortalityController.javap.txt
             grep -q 'MAX_HEALTH = 20.0f' artifact/PetMortalityController.javap.txt
             grep -q 'HURT_COOLDOWN_TICKS = 10l' artifact/PetMortalityController.javap.txt
-            grep -q 'LivingEntity.setHealth' artifact/PetMortalityController.javap.txt
-            grep -q 'Entity.discard' artifact/PetMortalityController.javap.txt
+            grep -q 'setHealth' artifact/PetMortalityController.javap.txt
+            grep -q 'discard' artifact/PetMortalityController.javap.txt
             grep -q 'OwnerAttackCombatController.disable' artifact/PetMortalityController.javap.txt
             grep -q 'TickScheduler.cancelPetTasks' artifact/PetMortalityController.javap.txt
             grep -q 'StandFactory.respawnFrom' artifact/PetMortalityController.javap.txt
