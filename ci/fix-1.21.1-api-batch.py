@@ -97,6 +97,19 @@ replace_all(skull, [
      "new ResolvableProfile(p.getGameProfile())"),
 ])
 
+# The ground shadow belongs to the client renderer rather than the entity.
+# Set it to zero only for the custom ArmorStandPet renderer so ordinary
+# Minecraft armor stands retain their normal rendering behavior.
+renderer = root / "client/java/io/github/kyzderp/armorstandpet/client/PetArmorStandRenderer.java"
+replace_all(renderer, [
+    ("\t\tsuper(context);\n",
+     "\t\tsuper(context);\n"
+     "\t\tthis.shadowRadius = 0.0F;\n"),
+])
+renderer_source = renderer.read_text(encoding="utf-8")
+if renderer_source.count("this.shadowRadius = 0.0F;") != 1:
+    raise SystemExit("ArmorStandPet shadow suppression was not applied exactly once")
+
 for forbidden in [".snapTo(", ".showArms()", ".showBasePlate()", ".nameAndId()",
                   "TagParser.create(", "getMinY()", "getMaxY()", "createResolved("]:
     matches = []
@@ -106,4 +119,4 @@ for forbidden in [".snapTo(", ".showArms()", ".showBasePlate()", ".nameAndId()",
     if matches:
         raise SystemExit(f"Obsolete 26.2 API {forbidden!r} remained in: {matches}")
 
-print("Adapted core entity, NBT, permissions, teleport, height, and profile APIs to 1.21.1")
+print("Adapted core 1.21.1 APIs and removed the ArmorStandPet renderer shadow")
