@@ -78,6 +78,7 @@ jobs:
           set -euo pipefail
           python3 ci/port-to-1.21.1.py
           python3 ci/fix-1.21.1-world-event.py
+          python3 ci/fix-1.21.1-api-batch.py
 
       - name: Build production JAR
         working-directory: project
