@@ -35,8 +35,8 @@ public class InvincibleCommand extends BaseCommand
 		if (args.length == 1)
 		{
 			String status;
-			if (pet.mortalDead)
-				status = "\u00A7cDEAD";
+			if (pet.mortalDead || pet.getStand() == null || pet.getStand().isDeadOrDying())
+				status = "\u00A7cDEAD AND PERMANENTLY UNAVAILABLE";
 			else if (pet.invincible)
 				status = "\u00A7aINVINCIBLE";
 			else
@@ -66,13 +66,13 @@ public class InvincibleCommand extends BaseCommand
 
 		if (!PetMortalityController.setInvincible(pet, player, invincible))
 		{
-			this.error(sender, "Unable to change your pet's invincibility mode.");
+			this.error(sender, "A dead pet cannot be revived. Create a new pet instead.");
 			return;
 		}
 
 		if (invincible)
 			ASPetMod.inform(sender, "Pet invincibility is now \u00A7aON\u00A77. Health restored to 20.");
 		else
-			ASPetMod.inform(sender, "Pet invincibility is now \u00A7cOFF\u00A77. Your pet has 20 health.");
+			ASPetMod.inform(sender, "Pet invincibility is now \u00A7cOFF\u00A77. Your pet has 20 health and armor now reduces damage.");
 	}
 }
