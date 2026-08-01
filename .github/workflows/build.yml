@@ -72,11 +72,15 @@ jobs:
           python3 ci/add-combat-toggle.py
           python3 ci/add-combat-preemption.py
           python3 ci/switch-right-arm-animation.py
+          python3 ci/remove-combat-timeout.py
+          python3 ci/add-pet-mortality.py
           test -f project/build.gradle
           test -f project/src/main/resources/fabric.mod.json
           test -f project/src/client/java/io/github/kyzderp/armorstandpet/client/PetArmorStandRenderer.java
           test -f project/src/main/java/io/github/kyzderp/armorstandpet/combat/OwnerAttackCombatController.java
+          test -f project/src/main/java/io/github/kyzderp/armorstandpet/combat/PetMortalityController.java
           test -f project/src/main/java/io/github/kyzderp/armorstandpet/normalcommands/CombatCommand.java
+          test -f project/src/main/java/io/github/kyzderp/armorstandpet/normalcommands/InvincibleCommand.java
 
       - name: Build production JAR
         working-directory: project
@@ -95,33 +99,60 @@ jobs:
             jar tf "$jar" | grep -q 'io/github/kyzderp/armorstandpet/ASPetMod.class'
             jar tf "$jar" | grep -q 'io/github/kyzderp/armorstandpet/normalcommands/ASPetCommand.class'
             jar tf "$jar" | grep -q 'io/github/kyzderp/armorstandpet/normalcommands/CombatCommand.class'
+            jar tf "$jar" | grep -q 'io/github/kyzderp/armorstandpet/normalcommands/InvincibleCommand.class'
             jar tf "$jar" | grep -q 'io/github/kyzderp/armorstandpet/admincommands/ASPetAdminCommand.class'
             jar tf "$jar" | grep -q 'io/github/kyzderp/armorstandpet/client/PetArmorStandRenderer.class'
             jar tf "$jar" | grep -q 'io/github/kyzderp/armorstandpet/combat/OwnerAttackCombatController.class'
-            javap -classpath "$jar" -p io.github.kyzderp.armorstandpet.entity.PetArmorStandEntity | tee artifact/PetArmorStandEntity.javap.txt
+            jar tf "$jar" | grep -q 'io/github/kyzderp/armorstandpet/combat/PetMortalityController.class'
+
+            javap -classpath "$jar" -p -c io.github.kyzderp.armorstandpet.entity.PetArmorStandEntity | tee artifact/PetArmorStandEntity.javap.txt
             ! grep -q 'ServerLevel level()' artifact/PetArmorStandEntity.javap.txt
             grep -q 'net.minecraft.world.level.Level level()' artifact/PetArmorStandEntity.javap.txt
+            grep -q 'PetMortalityController.hurt' artifact/PetArmorStandEntity.javap.txt
+            grep -q 'LivingEntity.isDeadOrDying' artifact/PetArmorStandEntity.javap.txt
+
             javap -classpath "$jar" -p -c io.github.kyzderp.armorstandpet.client.PetArmorStandRenderer | tee artifact/PetArmorStandRenderer.javap.txt
             grep -q 'EntityTypes.ARMOR_STAND' artifact/PetArmorStandRenderer.javap.txt
+
             javap -classpath "$jar" -p -c io.github.kyzderp.armorstandpet.listeners.PlayerActionListener | tee artifact/PlayerActionListener.javap.txt
             grep -q 'OwnerAttackCombatController.onOwnerAttack' artifact/PlayerActionListener.javap.txt
+            grep -q 'Pet.mortalDead' artifact/PlayerActionListener.javap.txt
+
             javap -classpath "$jar" -p -c io.github.kyzderp.armorstandpet.types.Pet | tee artifact/Pet.javap.txt
             grep -q 'boolean combatEnabled' artifact/Pet.javap.txt
+            grep -q 'boolean invincible' artifact/Pet.javap.txt
+            grep -q 'boolean mortalDead' artifact/Pet.javap.txt
             grep -q 'PetData.combatEnabled' artifact/Pet.javap.txt
+            grep -q 'PetData.invincible' artifact/Pet.javap.txt
+            grep -q 'PetData.mortalDead' artifact/Pet.javap.txt
+            grep -q 'PetData.health' artifact/Pet.javap.txt
+
             javap -classpath "$jar" -p -c io.github.kyzderp.armorstandpet.normalcommands.ASPetCommand | tee artifact/ASPetCommand.javap.txt
             grep -q 'CombatCommand' artifact/ASPetCommand.javap.txt
+            grep -q 'InvincibleCommand' artifact/ASPetCommand.javap.txt
+
             javap -classpath "$jar" -p -c io.github.kyzderp.armorstandpet.normalcommands.CombatCommand | tee artifact/CombatCommand.javap.txt
             grep -q 'OwnerAttackCombatController.disable' artifact/CombatCommand.javap.txt
             grep -q 'ASPetMod.saveAllPets' artifact/CombatCommand.javap.txt
+
+            javap -classpath "$jar" -p -c io.github.kyzderp.armorstandpet.normalcommands.InvincibleCommand | tee artifact/InvincibleCommand.javap.txt
+            grep -q 'PetMortalityController.setInvincible' artifact/InvincibleCommand.javap.txt
+            grep -q 'LivingEntity.getHealth' artifact/InvincibleCommand.javap.txt
+
             javap -classpath "$jar" -p io.github.kyzderp.armorstandpet.tasks.ASPetTask | tee artifact/ASPetTask.javap.txt
             grep -q 'Pet getPet()' artifact/ASPetTask.javap.txt
             javap -classpath "$jar" -p -c io.github.kyzderp.armorstandpet.scheduler.TickScheduler | tee artifact/TickScheduler.javap.txt
             grep -q 'cancelPetTasks' artifact/TickScheduler.javap.txt
             grep -q 'ASPetTask.getPet' artifact/TickScheduler.javap.txt
+
             javap -classpath "$jar" -p -constants -c io.github.kyzderp.armorstandpet.combat.OwnerAttackCombatController | tee artifact/OwnerAttackCombatController.javap.txt
             grep -q 'ATTACK_COOLDOWN_TICKS = 20l' artifact/OwnerAttackCombatController.javap.txt
             grep -q 'ATTACK_ANIMATION_TICKS = 9l' artifact/OwnerAttackCombatController.javap.txt
             grep -q 'MOVEMENT_STEP_INTERVAL_TICKS = 3l' artifact/OwnerAttackCombatController.javap.txt
+            ! grep -q 'PURSUIT_TIMEOUT_TICKS' artifact/OwnerAttackCombatController.javap.txt
+            ! grep -q 'expiresAtTick' artifact/OwnerAttackCombatController.javap.txt
+            grep -q 'Mob.isAlive' artifact/OwnerAttackCombatController.javap.txt
+            grep -q 'Entity.isRemoved' artifact/OwnerAttackCombatController.javap.txt
             grep -q -- '-0.9d' artifact/OwnerAttackCombatController.javap.txt
             grep -q 'TickScheduler.cancelPetTasks' artifact/OwnerAttackCombatController.javap.txt
             grep -q 'Pet.animateWalk' artifact/OwnerAttackCombatController.javap.txt
@@ -131,6 +162,15 @@ jobs:
             grep -q 'Pet.combatEnabled' artifact/OwnerAttackCombatController.javap.txt
             grep -q 'DamageSources.mobAttack' artifact/OwnerAttackCombatController.javap.txt
             grep -q 'Mob.hurtServer' artifact/OwnerAttackCombatController.javap.txt
+
+            javap -classpath "$jar" -p -constants -c io.github.kyzderp.armorstandpet.combat.PetMortalityController | tee artifact/PetMortalityController.javap.txt
+            grep -q 'MAX_HEALTH = 20.0f' artifact/PetMortalityController.javap.txt
+            grep -q 'HURT_COOLDOWN_TICKS = 10l' artifact/PetMortalityController.javap.txt
+            grep -q 'LivingEntity.setHealth' artifact/PetMortalityController.javap.txt
+            grep -q 'Entity.discard' artifact/PetMortalityController.javap.txt
+            grep -q 'OwnerAttackCombatController.disable' artifact/PetMortalityController.javap.txt
+            grep -q 'TickScheduler.cancelPetTasks' artifact/PetMortalityController.javap.txt
+            grep -q 'StandFactory.respawnFrom' artifact/PetMortalityController.javap.txt
           done
           sha256sum artifact/*.jar | tee artifact/SHA256SUMS.txt
           ls -lah artifact
