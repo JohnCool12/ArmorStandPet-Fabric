@@ -1,0 +1,103 @@
+name: Build ArmorStandPet Fabric 1.21.1
+
+on:
+  push:
+    branches: [port/1.21.1]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Gradle 8.12.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.12.1'
+
+      - name: Download migrated sources
+        uses: actions/download-artifact@v4
+        with:
+          name: migrated-src
+          path: /tmp/migrated-artifact
+          run-id: 30643325011
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Reconstruct complete 26.2 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat ci/asp.tar.xz.b64.part-* | base64 --decode > /tmp/asp.tar.xz
+          echo '3c3a2a9c821ef83ba5871678a59617b54800fb9c1926dcdb32de401881d45f8b  /tmp/asp.tar.xz' | sha256sum --check
+          mkdir -p /tmp/asp-src
+          tar -xJf /tmp/asp.tar.xz -C /tmp/asp-src
+          cp -a /tmp/asp-src/armorstandpet-fabric ./project
+
+          (cd /tmp/migrated-artifact && sha256sum --check migrated-src.tar.gz.sha256)
+          rm -rf project/src
+          tar -xzf /tmp/migrated-artifact/migrated-src.tar.gz -C project
+
+          base64 --decode ci/asp-port.patch.xz.b64 > /tmp/asp-port.patch.xz
+          xz --decompress --stdout /tmp/asp-port.patch.xz > /tmp/asp-port.patch
+          (cd project && patch --batch --forward -p1 < /tmp/asp-port.patch)
+
+          base64 --decode ci/asp-port-fix1.patch.xz.b64 > /tmp/asp-port-fix1.patch.xz
+          xz --decompress --stdout /tmp/asp-port-fix1.patch.xz > /tmp/asp-port-fix1.patch
+          (cd project && patch --batch --forward -p1 < /tmp/asp-port-fix1.patch)
+
+          base64 --decode ci/asp-port-fix2.patch.xz.b64 > /tmp/asp-port-fix2.patch.xz
+          xz --decompress --stdout /tmp/asp-port-fix2.patch.xz > /tmp/asp-port-fix2.patch
+          (cd project && patch --batch --forward -p1 < /tmp/asp-port-fix2.patch)
+
+          cp -a ci/overrides/. project/
+          python3 ci/fix-client-level.py
+          python3 ci/fix-command-args.py
+          python3 ci/add-owner-attack-combat.py
+          python3 ci/add-combat-toggle.py
+          python3 ci/add-combat-preemption.py
+          python3 ci/switch-right-arm-animation.py
+          python3 ci/remove-combat-timeout.py
+          python3 ci/add-pet-mortality.py
+          python3 ci/add-player-equipment-combat.py
+
+      - name: Apply Minecraft 1.21.1 compatibility layer
+        run: python3 ci/port-to-1.21.1.py
+
+      - name: Build production JAR
+        working-directory: project
+        run: gradle clean build --stacktrace --no-daemon --console=plain
+
+      - name: Validate and collect JAR
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifact
+          find project/build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*-sources.jar' ! -name '*-dev.jar' -exec cp {} artifact/ \;
+          jar="$(find artifact -maxdepth 1 -type f -name '*.jar' -print -quit)"
+          test -n "$jar"
+          unzip -t "$jar"
+          unzip -p "$jar" fabric.mod.json | grep -q '"minecraft": "~1.21.1"'
+          unzip -p "$jar" fabric.mod.json | grep -q '"java": ">=21"'
+          jar tf "$jar" | grep -q 'io/github/kyzderp/armorstandpet/ASPetMod.class'
+          jar tf "$jar" | grep -q 'io/github/kyzderp/armorstandpet/combat/OwnerAttackCombatController.class'
+          jar tf "$jar" | grep -q 'io/github/kyzderp/armorstandpet/combat/PetMortalityController.class'
+          sha256sum "$jar" | tee artifact/SHA256SUMS.txt
+
+      - name: Upload 1.21.1 mod
+        uses: actions/upload-artifact@v4
+        with:
+          name: armorstandpet-fabric-1.21.1
+          path: artifact/
+          if-no-files-found: error
