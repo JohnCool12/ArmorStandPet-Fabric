@@ -45,8 +45,8 @@ if "PetMortalityController.purgeLegacyDeadPets();" not in mod:
     mod = mod.replace(load_call, purge_call, 1)
 mod_path.write_text(mod, encoding="utf-8")
 
-# Make combat use the held item's attack attributes/enchantments and let a
-# lethal swing finish visually before the pose is cleared.
+# Make combat use the held item's vanilla attack attribute/enchantments and let
+# a lethal swing finish visually before the pose is cleared.
 combat_path = root / "combat/OwnerAttackCombatController.java"
 combat = combat_path.read_text(encoding="utf-8")
 
@@ -108,18 +108,14 @@ new_attack = (
     "\t\t\tstand.setRightArmPose(RIGHT_ARM_ATTACK_POSE);\n"
     "\t\t\tstand.swing(InteractionHand.MAIN_HAND);\n\n"
     "\t\t\tItemStack weapon = stand.getMainHandItem();\n"
-    "\t\t\tDamageSource damageSource = weapon.isEmpty()\n"
-    "\t\t\t\t\t? level.damageSources().mobAttack(stand)\n"
-    "\t\t\t\t\t: weapon.getItem().getDamageSource(stand);\n"
+    "\t\t\tDamageSource damageSource = level.damageSources().mobAttack(stand);\n"
+    "\t\t\t// LivingEntity's equipment system applies the held item's attack\n"
+    "\t\t\t// attribute modifiers to this value, just as it does for players.\n"
     "\t\t\tfloat attackDamage = Math.max(0.0F,\n"
     "\t\t\t\t\t(float) stand.getAttributeValue(Attributes.ATTACK_DAMAGE));\n"
     "\t\t\tif (!weapon.isEmpty())\n"
-    "\t\t\t{\n"
-    "\t\t\t\tattackDamage += weapon.getItem().getBonusAttackDamage(\n"
-    "\t\t\t\t\t\ttarget, attackDamage, damageSource);\n"
     "\t\t\t\tattackDamage = EnchantmentHelper.modifyDamage(\n"
-    "\t\t\t\t\t\tlevel, weapon, target, damageSource, attackDamage);\n"
-    "\t\t\t}\n\n"
+    "\t\t\t\t\t\tlevel, weapon, target, damageSource, attackDamage);\n\n"
     "\t\t\tboolean damaged = target.hurtServer(level, damageSource, attackDamage);\n"
     "\t\t\tif (damaged && !weapon.isEmpty())\n"
     "\t\t\t{\n"
@@ -144,7 +140,12 @@ if "private boolean finishAfterAnimation;" not in combat:
         raise SystemExit("Could not find AttackState animation field")
     combat = combat.replace(field_marker, field_addition, 1)
 
-for forbidden in ["ATTACK_DAMAGE = 4.0F", "finish(iterator, state);\n\t\t}\n\t}\n\n\tprivate static void restorePetName"]:
+for forbidden in [
+    "ATTACK_DAMAGE = 4.0F",
+    "getDamageSource(stand)",
+    "getBonusAttackDamage(",
+    "finish(iterator, state);\n\t\t}\n\t}\n\n\tprivate static void restorePetName",
+]:
     if forbidden in combat:
         raise SystemExit(f"Obsolete combat behavior remained: {forbidden}")
 
