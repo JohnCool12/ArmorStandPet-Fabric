@@ -12,6 +12,14 @@ def replace_all(path: Path, replacements: list[tuple[str, str]]) -> None:
     path.write_text(source, encoding="utf-8")
 
 
+def replace_once(path: Path, old: str, new: str, label: str) -> None:
+    source = path.read_text(encoding="utf-8")
+    count = source.count(old)
+    if count != 1:
+        raise SystemExit(f"Expected one {label} in {path}, found {count}")
+    path.write_text(source.replace(old, new, 1), encoding="utf-8")
+
+
 entity = root / "main/java/io/github/kyzderp/armorstandpet/entity/PetArmorStandEntity.java"
 replace_all(entity, [
     ("\tprotected void addAdditionalSaveData(CompoundTag tag)",
@@ -83,9 +91,9 @@ tp = root / "main/java/io/github/kyzderp/armorstandpet/admincommands/TpCommand.j
 source = tp.read_text(encoding="utf-8")
 source = source.replace("import java.util.Set;\n", "")
 old_tp = """admin.teleportTo(pet.getStand().serverLevel(), pet.getStand().getX(), pet.getStand().getY(),
-				pet.getStand().getZ(), Set.of(), admin.getYRot(), admin.getXRot(), false);"""
+\t\t\t\tpet.getStand().getZ(), Set.of(), admin.getYRot(), admin.getXRot(), false);"""
 new_tp = """admin.teleportTo(pet.getStand().serverLevel(), pet.getStand().getX(), pet.getStand().getY(),
-				pet.getStand().getZ(), admin.getYRot(), admin.getXRot());"""
+\t\t\t\tpet.getStand().getZ(), admin.getYRot(), admin.getXRot());"""
 if old_tp not in source:
     raise SystemExit("Expected 26.2 admin teleport overload")
 source = source.replace(old_tp, new_tp, 1)
@@ -97,18 +105,86 @@ replace_all(skull, [
      "new ResolvableProfile(p.getGameProfile())"),
 ])
 
-# The ground shadow belongs to the client renderer rather than the entity.
-# Set it to zero only for the custom ArmorStandPet renderer so ordinary
-# Minecraft armor stands retain their normal rendering behavior.
+# Keep pet mortality independent from ArmorStand's internal LivingEntity health.
+# The custom Pet object owns a real, persisted 20-point pool. This avoids a
+# vanilla/custom-entity health mismatch making vulnerable pets die in one hit.
+pet_data = root / "main/java/io/github/kyzderp/armorstandpet/storage/PetData.java"
+replace_once(
+    pet_data,
+    "\tpublic float health = 20.0F;\n",
+    "\tpublic float health = 20.0F;\n\tpublic int healthModelVersion;\n",
+    "PetData health field",
+)
+
+pet = root / "main/java/io/github/kyzderp/armorstandpet/types/Pet.java"
+replace_once(
+    pet,
+    "\tpublic boolean mortalDead;\n",
+    "\tpublic boolean mortalDead;\n\tpublic float health;\n",
+    "Pet mortality fields",
+)
+replace_once(
+    pet,
+    "\t\tthis.mortalDead = false;\n",
+    "\t\tthis.mortalDead = false;\n\t\tthis.health = 20.0F;\n",
+    "Pet mortality defaults",
+)
+replace_once(
+    pet,
+    "\t\tdata.health = this.stand == null ? 20.0F : this.stand.getHealth();\n",
+    "\t\tdata.health = Math.max(0.0F, Math.min(20.0F, this.health));\n"
+    "\t\tdata.healthModelVersion = 1;\n",
+    "Pet health serialization",
+)
+replace_once(
+    pet,
+    "\t\tthis.stand.setHealth(this.mortalDead ? 0.0F : Math.max(1.0F, Math.min(20.0F, data.health)));\n",
+    "\t\tfloat loadedHealth = data.healthModelVersion >= 1 ? data.health : 20.0F;\n"
+    "\t\tthis.health = this.mortalDead ? 0.0F : Math.max(1.0F, Math.min(20.0F, loadedHealth));\n"
+    "\t\t// Keep the ArmorStand internally alive; Pet.health is authoritative.\n"
+    "\t\tthis.stand.setHealth(this.mortalDead ? 0.0F : 20.0F);\n",
+    "Pet health deserialization",
+)
+
+mortality = root / "main/java/io/github/kyzderp/armorstandpet/combat/PetMortalityController.java"
+replace_once(
+    mortality,
+    "\t\tfloat remaining = Math.max(0.0F, stand.getHealth() - appliedDamage);\n"
+    "\t\tstand.setHealth(remaining);\n",
+    "\t\tfloat remaining = Math.max(0.0F, pet.health - appliedDamage);\n"
+    "\t\tpet.health = remaining;\n"
+    "\t\t// Do not let ArmorStand's internal health become the pet's death trigger.\n"
+    "\t\tstand.setHealth(MAX_HEALTH);\n",
+    "mortality damage subtraction",
+)
+replace_once(
+    mortality,
+    "\t\tplayVanillaBreakEffects(level, stand);\n\t\tstand.setHealth(0.0F);\n",
+    "\t\tplayVanillaBreakEffects(level, stand);\n\t\tpet.health = 0.0F;\n\t\tstand.setHealth(0.0F);\n",
+    "mortality death health reset",
+)
+replace_once(
+    mortality,
+    "\t\tNEXT_DAMAGE_TICK.remove(stand.getUUID());\n\t\tstand.setHealth(MAX_HEALTH);\n",
+    "\t\tNEXT_DAMAGE_TICK.remove(stand.getUUID());\n\t\tpet.health = MAX_HEALTH;\n\t\tstand.setHealth(MAX_HEALTH);\n",
+    "invincibility health reset",
+)
+
+invincible_command = root / "main/java/io/github/kyzderp/armorstandpet/normalcommands/InvincibleCommand.java"
+replace_once(
+    invincible_command,
+    "Math.max(0, Math.round(pet.getStand().getHealth()))",
+    "Math.max(0, Math.round(pet.health))",
+    "invincibility status health source",
+)
+
+# The user requested the completed 1.21.1 port as the base, not the later
+# renderer-shadow variant. Ensure this build retains the original vanilla
+# armor-stand shadow behavior.
 renderer = root / "client/java/io/github/kyzderp/armorstandpet/client/PetArmorStandRenderer.java"
-replace_all(renderer, [
-    ("\t\tsuper(context);\n",
-     "\t\tsuper(context);\n"
-     "\t\tthis.shadowRadius = 0.0F;\n"),
-])
 renderer_source = renderer.read_text(encoding="utf-8")
-if renderer_source.count("this.shadowRadius = 0.0F;") != 1:
-    raise SystemExit("ArmorStandPet shadow suppression was not applied exactly once")
+if "shadowRadius" in renderer_source:
+    raise SystemExit("Unexpected renderer shadow modification in health-fix build")
 
 for forbidden in [".snapTo(", ".showArms()", ".showBasePlate()", ".nameAndId()",
                   "TagParser.create(", "getMinY()", "getMaxY()", "createResolved("]:
@@ -119,4 +195,17 @@ for forbidden in [".snapTo(", ".showArms()", ".showBasePlate()", ".nameAndId()",
     if matches:
         raise SystemExit(f"Obsolete 26.2 API {forbidden!r} remained in: {matches}")
 
-print("Adapted core 1.21.1 APIs and removed the ArmorStandPet renderer shadow")
+# Guard the health repair itself before compiling.
+health_checks = {
+    pet_data: ["int healthModelVersion"],
+    pet: ["public float health", "data.healthModelVersion = 1", "Pet.health is authoritative"],
+    mortality: ["pet.health - appliedDamage", "pet.health = remaining", "pet.health = MAX_HEALTH"],
+    invincible_command: ["Math.round(pet.health)"],
+}
+for path, required in health_checks.items():
+    source = path.read_text(encoding="utf-8")
+    for marker in required:
+        if marker not in source:
+            raise SystemExit(f"Health repair missing {marker!r} in {path}")
+
+print("Adapted core 1.21.1 APIs and installed the explicit persistent 20-health pool")
