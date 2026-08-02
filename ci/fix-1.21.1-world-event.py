@@ -1,4 +1,5 @@
 from pathlib import Path
+import runpy
 
 path = Path("project/src/main/java/io/github/kyzderp/armorstandpet/listeners/PetRespawnListener.java")
 source = path.read_text(encoding="utf-8")
@@ -20,3 +21,8 @@ if "ServerEntityLevelChangeEvents" in source or "AFTER_PLAYER_CHANGE_LEVEL" in s
 
 path.write_text(source, encoding="utf-8")
 print("Adapted player world-change callback to Fabric 1.21.1 without changing behavior")
+
+# This runs before the general 1.21.1 API batch. It marks the distinction
+# between restoring the same saved pet and creating a new armor-stand pet;
+# the following batch then installs the per-Pet health field used at runtime.
+runpy.run_path("ci/initialize-fresh-pet-health.py", run_name="__main__")
