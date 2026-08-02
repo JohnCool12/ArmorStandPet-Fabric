@@ -65,7 +65,8 @@ storage_path.write_text(storage, encoding="utf-8")
 
 # The reset must exist only in loadPetSettings. The normal loadPet path must
 # continue restoring the same pet's persisted health after a server restart.
-pet_check = pet_path.read_text(encoding="utf-8")nstorage_check = storage_path.read_text(encoding="utf-8")
+pet_check = pet_path.read_text(encoding="utf-8")
+storage_check = storage_path.read_text(encoding="utf-8")
 if pet_check.count("this.stand.setHealth(20.0F);") != 1:
     raise SystemExit("Fresh Pet constructor must initialize entity health exactly once")
 if storage_check.count("data.health = 20.0F;") != 1:
