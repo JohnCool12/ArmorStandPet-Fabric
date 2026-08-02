@@ -5,9 +5,9 @@ root = Path("project/src/main/java/io/github/kyzderp/armorstandpet")
 pet_path = root / "types/Pet.java"
 storage_path = root / "storage/PetStorage.java"
 
-# Every newly constructed Pet owns its own health field. Also force the newly
-# claimed/spawned ArmorStand entity's internal health to full so vanilla entity
-# state cannot leak into or prematurely kill the new pet.
+# Every newly constructed Pet begins with a full internal ArmorStand health
+# value. The explicit per-Pet health field is added by the following 1.21.1 API
+# adaptation step and will also begin at 20.
 pet = pet_path.read_text(encoding="utf-8")
 old_constructor_block = """\t\tif (this.stand != null)
 \t\t{
@@ -25,10 +25,10 @@ if pet.count(old_constructor_block) != 1:
 pet = pet.replace(old_constructor_block, new_constructor_block, 1)
 pet_path.write_text(pet, encoding="utf-8")
 
-# loadPet() restores the same saved pet after a restart and therefore keeps its
-# saved health. loadPetSettings(), however, is used when a player claims an
-# armor stand / creates a replacement pet. Saved preferences may be reused,
-# but mortality state belongs to the old pet and must never transfer.
+# loadPet() restores the same saved pet after a restart and therefore preserves
+# its remaining health. loadPetSettings() is used when an armor stand becomes a
+# newly created/replacement pet. It may reuse preferences, but health and death
+# state belong to the old pet and must never transfer to the new entity.
 storage = storage_path.read_text(encoding="utf-8")
 method_match = re.search(
     r"public static Pet loadPetSettings\(String owner, String world, PetType type, PetArmorStandEntity stand\)"
@@ -45,18 +45,13 @@ old_load = """\t\tPet pet = Pet.createPet(type, owner, stand);
 
 \t\treturn pet;
 """
-new_load = """\t\t// This is a newly created pet instance. Reuse cosmetic/behavior settings,
-\t\t// but never inherit health or death state from an earlier pet belonging
-\t\t// to the same owner and type.
+new_load = """\t\t// This is a new pet instance. Do not inherit mortality state from an
+\t\t// earlier pet belonging to the same owner and type.
 \t\tdata.mortalDead = false;
 \t\tdata.health = 20.0F;
-\t\tdata.healthModelVersion = 1;
 
 \t\tPet pet = Pet.createPet(type, owner, stand);
 \t\tpet.deserializeSettings(data);
-\t\tpet.mortalDead = false;
-\t\tpet.health = 20.0F;
-\t\tstand.setHealth(20.0F);
 
 \t\treturn pet;
 """
@@ -68,21 +63,14 @@ new_body = body.replace(old_load, new_load, 1)
 storage = storage[:method_match.start("body")] + new_body + storage[method_match.end("body"):]
 storage_path.write_text(storage, encoding="utf-8")
 
-# Build-time invariants: health remains an instance field, restoring a saved
-# pet still reads saved health, and only the new-pet settings path forces 20.
-pet_check = pet_path.read_text(encoding="utf-8")
-storage_check = storage_path.read_text(encoding="utf-8")
-if "public static float health" in pet_check:
-    raise SystemExit("Pet health must never be static/shared")
-if pet_check.count("public float health;") != 1:
-    raise SystemExit("Expected exactly one per-Pet health field")
-if pet_check.count("this.stand.setHealth(20.0F);") < 1:
-    raise SystemExit("Fresh Pet constructor does not initialize entity health")
+# The reset must exist only in loadPetSettings. The normal loadPet path must
+# continue restoring the same pet's persisted health after a server restart.
+pet_check = pet_path.read_text(encoding="utf-8")nstorage_check = storage_path.read_text(encoding="utf-8")
+if pet_check.count("this.stand.setHealth(20.0F);") != 1:
+    raise SystemExit("Fresh Pet constructor must initialize entity health exactly once")
 if storage_check.count("data.health = 20.0F;") != 1:
-    raise SystemExit("New-pet settings path must reset saved health exactly once")
-if storage_check.count("pet.health = 20.0F;") != 1:
-    raise SystemExit("New Pet instance health was not explicitly reset")
-if storage_check.count("stand.setHealth(20.0F);") != 1:
-    raise SystemExit("New pet ArmorStand entity health was not explicitly reset")
+    raise SystemExit("Only the new-pet settings path may force saved health to 20")
+if storage_check.count("data.mortalDead = false;") != 1:
+    raise SystemExit("Only the new-pet settings path may clear saved death state")
 
-print("Initialized every newly created ArmorStandPet with an independent 20-point health pool")
+print("Separated newly created pet health from restored pet health")
