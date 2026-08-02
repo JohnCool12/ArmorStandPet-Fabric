@@ -40,26 +40,27 @@ if method_match is None:
     raise SystemExit("Could not locate PetStorage.loadPetSettings")
 
 body = method_match.group("body")
-old_load = """\t\tPet pet = Pet.createPet(type, owner, stand);
-\t\tpet.deserializeSettings(data);
-
-\t\treturn pet;
-"""
-new_load = """\t\t// This is a new pet instance. Do not inherit mortality state from an
-\t\t// earlier pet belonging to the same owner and type.
-\t\tdata.mortalDead = false;
-\t\tdata.health = 20.0F;
-
-\t\tPet pet = Pet.createPet(type, owner, stand);
-\t\tpet.deserializeSettings(data);
-
-\t\treturn pet;
-"""
-if body.count(old_load) != 1:
+load_pattern = re.compile(
+    r"(?P<indent>^[ \t]*)Pet pet = Pet\.createPet\(type, owner, stand\);\s*\n"
+    r"(?P=indent)pet\.deserializeSettings\(data\);",
+    flags=re.MULTILINE,
+)
+load_matches = list(load_pattern.finditer(body))
+if len(load_matches) != 1:
     raise SystemExit(
-        f"Expected one loadPetSettings deserialize block, found {body.count(old_load)}"
+        f"Expected one loadPetSettings deserialize sequence, found {len(load_matches)}"
     )
-new_body = body.replace(old_load, new_load, 1)
+
+indent = load_matches[0].group("indent")
+replacement = (
+    f"{indent}// This is a new pet instance. Do not inherit mortality state from an\n"
+    f"{indent}// earlier pet belonging to the same owner and type.\n"
+    f"{indent}data.mortalDead = false;\n"
+    f"{indent}data.health = 20.0F;\n\n"
+    f"{indent}Pet pet = Pet.createPet(type, owner, stand);\n"
+    f"{indent}pet.deserializeSettings(data);"
+)
+new_body = load_pattern.sub(replacement, body, count=1)
 storage = storage[:method_match.start("body")] + new_body + storage[method_match.end("body"):]
 storage_path.write_text(storage, encoding="utf-8")
 
