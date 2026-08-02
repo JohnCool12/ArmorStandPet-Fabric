@@ -1,0 +1,329 @@
+diff --git a/gradle.properties b/gradle.properties
+index be228da..c0b27aa 100644
+--- a/gradle.properties
++++ b/gradle.properties
+@@ -13,7 +13,7 @@ fabric_api_version=0.116.14+1.21.1
+ mod_id=damageindicators
+ mod_name=Damage Indicators (Expanded)
+ mod_license=GNU GENERAL PUBLIC LICENSE Version 3
+-mod_version=1.21.1-1.1.0
++mod_version=1.21.1-1.1.2
+ mod_group_id=com.astryxion.damageindicators
+ mod_authors=Astryxion
+ mod_description=A damage indicators mod with multiple visual styles. Switch between a modern Retro Damage Indicators look and the classic nostalgic Damage Indicators 1.12.2 HUD and popoffs.
+diff --git a/src/main/java/com/astryxion/damageindicators/ClientEffectTracker.java b/src/main/java/com/astryxion/damageindicators/ClientEffectTracker.java
+new file mode 100644
+index 0000000..32d76c5
+--- /dev/null
++++ b/src/main/java/com/astryxion/damageindicators/ClientEffectTracker.java
+@@ -0,0 +1,115 @@
++package com.astryxion.damageindicators;
++
++import net.minecraft.client.Minecraft;
++import net.minecraft.core.Holder;
++import net.minecraft.network.protocol.game.ClientboundRemoveMobEffectPacket;
++import net.minecraft.network.protocol.game.ClientboundUpdateMobEffectPacket;
++import net.minecraft.world.effect.MobEffect;
++import net.minecraft.world.effect.MobEffectInstance;
++import net.minecraft.world.entity.LivingEntity;
++
++import java.util.ArrayList;
++import java.util.LinkedHashMap;
++import java.util.List;
++import java.util.Map;
++import java.util.concurrent.ConcurrentHashMap;
++
++/**
++ * Client-side fallback cache for mob-effect packets.
++ *
++ * Vanilla normally copies these packets into LivingEntity#getActiveEffects(), but some
++ * mod combinations can leave that collection empty or replace it between packet handling
++ * and HUD rendering. Keeping the packet data independently makes the HUD reliable without
++ * requiring the mod on the server.
++ */
++public final class ClientEffectTracker {
++    private static final Map<Integer, Map<Holder<MobEffect>, TrackedEffect>> EFFECTS = new ConcurrentHashMap<>();
++
++    private ClientEffectTracker() {
++    }
++
++    public static void onEffectUpdate(ClientboundUpdateMobEffectPacket packet) {
++        long gameTime = currentGameTime();
++        TrackedEffect tracked = new TrackedEffect(
++                packet.getEffect(),
++                packet.getEffectDurationTicks(),
++                packet.getEffectAmplifier(),
++                packet.isEffectAmbient(),
++                packet.isEffectVisible(),
++                packet.effectShowsIcon(),
++                gameTime
++        );
++        EFFECTS.computeIfAbsent(packet.getEntityId(), ignored -> new ConcurrentHashMap<>())
++                .put(packet.getEffect(), tracked);
++    }
++
++    public static void onEffectRemove(ClientboundRemoveMobEffectPacket packet) {
++        Map<Holder<MobEffect>, TrackedEffect> entityEffects = EFFECTS.get(packet.entityId());
++        if (entityEffects == null) {
++            return;
++        }
++        entityEffects.remove(packet.effect());
++        if (entityEffects.isEmpty()) {
++            EFFECTS.remove(packet.entityId());
++        }
++    }
++
++    public static List<MobEffectInstance> getEffects(LivingEntity entity) {
++        // Prefer the live vanilla collection whenever it is populated, then merge packet-cached
++        // effects that may have been lost by another client mod or a timing race.
++        Map<Holder<MobEffect>, MobEffectInstance> merged = new LinkedHashMap<>();
++        for (MobEffectInstance effect : entity.getActiveEffects()) {
++            if (effect.getDuration() != 0) {
++                merged.put(effect.getEffect(), effect);
++            }
++        }
++
++        Map<Holder<MobEffect>, TrackedEffect> cached = EFFECTS.get(entity.getId());
++        if (cached != null) {
++            long gameTime = currentGameTime();
++            cached.entrySet().removeIf(entry -> entry.getValue().remainingDuration(gameTime) == 0);
++            for (TrackedEffect tracked : cached.values()) {
++                int remaining = tracked.remainingDuration(gameTime);
++                if (remaining != 0) {
++                    merged.putIfAbsent(tracked.effect(), tracked.toInstance(remaining));
++                }
++            }
++            if (cached.isEmpty()) {
++                EFFECTS.remove(entity.getId());
++            }
++        }
++
++        return new ArrayList<>(merged.values());
++    }
++
++    public static void clear() {
++        EFFECTS.clear();
++    }
++
++    private static long currentGameTime() {
++        Minecraft minecraft = Minecraft.getInstance();
++        return minecraft.level != null ? minecraft.level.getGameTime() : 0L;
++    }
++
++    private record TrackedEffect(
++            Holder<MobEffect> effect,
++            int duration,
++            int amplifier,
++            boolean ambient,
++            boolean visible,
++            boolean showIcon,
++            long receivedAtGameTime
++    ) {
++        int remainingDuration(long gameTime) {
++            if (duration < 0) {
++                return duration; // Infinite duration.
++            }
++            long elapsed = Math.max(0L, gameTime - receivedAtGameTime);
++            return (int) Math.max(0L, (long) duration - elapsed);
++        }
++
++        MobEffectInstance toInstance(int remainingDuration) {
++            return new MobEffectInstance(effect, remainingDuration, amplifier, ambient, visible, showIcon);
++        }
++    }
++}
+diff --git a/src/main/java/com/astryxion/damageindicators/Config.java b/src/main/java/com/astryxion/damageindicators/Config.java
+index 3512f35..3dbbed5 100644
+--- a/src/main/java/com/astryxion/damageindicators/Config.java
++++ b/src/main/java/com/astryxion/damageindicators/Config.java
+@@ -199,7 +199,7 @@ public class Config {
+             hudHealthTextOutline = bool("hud-indicator.hud_health_text_outline", false,
+                     "Whether the health of the entity in the hud indicator should be outlined.");
+             hudPotionEffects = bool("hud-indicator.hud_potion_effects", true,
+-                    "Whether potion effects on the targeted entity are shown (classic style only; ignored by style 1).");
++                    "Whether status effects on the targeted entity are shown beside the health display.");
+             oldRenderEntities = stringList("hud-indicator.hud_old_render_entities", List.of("alexsmobs:giant_squid"),
+                     "List of entity_types to render as a model instead of with full entity context.");
+         }
+diff --git a/src/main/java/com/astryxion/damageindicators/DamageIndicators.java b/src/main/java/com/astryxion/damageindicators/DamageIndicators.java
+index 5fab2e8..ac8e7ea 100644
+--- a/src/main/java/com/astryxion/damageindicators/DamageIndicators.java
++++ b/src/main/java/com/astryxion/damageindicators/DamageIndicators.java
+@@ -86,6 +86,7 @@ public class DamageIndicators {
+         resetDamageIndicatorEntityIn = 0;
+         renderModelOnly = false;
+         PopoffRenderer.clear();
++        ClientEffectTracker.clear();
+     }
+ 
+     private static boolean isInGameMenuScreen(net.minecraft.client.gui.screens.Screen screen) {
+diff --git a/src/main/java/com/astryxion/damageindicators/Style1HudRenderer.java b/src/main/java/com/astryxion/damageindicators/Style1HudRenderer.java
+index 08f4ebd..bce8229 100644
+--- a/src/main/java/com/astryxion/damageindicators/Style1HudRenderer.java
++++ b/src/main/java/com/astryxion/damageindicators/Style1HudRenderer.java
+@@ -8,16 +8,22 @@ import net.minecraft.client.Minecraft;
+ import net.minecraft.client.gui.Font;
+ import net.minecraft.client.gui.GuiGraphics;
+ import net.minecraft.client.renderer.RenderType;
++import net.minecraft.client.renderer.texture.TextureAtlasSprite;
++import net.minecraft.client.resources.MobEffectTextureManager;
+ import net.minecraft.client.renderer.entity.EntityRenderDispatcher;
+ import net.minecraft.client.renderer.entity.LivingEntityRenderer;
+ import net.minecraft.network.chat.Component;
+ import net.minecraft.resources.ResourceLocation;
+ import net.minecraft.world.effect.MobEffectInstance;
++import net.minecraft.world.effect.MobEffectUtil;
+ import net.minecraft.world.entity.Entity;
+ import net.minecraft.world.entity.LivingEntity;
+ import org.joml.Quaternionf;
+ import org.joml.Vector3f;
+ 
++import java.util.ArrayList;
++import java.util.List;
++
+ /**
+  * Style 1 HUD — original Retro Damage Indicators (208x78 panel, dual scissor).
+  */
+@@ -27,6 +33,14 @@ public final class Style1HudRenderer {
+     private static final ResourceLocation DAMAGE_INDICATOR_HEALTH_TEXTURE = ResourceLocation.fromNamespaceAndPath(DamageIndicators.MODID, "textures/gui/damage_indicator_health.png");
+     private static final Quaternionf ENTITY_ROTATION = (new Quaternionf()).rotationXYZ((float) Math.toRadians(30), (float) Math.toRadians(130), (float) Math.PI);
+ 
++    // The lower-right section of the Retro panel is otherwise unused and can fit six 18px effect cells.
++    private static final int EFFECT_ROW_X = 81;
++    private static final int EFFECT_ROW_Y = 48;
++    private static final int EFFECT_CELL_SIZE = 18;
++    private static final int EFFECT_CELL_SPACING = 20;
++    private static final int EFFECT_ICON_SIZE = 16;
++    private static final int MAX_VISIBLE_EFFECTS = 6;
++
+     private Style1HudRenderer() {
+     }
+ 
+@@ -108,6 +122,12 @@ public final class Style1HudRenderer {
+ 
+         poseStack.popPose();
+ 
++        // This setting used to exist in the style-1 config but the renderer never consumed it.
++        // Draw the targeted entity's synchronized effects in the open strip beneath the health bar.
++        if (cfg.hudPotionEffects.get()) {
++            drawPotionEffects(guiGraphics, entity);
++        }
++
+         String healthText;
+         float healthOffsetX = 136;
+         float healthOffsetY = 30;
+@@ -159,6 +179,52 @@ public final class Style1HudRenderer {
+         Lighting.setupFor3DItems();
+     }
+ 
++    private static void drawPotionEffects(GuiGraphics guiGraphics, LivingEntity entity) {
++        List<MobEffectInstance> effects = ClientEffectTracker.getEffects(entity);
++        if (effects.isEmpty()) {
++            return;
++        }
++
++        Minecraft minecraft = Minecraft.getInstance();
++        MobEffectTextureManager effectTextures = minecraft.getMobEffectTextures();
++        Font font = minecraft.font;
++        PoseStack poseStack = guiGraphics.pose();
++        boolean hasOverflow = effects.size() > MAX_VISIBLE_EFFECTS;
++        int visibleCount = hasOverflow ? MAX_VISIBLE_EFFECTS - 1 : effects.size();
++
++        RenderSystem.enableBlend();
++        RenderSystem.defaultBlendFunc();
++        for (int i = 0; i < visibleCount; i++) {
++            MobEffectInstance effect = effects.get(i);
++            int cellX = EFFECT_ROW_X + i * EFFECT_CELL_SPACING;
++
++            guiGraphics.fill(cellX, EFFECT_ROW_Y, cellX + EFFECT_CELL_SIZE, EFFECT_ROW_Y + EFFECT_CELL_SIZE, 0xA0000000);
++            TextureAtlasSprite sprite = effectTextures.get(effect.getEffect());
++            guiGraphics.blit(cellX + 1, EFFECT_ROW_Y + 1, 0, EFFECT_ICON_SIZE, EFFECT_ICON_SIZE, sprite);
++
++            Component duration = MobEffectUtil.formatDuration(effect, 1.0F,
++                    minecraft.level != null ? minecraft.level.tickRateManager().tickrate() : 20.0F);
++            String durationText = duration.getString();
++            int textWidth = font.width(durationText);
++            float textScale = 0.5F;
++            poseStack.pushPose();
++            poseStack.translate(cellX + EFFECT_CELL_SIZE - textWidth * textScale - 1.0F,
++                    EFFECT_ROW_Y + EFFECT_CELL_SIZE - font.lineHeight * textScale, 1.0F);
++            poseStack.scale(textScale, textScale, 1.0F);
++            guiGraphics.drawString(font, durationText, 0, 0, 0xFFFFFF80, true);
++            poseStack.popPose();
++        }
++
++        if (hasOverflow) {
++            int overflowX = EFFECT_ROW_X + (MAX_VISIBLE_EFFECTS - 1) * EFFECT_CELL_SPACING;
++            guiGraphics.fill(overflowX, EFFECT_ROW_Y, overflowX + EFFECT_CELL_SIZE, EFFECT_ROW_Y + EFFECT_CELL_SIZE, 0xA0000000);
++            String overflow = "+" + (effects.size() - visibleCount);
++            int overflowTextX = overflowX + (EFFECT_CELL_SIZE - font.width(overflow)) / 2;
++            guiGraphics.drawString(font, overflow, overflowTextX, EFFECT_ROW_Y + 5, 0xFFFFFFFF, true);
++        }
++        guiGraphics.flush();
++    }
++
+     private static void drawHudText(GuiGraphics guiGraphics, Font font, Component text, int x, int y, int color, boolean outline) {
+         if (outline) {
+             font.drawInBatch8xOutline(text.getVisualOrderText(), x, y, 0xFF000000 | (color & 0xFFFFFF), 0xFF000000,
+diff --git a/src/main/java/com/astryxion/damageindicators/Style2HudRenderer.java b/src/main/java/com/astryxion/damageindicators/Style2HudRenderer.java
+index 5d389f1..ed5695b 100644
+--- a/src/main/java/com/astryxion/damageindicators/Style2HudRenderer.java
++++ b/src/main/java/com/astryxion/damageindicators/Style2HudRenderer.java
+@@ -237,12 +237,7 @@ public final class Style2HudRenderer {
+     }
+ 
+     private static void drawPotionBoxes(GuiGraphics guiGraphics, LivingEntity entity) {
+-        List<MobEffectInstance> effects = new ArrayList<>();
+-        for (MobEffectInstance effect : entity.getActiveEffects()) {
+-            if (effect.getDuration() > 10 && effect.showIcon() && effect.isVisible()) {
+-                effects.add(effect);
+-            }
+-        }
++        List<MobEffectInstance> effects = ClientEffectTracker.getEffects(entity);
+         if (effects.isEmpty()) {
+             return;
+         }
+diff --git a/src/main/java/com/astryxion/damageindicators/mixins/ClientPacketListenerMixin.java b/src/main/java/com/astryxion/damageindicators/mixins/ClientPacketListenerMixin.java
+new file mode 100644
+index 0000000..85e9d9e
+--- /dev/null
++++ b/src/main/java/com/astryxion/damageindicators/mixins/ClientPacketListenerMixin.java
+@@ -0,0 +1,24 @@
++package com.astryxion.damageindicators.mixins;
++
++import com.astryxion.damageindicators.ClientEffectTracker;
++import net.minecraft.client.multiplayer.ClientPacketListener;
++import net.minecraft.network.protocol.game.ClientboundRemoveMobEffectPacket;
++import net.minecraft.network.protocol.game.ClientboundUpdateMobEffectPacket;
++import org.spongepowered.asm.mixin.Mixin;
++import org.spongepowered.asm.mixin.injection.At;
++import org.spongepowered.asm.mixin.injection.Inject;
++import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
++
++/** Captures vanilla status-effect packets as they arrive, independently of Minecraft's entity collection. */
++@Mixin(ClientPacketListener.class)
++public abstract class ClientPacketListenerMixin {
++    @Inject(method = "handleUpdateMobEffect", at = @At("HEAD"))
++    private void damageIndicators$trackEffect(ClientboundUpdateMobEffectPacket packet, CallbackInfo ci) {
++        ClientEffectTracker.onEffectUpdate(packet);
++    }
++
++    @Inject(method = "handleRemoveMobEffect", at = @At("HEAD"))
++    private void damageIndicators$removeEffect(ClientboundRemoveMobEffectPacket packet, CallbackInfo ci) {
++        ClientEffectTracker.onEffectRemove(packet);
++    }
++}
+diff --git a/src/main/resources/damageindicators.mixins.json b/src/main/resources/damageindicators.mixins.json
+index fe4d74b..a20925e 100644
+--- a/src/main/resources/damageindicators.mixins.json
++++ b/src/main/resources/damageindicators.mixins.json
+@@ -5,7 +5,8 @@
+   "compatibilityLevel": "JAVA_21",
+   "mixins": [],
+   "client": [
+-    "LivingEntityMixin"
++    "LivingEntityMixin",
++    "ClientPacketListenerMixin"
+   ],
+   "injectors": {
+     "defaultRequire": 1
