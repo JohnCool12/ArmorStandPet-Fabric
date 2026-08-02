@@ -1,8 +1,6 @@
-name: Build Fabric Mod
+name: Build Damage Indicators Fabric 1.21.1 v1.1.2
 
 on:
-  push:
-    branches: [main]
   pull_request:
   workflow_dispatch:
 
@@ -13,35 +11,31 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Check out repository
+      - name: Check out build branch
         uses: actions/checkout@v4
 
-      - name: Set up Java 25
+      - name: Set up Java 21
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '25'
+          java-version: '21'
 
       - name: Set up Gradle 9.5.1
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.5.1'
 
-      - name: Restore source project
+      - name: Restore and patch Damage Indicators source
         shell: bash
         run: |
           set -euo pipefail
-          cat ci/asp.tar.xz.b64.part-* | base64 --decode > /tmp/asp.tar.xz
-          echo '3c3a2a9c821ef83ba5871678a59617b54800fb9c1926dcdb32de401881d45f8b  /tmp/asp.tar.xz' | sha256sum --check
-          mkdir -p /tmp/asp-src
-          tar -xJf /tmp/asp.tar.xz -C /tmp/asp-src
-          cp -a /tmp/asp-src/armorstandpet-fabric ./project
-          if [ -d ci/overrides ]; then
-            cp -a ci/overrides/. project/
-          fi
-          test -f project/build.gradle
+          git clone --depth 1 https://github.com/astryxion/Damage-Indicators.git upstream
+          cp -a 'upstream/Fabric 1.21.1' project
+          cd project
+          patch --batch -p1 < ../ci/damage-indicators-v1.1.2.patch
+          grep -q 'mod_version=1.21.1-1.1.2' gradle.properties
 
-      - name: Build
+      - name: Build patched mod
         working-directory: project
         run: gradle build --stacktrace --no-daemon
 
@@ -53,9 +47,9 @@ jobs:
           test -n "$(find artifact -maxdepth 1 -type f -name '*.jar' -print -quit)"
           ls -lah artifact
 
-      - name: Upload mod JAR
+      - name: Upload patched mod JAR
         uses: actions/upload-artifact@v4
         with:
-          name: armorstandpet-fabric-26.2
+          name: damage-indicators-fabric-1.21.1-effect-sync-fix-v1.1.2
           path: artifact/*.jar
           if-no-files-found: error
