@@ -1,0 +1,148 @@
+--- a/gradle.properties
++++ b/gradle.properties
+@@ -13,7 +13,7 @@
+ mod_id=damageindicators
+ mod_name=Damage Indicators (Expanded)
+ mod_license=GNU GENERAL PUBLIC LICENSE Version 3
+-mod_version=1.21.1-1.1.0
++mod_version=1.21.1-1.1.1
+ mod_group_id=com.astryxion.damageindicators
+ mod_authors=Astryxion
+ mod_description=A damage indicators mod with multiple visual styles. Switch between a modern Retro Damage Indicators look and the classic nostalgic Damage Indicators 1.12.2 HUD and popoffs.
+--- a/src/main/java/com/astryxion/damageindicators/Config.java
++++ b/src/main/java/com/astryxion/damageindicators/Config.java
+@@ -199,7 +199,7 @@
+             hudHealthTextOutline = bool("hud-indicator.hud_health_text_outline", false,
+                     "Whether the health of the entity in the hud indicator should be outlined.");
+             hudPotionEffects = bool("hud-indicator.hud_potion_effects", true,
+-                    "Whether potion effects on the targeted entity are shown (classic style only; ignored by style 1).");
++                    "Whether status effects on the targeted entity are shown beside the health display.");
+             oldRenderEntities = stringList("hud-indicator.hud_old_render_entities", List.of("alexsmobs:giant_squid"),
+                     "List of entity_types to render as a model instead of with full entity context.");
+         }
+--- a/src/main/java/com/astryxion/damageindicators/Style1HudRenderer.java
++++ b/src/main/java/com/astryxion/damageindicators/Style1HudRenderer.java
+@@ -8,16 +8,22 @@
+ import net.minecraft.client.gui.Font;
+ import net.minecraft.client.gui.GuiGraphics;
+ import net.minecraft.client.renderer.RenderType;
++import net.minecraft.client.renderer.texture.TextureAtlasSprite;
++import net.minecraft.client.resources.MobEffectTextureManager;
+ import net.minecraft.client.renderer.entity.EntityRenderDispatcher;
+ import net.minecraft.client.renderer.entity.LivingEntityRenderer;
+ import net.minecraft.network.chat.Component;
+ import net.minecraft.resources.ResourceLocation;
+ import net.minecraft.world.effect.MobEffectInstance;
++import net.minecraft.world.effect.MobEffectUtil;
+ import net.minecraft.world.entity.Entity;
+ import net.minecraft.world.entity.LivingEntity;
+ import org.joml.Quaternionf;
+ import org.joml.Vector3f;
+ 
++import java.util.ArrayList;
++import java.util.List;
++
+ /**
+  * Style 1 HUD — original Retro Damage Indicators (208x78 panel, dual scissor).
+  */
+@@ -27,6 +33,14 @@
+     private static final ResourceLocation DAMAGE_INDICATOR_HEALTH_TEXTURE = ResourceLocation.fromNamespaceAndPath(DamageIndicators.MODID, "textures/gui/damage_indicator_health.png");
+     private static final Quaternionf ENTITY_ROTATION = (new Quaternionf()).rotationXYZ((float) Math.toRadians(30), (float) Math.toRadians(130), (float) Math.PI);
+ 
++    // The lower-right section of the Retro panel is otherwise unused and can fit six 18px effect cells.
++    private static final int EFFECT_ROW_X = 81;
++    private static final int EFFECT_ROW_Y = 48;
++    private static final int EFFECT_CELL_SIZE = 18;
++    private static final int EFFECT_CELL_SPACING = 20;
++    private static final int EFFECT_ICON_SIZE = 16;
++    private static final int MAX_VISIBLE_EFFECTS = 6;
++
+     private Style1HudRenderer() {
+     }
+ 
+@@ -108,6 +122,12 @@
+ 
+         poseStack.popPose();
+ 
++        // This setting used to exist in the style-1 config but the renderer never consumed it.
++        // Draw the targeted entity's synchronized effects in the open strip beneath the health bar.
++        if (cfg.hudPotionEffects.get()) {
++            drawPotionEffects(guiGraphics, entity);
++        }
++
+         String healthText;
+         float healthOffsetX = 136;
+         float healthOffsetY = 30;
+@@ -159,6 +179,59 @@
+         Lighting.setupFor3DItems();
+     }
+ 
++    private static void drawPotionEffects(GuiGraphics guiGraphics, LivingEntity entity) {
++        List<MobEffectInstance> effects = new ArrayList<>();
++        for (MobEffectInstance effect : entity.getActiveEffects()) {
++            // INFINITE_DURATION is negative, so the old duration > 10 check silently removed it.
++            // The config promises target effects, so do not also require vanilla particle/icon flags.
++            if (effect.getDuration() != 0) {
++                effects.add(effect);
++            }
++        }
++        if (effects.isEmpty()) {
++            return;
++        }
++
++        Minecraft minecraft = Minecraft.getInstance();
++        MobEffectTextureManager effectTextures = minecraft.getMobEffectTextures();
++        Font font = minecraft.font;
++        PoseStack poseStack = guiGraphics.pose();
++        boolean hasOverflow = effects.size() > MAX_VISIBLE_EFFECTS;
++        int visibleCount = hasOverflow ? MAX_VISIBLE_EFFECTS - 1 : effects.size();
++
++        RenderSystem.enableBlend();
++        RenderSystem.defaultBlendFunc();
++        for (int i = 0; i < visibleCount; i++) {
++            MobEffectInstance effect = effects.get(i);
++            int cellX = EFFECT_ROW_X + i * EFFECT_CELL_SPACING;
++
++            guiGraphics.fill(cellX, EFFECT_ROW_Y, cellX + EFFECT_CELL_SIZE, EFFECT_ROW_Y + EFFECT_CELL_SIZE, 0xA0000000);
++            TextureAtlasSprite sprite = effectTextures.get(effect.getEffect());
++            guiGraphics.blit(cellX + 1, EFFECT_ROW_Y + 1, 0, EFFECT_ICON_SIZE, EFFECT_ICON_SIZE, sprite);
++
++            Component duration = MobEffectUtil.formatDuration(effect, 1.0F,
++                    minecraft.level != null ? minecraft.level.tickRateManager().tickrate() : 20.0F);
++            String durationText = duration.getString();
++            int textWidth = font.width(durationText);
++            float textScale = 0.5F;
++            poseStack.pushPose();
++            poseStack.translate(cellX + EFFECT_CELL_SIZE - textWidth * textScale - 1.0F,
++                    EFFECT_ROW_Y + EFFECT_CELL_SIZE - font.lineHeight * textScale, 1.0F);
++            poseStack.scale(textScale, textScale, 1.0F);
++            guiGraphics.drawString(font, durationText, 0, 0, 0xFFFFFF80, true);
++            poseStack.popPose();
++        }
++
++        if (hasOverflow) {
++            int overflowX = EFFECT_ROW_X + (MAX_VISIBLE_EFFECTS - 1) * EFFECT_CELL_SPACING;
++            guiGraphics.fill(overflowX, EFFECT_ROW_Y, overflowX + EFFECT_CELL_SIZE, EFFECT_ROW_Y + EFFECT_CELL_SIZE, 0xA0000000);
++            String overflow = "+" + (effects.size() - visibleCount);
++            int overflowTextX = overflowX + (EFFECT_CELL_SIZE - font.width(overflow)) / 2;
++            guiGraphics.drawString(font, overflow, overflowTextX, EFFECT_ROW_Y + 5, 0xFFFFFFFF, true);
++        }
++        guiGraphics.flush();
++    }
++
+     private static void drawHudText(GuiGraphics guiGraphics, Font font, Component text, int x, int y, int color, boolean outline) {
+         if (outline) {
+             font.drawInBatch8xOutline(text.getVisualOrderText(), x, y, 0xFF000000 | (color & 0xFFFFFF), 0xFF000000,
+--- a/src/main/java/com/astryxion/damageindicators/Style2HudRenderer.java
++++ b/src/main/java/com/astryxion/damageindicators/Style2HudRenderer.java
+@@ -239,7 +239,9 @@
+     private static void drawPotionBoxes(GuiGraphics guiGraphics, LivingEntity entity) {
+         List<MobEffectInstance> effects = new ArrayList<>();
+         for (MobEffectInstance effect : entity.getActiveEffects()) {
+-            if (effect.getDuration() > 10 && effect.showIcon() && effect.isVisible()) {
++            // Infinite effects use a negative duration, and hidden-particle effects can still be
++            // useful status information. The config switch should control visibility here.
++            if (effect.getDuration() != 0) {
+                 effects.add(effect);
+             }
+         }
