@@ -1,0 +1,1 @@
+Temporary CI build trigger for the patched Fabric 1.21.1 Damage Indicators jar.
