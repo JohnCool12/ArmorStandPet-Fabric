@@ -178,13 +178,19 @@ replace_once(
     "invincibility status health source",
 )
 
-# The user requested the completed 1.21.1 port as the base, not the later
-# renderer-shadow variant. Ensure this build retains the original vanilla
-# armor-stand shadow behavior.
+# Allow the intentional size-aware shadow while continuing to reject the old
+# renderer change that removed every ArmorStandPet shadow unconditionally.
 renderer = root / "client/java/io/github/kyzderp/armorstandpet/client/PetArmorStandRenderer.java"
 renderer_source = renderer.read_text(encoding="utf-8")
-if "shadowRadius" in renderer_source:
-    raise SystemExit("Unexpected renderer shadow modification in health-fix build")
+if "this.shadowRadius = 0.0F" in renderer_source:
+    raise SystemExit("Unexpected all-pet shadow removal in size-aware build")
+for marker in [
+    "entity.isSmall()",
+    "this.normalShadowRadius * SMALL_SHADOW_SCALE",
+    ": this.normalShadowRadius",
+]:
+    if marker not in renderer_source:
+        raise SystemExit(f"Size-aware renderer missing {marker!r}")
 
 for forbidden in [".snapTo(", ".showArms()", ".showBasePlate()", ".nameAndId()",
                   "TagParser.create(", "getMinY()", "getMaxY()", "createResolved("]:
@@ -208,4 +214,4 @@ for path, required in health_checks.items():
         if marker not in source:
             raise SystemExit(f"Health repair missing {marker!r} in {path}")
 
-print("Adapted core 1.21.1 APIs and installed the explicit persistent 20-health pool")
+print("Adapted core 1.21.1 APIs with independent health and size-aware pet shadows")
