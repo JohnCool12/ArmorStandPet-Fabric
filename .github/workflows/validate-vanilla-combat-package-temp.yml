@@ -1,0 +1,105 @@
+name: Package Forge vanilla combat physics
+
+on:
+  pull_request:
+    branches: [port/forge-1.20.1]
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Download exact interaction-fixed source input
+        uses: actions/download-artifact@v4
+        with:
+          name: armorstandpet-independent-1.21.1-source
+          path: /tmp/exact-source
+          run-id: 30869378177
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Reconstruct and apply vanilla-physics patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd /tmp/exact-source && sha256sum --check armorstandpet-independent-1.21.1-source.tar.gz.sha256)
+          mkdir project
+          tar -xzf /tmp/exact-source/armorstandpet-independent-1.21.1-source.tar.gz -C project
+          cat ci/forge-port-script.b64.part-* | base64 --decode > /tmp/port.py
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('/tmp/port.py'); s=p.read_text()
+          s=s.replace('return ItemStackEMPTY;', 'return ItemStack.EMPTY;')
+          s=s.replace("t = t.replace('\\n,\\t\\tHolderLookup.Provider registries = ASPetMod.getServer().registryAccess();\\n', '\\n')", "t = t.replace('\\n\\t\\tHolderLookup.Provider registries = ASPetMod.getServer().registryAccess();\\n', '\\n')")
+          p.write_text(s)
+          PY
+          echo 'a73ae11aaac1ce330e459516c4371e3d06694c2bbf039c663cf3615d6c6615c0  /tmp/port.py' | sha256sum --check
+          python3 /tmp/port.py
+          python3 ci/fix-forge-1.20.1-compile.py
+          base64 --decode ci/forge-vanilla-combat-physics.patch.xz.b64 > /tmp/patch.xz
+          echo '6d2775e14803fb36070c58bfcdca46fa49f2944048c21860ba20fe6156dfbd7b  /tmp/patch.xz' | sha256sum --check
+          xz -dc /tmp/patch.xz > /tmp/patch
+          (cd project && patch --batch --forward -p1 < /tmp/patch)
+      - name: Validate source scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          combat=project/src/main/java/io/github/kyzderp/armorstandpet/combat/OwnerAttackCombatController.java
+          grep -q 'applyVanillaCombatVelocity' "$combat"
+          grep -q 'stand.setGravity(true)' "$combat"
+          grep -q 'stand.setDeltaMovement' "$combat"
+          ! grep -Eq 'resolveCombatTerrain|GRAVITY_ACCELERATION_PER_TICK|MAX_FALL_SPEED_PER_TICK|PathFinder\.isWalkable|teleportStandTo|CombatPosition' "$combat"
+          cd project
+          echo '2f7a71169121931eefc2840be37d4e692920e0a3caf334e3f3b50231ceec6bd0  src/main/java/io/github/kyzderp/armorstandpet/tasks/WalkPlayerTask.java' | sha256sum --check
+          echo '95e3bbfcc3efc4c5fc9593794a13b3d7d33f9c4d08215ff714aaa7def38dedc0  src/main/java/io/github/kyzderp/armorstandpet/tasks/WalkLocTask.java' | sha256sum --check
+          echo '0a2e54bf1dea473377222c6b11fcd69ccc824f92b623057980609e6a620c6cbe  src/main/java/io/github/kyzderp/armorstandpet/tasks/ChasePathTask.java' | sha256sum --check
+      - name: Install Forge wrapper and compile
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 -o /tmp/mdk.zip https://maven.minecraftforge.net/net/minecraftforge/forge/1.20.1-47.4.10/forge-1.20.1-47.4.10-mdk.zip
+          unzip -q /tmp/mdk.zip -d /tmp/mdk
+          cp /tmp/mdk/gradlew /tmp/mdk/gradlew.bat project/
+          rm -rf project/gradle && cp -a /tmp/mdk/gradle project/
+          chmod +x project/gradlew
+          cd project && ./gradlew clean build --stacktrace --no-daemon --console=plain
+      - name: Smoke-test dedicated server
+        working-directory: project
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p run
+          printf 'eula=true\n' > run/eula.txt
+          printf 'online-mode=false\nserver-port=25583\n' > run/server.properties
+          set +e
+          (sleep 60; echo stop) | timeout 180s ./gradlew runServer --no-daemon --console=plain > ../server-smoke.log 2>&1
+          status=${PIPESTATUS[1]}; set -e
+          grep -q 'Done (' ../server-smoke.log
+          ! grep -q 'Failed to complete lifecycle event' ../server-smoke.log
+          ! grep -q 'Exception caught during firing event' ../server-smoke.log
+          ! grep -Eiq '(^|\]) *(ERROR|FATAL) ' ../server-smoke.log
+          if [ "$status" -ne 0 ] && [ "$status" -ne 124 ]; then exit "$status"; fi
+      - name: Package artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir artifact
+          jar="$(find project/build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*-sources.jar' ! -name '*-dev.jar' -print -quit)"
+          test -n "$jar"
+          cp "$jar" artifact/ArmorStandPet-Forge-1.20.1-vanilla-combat-physics.jar
+          cp server-smoke.log artifact/ArmorStandPet-Forge-1.20.1-vanilla-combat-physics-server-smoke.log
+          unzip -t artifact/ArmorStandPet-Forge-1.20.1-vanilla-combat-physics.jar
+          rm -rf project/.gradle project/build project/run
+          (cd project && zip -qr ../artifact/ArmorStandPet-Forge-1.20.1-vanilla-combat-physics-source.zip . -x '.git/*' '.github/*' '.gradle/*' 'build/*' 'run/*')
+          sha256sum artifact/*.jar artifact/*-source.zip > artifact/ArmorStandPet-Forge-1.20.1-vanilla-combat-physics-SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: armorstandpet-forge-1.20.1-vanilla-combat-physics-final
+          path: artifact/
+          if-no-files-found: error
