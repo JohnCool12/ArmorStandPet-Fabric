@@ -137,10 +137,10 @@ replace_once(
     "1.20.1 living attribute builder",
 )
 
-# The smooth-movement transform is shared with the newer Fabric source, where
-# the vanilla pose accessors can be represented differently. On Forge 1.20.1
-# ArmorStand getters return degree-based Rotations; use the custom entity's
-# existing radian-based EulerAngle conversion accessors for interpolation.
+# Forge ArmorStand getters return degree-based Rotations. The smoother movement
+# transform must use the custom entity's radian-based EulerAngle accessors. Make
+# this compatibility pass idempotent because the shared movement script may
+# already contain the Forge-specific accessors.
 smooth_script = Path("ci/smooth-forge-1.20.1-movement.py")
 smooth_source = smooth_script.read_text(encoding="utf-8")
 pose_getter_replacements = {
@@ -152,10 +152,16 @@ pose_getter_replacements = {
     "this.stand.getRightLegPose()": "this.stand.getRightLegPoseAngle()",
 }
 for old, new in pose_getter_replacements.items():
-    count = smooth_source.count(old)
-    if count != 1:
-        raise SystemExit(f"Expected one smooth pose getter {old!r}, found {count}")
-    smooth_source = smooth_source.replace(old, new, 1)
+    old_count = smooth_source.count(old)
+    new_count = smooth_source.count(new)
+    if old_count == 1 and new_count == 0:
+        smooth_source = smooth_source.replace(old, new, 1)
+    elif old_count == 0 and new_count == 1:
+        pass
+    else:
+        raise SystemExit(
+            f"Unexpected smooth pose getter counts for {old!r}: old={old_count}, new={new_count}"
+        )
 smooth_script.write_text(smooth_source, encoding="utf-8")
 
 # Guard against the same removal/API bugs appearing elsewhere.
@@ -209,7 +215,7 @@ for marker in [
     "getLeftLegPoseAngle()",
     "getRightLegPoseAngle()",
 ]:
-    if marker not in patched_smooth_source:
-        raise SystemExit(f"Forge smooth-pose conversion missing {marker!r}")
+    if patched_smooth_source.count(marker) != 1:
+        raise SystemExit(f"Forge smooth-pose conversion invalid for {marker!r}")
 
 print("Adapted Forge 1.20.1 persistence, interactions, protection, attributes, and smooth pose conversion")
