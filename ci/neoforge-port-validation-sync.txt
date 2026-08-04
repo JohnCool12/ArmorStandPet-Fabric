@@ -1,0 +1,1 @@
+Synchronize PR after the validation workflow was installed on the base branch.
