@@ -1,1 +1,2 @@
 Trigger validation for combat-only movement smoothing.
+Workflow base synchronized.
