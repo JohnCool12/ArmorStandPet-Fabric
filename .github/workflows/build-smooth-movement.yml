@@ -41,10 +41,11 @@ jobs:
           mkdir project
           tar -xzf /tmp/base-source/armorstandpet-complete-source.tar.gz -C project
 
-          base64 --decode ci/smooth-movement.patch.xz.b64 > /tmp/smooth-movement.patch.xz
-          echo '81e2dd37fc8be2e90d09903652d95413aceedebb06de523e0d2f84c958031151  /tmp/smooth-movement.patch.xz' | sha256sum --check
+          base64 --decode ci/smooth-movement-v2.patch.xz.b64 > /tmp/smooth-movement.patch.xz
+          echo 'fc54c09c69c03af4ee511ceccb32e261df176333ceb9bf9ff8ee172735f818de  /tmp/smooth-movement.patch.xz' | sha256sum --check
           xz --decompress --stdout /tmp/smooth-movement.patch.xz > /tmp/smooth-movement.patch
           (cd project && patch --batch --forward -p4 < /tmp/smooth-movement.patch)
+          sed -i 's/^mod_version=.*/mod_version=2.0.1+1.21.1/' project/gradle.properties
 
       - name: Validate movement and health source
         shell: bash
