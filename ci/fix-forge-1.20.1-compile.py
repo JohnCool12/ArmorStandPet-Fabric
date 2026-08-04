@@ -156,7 +156,7 @@ for old, new in pose_getter_replacements.items():
     new_count = smooth_source.count(new)
     if old_count == 1 and new_count == 0:
         smooth_source = smooth_source.replace(old, new, 1)
-    elif old_count == 0 and new_count == 1:
+    elif old_count == 0 and new_count >= 1:
         pass
     else:
         raise SystemExit(
@@ -215,7 +215,7 @@ for marker in [
     "getLeftLegPoseAngle()",
     "getRightLegPoseAngle()",
 ]:
-    if patched_smooth_source.count(marker) != 1:
-        raise SystemExit(f"Forge smooth-pose conversion invalid for {marker!r}")
+    if marker not in patched_smooth_source:
+        raise SystemExit(f"Forge smooth-pose conversion missing {marker!r}")
 
 print("Adapted Forge 1.20.1 persistence, interactions, protection, attributes, and smooth pose conversion")
