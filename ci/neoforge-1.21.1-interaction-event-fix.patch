@@ -1,0 +1,46 @@
+diff --git a/src/main/java/io/github/kyzderp/armorstandpet/neoforge/NeoForgeEventHandlers.java b/src/main/java/io/github/kyzderp/armorstandpet/neoforge/NeoForgeEventHandlers.java
+index 7ccf65f..7a175fc 100644
+--- a/src/main/java/io/github/kyzderp/armorstandpet/neoforge/NeoForgeEventHandlers.java
++++ b/src/main/java/io/github/kyzderp/armorstandpet/neoforge/NeoForgeEventHandlers.java
+@@ -77,20 +77,18 @@ public final class NeoForgeEventHandlers
+     @SubscribeEvent
+     public void onEntityInteractSpecific(PlayerInteractEvent.EntityInteractSpecific event)
+     {
+-        handleEntityUse(event, event.getTarget());
++        InteractionResult result = handleEntityUse(event, event.getTarget());
++        if (result == InteractionResult.FAIL)
++        {
++            event.setCancellationResult(InteractionResult.FAIL);
++            event.setCanceled(true);
++        }
+     }
+ 
+     @SubscribeEvent
+     public void onEntityInteract(PlayerInteractEvent.EntityInteract event)
+     {
+-        handleEntityUse(event, event.getTarget());
+-    }
+-
+-    private static void handleEntityUse(PlayerInteractEvent event,
+-            net.minecraft.world.entity.Entity target)
+-    {
+-        InteractionResult result = PlayerActionListener.onUseEntity(
+-                event.getEntity(), event.getLevel(), event.getHand(), target);
++        InteractionResult result = handleEntityUse(event, event.getTarget());
+         if (result == InteractionResult.FAIL)
+         {
+             event.setCancellationResult(InteractionResult.FAIL);
+@@ -98,6 +96,13 @@ public final class NeoForgeEventHandlers
+         }
+     }
+ 
++    private static InteractionResult handleEntityUse(PlayerInteractEvent event,
++            net.minecraft.world.entity.Entity target)
++    {
++        return PlayerActionListener.onUseEntity(
++                event.getEntity(), event.getLevel(), event.getHand(), target);
++    }
++
+     @SubscribeEvent
+     public void onLogin(PlayerEvent.PlayerLoggedInEvent event)
+     {
