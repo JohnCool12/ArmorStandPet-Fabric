@@ -70,8 +70,15 @@ jobs:
           grep -q 'pet.health - appliedDamage' project/src/main/java/io/github/kyzderp/armorstandpet/combat/PetMortalityController.java
           grep -q 'ATTACK_COOLDOWN_TICKS = 20L' project/src/main/java/io/github/kyzderp/armorstandpet/combat/OwnerAttackCombatController.java
           grep -q 'ATTACK_ANIMATION_TICKS = 9L' project/src/main/java/io/github/kyzderp/armorstandpet/combat/OwnerAttackCombatController.java
-          grep -q 'MOVEMENT_STEP_INTERVAL_TICKS = 3L' project/src/main/java/io/github/kyzderp/armorstandpet/combat/OwnerAttackCombatController.java
+          grep -q 'MOVEMENT_STEP_INTERVAL_TICKS = 1L' project/src/main/java/io/github/kyzderp/armorstandpet/combat/OwnerAttackCombatController.java
+          grep -q 'SMOOTH_STEP_SCALE = 1.0D / 3.0D' project/src/main/java/io/github/kyzderp/armorstandpet/types/Pet.java
+          grep -q 'public final void takeSmoothStep()' project/src/main/java/io/github/kyzderp/armorstandpet/types/Pet.java
+          grep -q 'if (this.iters > 60)' project/src/main/java/io/github/kyzderp/armorstandpet/tasks/ChasePathTask.java
+          grep -q 'runTaskLater(1)' project/src/main/java/io/github/kyzderp/armorstandpet/tasks/WalkLocTask.java
+          grep -q 'runTaskLater(1)' project/src/main/java/io/github/kyzderp/armorstandpet/tasks/WalkPlayerTask.java
+          test "$(grep -c 'runTaskLater(1)' project/src/main/java/io/github/kyzderp/armorstandpet/tasks/ChasePathTask.java)" -eq 2
           grep -q 'onChangedDimension' project/src/main/java/io/github/kyzderp/armorstandpet/forge/ForgeEventHandlers.java
+          grep -q 'onEntityInteractSpecific' project/src/main/java/io/github/kyzderp/armorstandpet/forge/ForgeEventHandlers.java
           grep -q 'onEntityInteract' project/src/main/java/io/github/kyzderp/armorstandpet/forge/ForgeEventHandlers.java
           grep -q 'onAttackEntity' project/src/main/java/io/github/kyzderp/armorstandpet/forge/ForgeEventHandlers.java
 
@@ -118,28 +125,46 @@ jobs:
           cp forge-server-smoke.log artifact/
           jar="$(find project/build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*-sources.jar' ! -name '*-dev.jar' -print -quit)"
           test -n "$jar"
-          cp "$jar" artifact/armorstandpet-forge-1.20.1-independent-20-health.jar
-          unzip -t artifact/armorstandpet-forge-1.20.1-independent-20-health.jar
-          unzip -p artifact/armorstandpet-forge-1.20.1-independent-20-health.jar META-INF/mods.toml | grep -q 'modId="armorstandpet"'
+          cp "$jar" artifact/armorstandpet-forge-1.20.1-smooth-movement.jar
+          unzip -t artifact/armorstandpet-forge-1.20.1-smooth-movement.jar
+          unzip -p artifact/armorstandpet-forge-1.20.1-smooth-movement.jar META-INF/mods.toml | grep -q 'modId="armorstandpet"'
           for required in \
             io/github/kyzderp/armorstandpet/ASPetMod.class \
             io/github/kyzderp/armorstandpet/entity/PetArmorStandEntity.class \
             io/github/kyzderp/armorstandpet/combat/PetMortalityController.class \
             io/github/kyzderp/armorstandpet/gui/ChooseTypeScreenHandler.class \
             io/github/kyzderp/armorstandpet/client/PetArmorStandRenderer.class; do
-            jar tf artifact/armorstandpet-forge-1.20.1-independent-20-health.jar | grep -qx "$required"
+            jar tf artifact/armorstandpet-forge-1.20.1-smooth-movement.jar | grep -qx "$required"
           done
-          javap -classpath artifact/armorstandpet-forge-1.20.1-independent-20-health.jar -p -c io.github.kyzderp.armorstandpet.types.Pet | tee artifact/Pet.javap.txt
+
+          javap -classpath artifact/armorstandpet-forge-1.20.1-smooth-movement.jar -p -c io.github.kyzderp.armorstandpet.types.Pet | tee artifact/Pet.javap.txt
           grep -q 'float health' artifact/Pet.javap.txt
           grep -q 'PetData.healthModelVersion' artifact/Pet.javap.txt
-          javap -classpath artifact/armorstandpet-forge-1.20.1-independent-20-health.jar -p -c io.github.kyzderp.armorstandpet.combat.PetMortalityController | tee artifact/PetMortalityController.javap.txt
+          grep -q 'takeSmoothStep' artifact/Pet.javap.txt
+          grep -q 'smoothStepPhase' artifact/Pet.javap.txt
+
+          javap -classpath artifact/armorstandpet-forge-1.20.1-smooth-movement.jar -p -c io.github.kyzderp.armorstandpet.combat.PetMortalityController | tee artifact/PetMortalityController.javap.txt
           grep -q 'Pet.health' artifact/PetMortalityController.javap.txt
-          javap -classpath artifact/armorstandpet-forge-1.20.1-independent-20-health.jar -p -c io.github.kyzderp.armorstandpet.client.PetArmorStandRenderer | tee artifact/PetArmorStandRenderer.javap.txt
+
+          javap -classpath artifact/armorstandpet-forge-1.20.1-smooth-movement.jar -p -c io.github.kyzderp.armorstandpet.combat.OwnerAttackCombatController | tee artifact/OwnerAttackCombatController.javap.txt
+          grep -q 'Pet.takeSmoothStep' artifact/OwnerAttackCombatController.javap.txt
+
+          for class in WalkLocTask WalkPlayerTask ChasePathTask; do
+            javap -classpath artifact/armorstandpet-forge-1.20.1-smooth-movement.jar -p -c io.github.kyzderp.armorstandpet.tasks.$class | tee artifact/$class.javap.txt
+            grep -q 'Pet.takeSmoothStep' artifact/$class.javap.txt
+          done
+
+          javap -classpath artifact/armorstandpet-forge-1.20.1-smooth-movement.jar -p -c io.github.kyzderp.armorstandpet.client.PetArmorStandRenderer | tee artifact/PetArmorStandRenderer.javap.txt
           ! grep -q 'shadowRadius' artifact/PetArmorStandRenderer.javap.txt
-          sha256sum artifact/armorstandpet-forge-1.20.1-independent-20-health.jar | tee artifact/SHA256SUMS.txt
+
+          javap -classpath artifact/armorstandpet-forge-1.20.1-smooth-movement.jar -p -c io.github.kyzderp.armorstandpet.forge.ForgeEventHandlers | tee artifact/ForgeEventHandlers.javap.txt
+          grep -q 'onEntityInteractSpecific' artifact/ForgeEventHandlers.javap.txt
+          grep -q 'onEntityInteract' artifact/ForgeEventHandlers.javap.txt
+
+          sha256sum artifact/armorstandpet-forge-1.20.1-smooth-movement.jar | tee artifact/SHA256SUMS.txt
 
       - uses: actions/upload-artifact@v4
         with:
-          name: armorstandpet-forge-1.20.1-independent-20-health
+          name: armorstandpet-forge-1.20.1-smooth-movement
           path: artifact/
           if-no-files-found: error
