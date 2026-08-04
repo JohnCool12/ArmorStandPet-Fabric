@@ -1,0 +1,1 @@
+Exact Fabric 1.21.1 independent-health baseline e1dac61; loader-only NeoForge port with byte-for-byte behavior source checks.
