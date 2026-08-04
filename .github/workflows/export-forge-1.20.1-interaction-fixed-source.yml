@@ -1,0 +1,124 @@
+name: Export Forge 1.20.1 interaction-fixed source
+
+on:
+  push:
+    branches: [recovery/forge-1.20.1-interaction-fixed-source]
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Download exact independent-health 1.21.1 source
+        uses: actions/download-artifact@v4
+        with:
+          name: armorstandpet-independent-1.21.1-source
+          path: /tmp/exact-source
+          run-id: 30869378177
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Reconstruct interaction-fixed Forge source
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd /tmp/exact-source && sha256sum --check armorstandpet-independent-1.21.1-source.tar.gz.sha256)
+          mkdir project
+          tar -xzf /tmp/exact-source/armorstandpet-independent-1.21.1-source.tar.gz -C project
+
+          cat ci/forge-port-script.b64.part-* | base64 --decode > /tmp/port-to-forge-1.20.1.py
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('/tmp/port-to-forge-1.20.1.py')
+          source = path.read_text(encoding='utf-8')
+          source = source.replace('return ItemStackEMPTY;', 'return ItemStack.EMPTY;')
+          source = source.replace(
+              "t = t.replace('\\n,\\t\\tHolderLookup.Provider registries = ASPetMod.getServer().registryAccess();\\n', '\\n')",
+              "t = t.replace('\\n\\t\\tHolderLookup.Provider registries = ASPetMod.getServer().registryAccess();\\n', '\\n')",
+          )
+          path.write_text(source, encoding='utf-8')
+          PY
+          echo 'a73ae11aaac1ce330e459516c4371e3d06694c2bbf039c663cf3615d6c6615c0  /tmp/port-to-forge-1.20.1.py' | sha256sum --check
+          python3 /tmp/port-to-forge-1.20.1.py
+          python3 ci/fix-forge-1.20.1-compile.py
+
+      - name: Install Forge MDK wrapper
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 -o /tmp/forge-mdk.zip \
+            https://maven.minecraftforge.net/net/minecraftforge/forge/1.20.1-47.4.10/forge-1.20.1-47.4.10-mdk.zip
+          unzip -q /tmp/forge-mdk.zip -d /tmp/forge-mdk
+          cp /tmp/forge-mdk/gradlew project/
+          cp /tmp/forge-mdk/gradlew.bat project/
+          rm -rf project/gradle
+          cp -a /tmp/forge-mdk/gradle project/
+          chmod +x project/gradlew
+
+      - name: Verify exact interaction-fixed source
+        shell: bash
+        run: |
+          set -euo pipefail
+          events=project/src/main/java/io/github/kyzderp/armorstandpet/forge/ForgeEventHandlers.java
+          pet=project/src/main/java/io/github/kyzderp/armorstandpet/types/Pet.java
+          storage=project/src/main/java/io/github/kyzderp/armorstandpet/storage/PetStorage.java
+          mortality=project/src/main/java/io/github/kyzderp/armorstandpet/combat/PetMortalityController.java
+          renderer=project/src/main/java/io/github/kyzderp/armorstandpet/client/PetArmorStandRenderer.java
+
+          grep -q 'PlayerInteractEvent.EntityInteractSpecific event' "$events"
+          test "$(grep -c 'PlayerActionListener.onUseEntity(' "$events")" -eq 2
+          grep -q 'event.getHand(), event.getTarget()' "$events"
+          grep -q 'event.setCancellationResult(InteractionResult.FAIL)' "$events"
+          grep -q 'public float health' "$pet"
+          grep -q 'data.healthModelVersion = 1' "$pet"
+          grep -q 'data.health = 20.0F' "$storage"
+          grep -q 'pet.health - appliedDamage' "$mortality"
+          ! grep -q 'shadowRadius' "$renderer"
+          ! grep -R 'net.fabricmc' project/src
+          test -f project/src/main/resources/META-INF/mods.toml
+          test ! -f project/src/main/resources/fabric.mod.json
+
+      - name: Compile recovered source
+        working-directory: project
+        run: ./gradlew clean build --stacktrace --no-daemon --console=plain
+
+      - name: Package source
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf project/.gradle project/build project/run
+          cat > project/RECOVERY_INFO.txt <<'EOF'
+          ArmorStandPet Forge 1.20.1 interaction-fixed source recovery
+          Exact baseline commit: d13eab67ff37d690a2cfa7b7133c9bece178752e
+          Commit message: Fix Forge armor stand specific interaction handling
+          Minecraft: 1.20.1
+          Forge: 47.4.10
+          Java: 17
+
+          This is the source state before the later Forge movement-refinement branches.
+          It includes both EntityInteractSpecific and EntityInteract bridges for armor-stand interaction handling and preserves the independent persistent 20-health model.
+          EOF
+
+          mkdir artifact
+          (cd project && zip -qr ../artifact/ArmorStandPet-Forge-1.20.1-interaction-fixed-d13eab67-source.zip . \
+            -x '.git/*' '.github/*' '.gradle/*' 'build/*' 'run/*')
+          tar -czf artifact/ArmorStandPet-Forge-1.20.1-interaction-fixed-d13eab67-source.tar.gz \
+            --exclude=.git --exclude=.github --exclude=.gradle --exclude=build --exclude=run \
+            -C project .
+          sha256sum artifact/*.zip artifact/*.tar.gz > artifact/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: armorstandpet-forge-1.20.1-interaction-fixed-source
+          path: artifact/
+          if-no-files-found: error
