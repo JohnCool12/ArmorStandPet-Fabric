@@ -55,6 +55,7 @@ jobs:
           echo 'a73ae11aaac1ce330e459516c4371e3d06694c2bbf039c663cf3615d6c6615c0  /tmp/port-to-forge-1.20.1.py' | sha256sum --check
           python3 /tmp/port-to-forge-1.20.1.py
           python3 ci/fix-forge-1.20.1-compile.py
+          python3 ci/smooth-forge-1.20.1-movement.py
 
       - name: Validate preserved source features
         shell: bash
