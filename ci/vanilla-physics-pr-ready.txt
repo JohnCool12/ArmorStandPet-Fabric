@@ -1,1 +1,1 @@
-Ready for validation workflow.
+Ready for split-stage validation workflow.
