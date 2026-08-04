@@ -116,9 +116,9 @@ jobs:
           grep -q '@Mod(ASPetMod.MOD_ID)' project/src/main/java/io/github/kyzderp/armorstandpet/ASPetMod.java
           grep -q 'DeferredRegister.create(Registries.ENTITY_TYPE' project/src/main/java/io/github/kyzderp/armorstandpet/entity/ModEntities.java
           grep -q 'registerEntityRenderer' project/src/main/java/io/github/kyzderp/armorstandpet/client/ClientModEvents.java
-          grep -q 'TickScheduler.tick(server);' project/src/main/java/io/github/kyzderp/armorstandpet/neoforge/NeoForgeEventHandlers.java
-          grep -q 'OwnerAttackCombatController.tick(server);' project/src/main/java/io/github/kyzderp/armorstandpet/neoforge/NeoForgeEventHandlers.java
-          grep -q 'PlayerActionListener.tick(server);' project/src/main/java/io/github/kyzderp/armorstandpet/neoforge/NeoForgeEventHandlers.java
+          grep -q 'TickScheduler.tick(event.getServer());' project/src/main/java/io/github/kyzderp/armorstandpet/neoforge/NeoForgeEventHandlers.java
+          grep -q 'OwnerAttackCombatController.tick(event.getServer());' project/src/main/java/io/github/kyzderp/armorstandpet/neoforge/NeoForgeEventHandlers.java
+          grep -q 'PlayerActionListener.tick(event.getServer());' project/src/main/java/io/github/kyzderp/armorstandpet/neoforge/NeoForgeEventHandlers.java
           grep -q 'FMLPaths.CONFIGDIR.get().resolve("armorstandpet")' project/src/main/java/io/github/kyzderp/armorstandpet/Lang.java
           grep -q 'FMLPaths.CONFIGDIR.get().resolve("armorstandpet")' project/src/main/java/io/github/kyzderp/armorstandpet/config/ModConfig.java
           grep -q 'mod_version=2.0.0+neoforge.1.21.1' project/gradle.properties
