@@ -1,9 +1,8 @@
-name: Verified Build ArmorStandPet Forge 1.20.1
+name: Verified Tick-Synced ArmorStandPet Forge 1.20.1
 
 on:
   push:
-    branches: [port/forge-1.20.1]
-  pull_request:
+    branches: [fix/forge-1.20.1-tick-synced-movement]
   workflow_dispatch:
 
 permissions:
@@ -21,7 +20,7 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Download verified independent-health source
+      - name: Download exact independent-health source
         uses: actions/download-artifact@v4
         with:
           name: armorstandpet-independent-1.21.1-source
@@ -29,13 +28,14 @@ jobs:
           run-id: 30869378177
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Prepare exact Forge source
+      - name: Rebuild interaction-fixed Forge source
         shell: bash
         run: |
           set -euo pipefail
           (cd /tmp/exact-source && sha256sum --check armorstandpet-independent-1.21.1-source.tar.gz.sha256)
           mkdir project
           tar -xzf /tmp/exact-source/armorstandpet-independent-1.21.1-source.tar.gz -C project
+
           grep -q 'public float health' project/src/main/java/io/github/kyzderp/armorstandpet/types/Pet.java
           grep -q 'data.health = 20.0F' project/src/main/java/io/github/kyzderp/armorstandpet/storage/PetStorage.java
           ! grep -q 'shadowRadius' project/src/client/java/io/github/kyzderp/armorstandpet/client/PetArmorStandRenderer.java
@@ -53,27 +53,49 @@ jobs:
           path.write_text(source, encoding='utf-8')
           PY
           echo 'a73ae11aaac1ce330e459516c4371e3d06694c2bbf039c663cf3615d6c6615c0  /tmp/port-to-forge-1.20.1.py' | sha256sum --check
+
           python3 /tmp/port-to-forge-1.20.1.py
           python3 ci/fix-forge-1.20.1-compile.py
+          python3 ci/tick-sync-forge-1.20.1-movement.py
 
-      - name: Validate preserved source features
+      - name: Validate preserved and synchronized source
         shell: bash
         run: |
           set -euo pipefail
+          src=project/src/main/java/io/github/kyzderp/armorstandpet
+
           test -f project/src/main/resources/META-INF/mods.toml
           test ! -f project/src/main/resources/fabric.mod.json
           ! grep -R 'net.fabricmc' project/src
-          ! grep -R 'shadowRadius' project/src/main/java/io/github/kyzderp/armorstandpet/client/PetArmorStandRenderer.java
-          grep -q 'public float health' project/src/main/java/io/github/kyzderp/armorstandpet/types/Pet.java
-          grep -q 'data.healthModelVersion = 1' project/src/main/java/io/github/kyzderp/armorstandpet/types/Pet.java
-          grep -q 'data.health = 20.0F' project/src/main/java/io/github/kyzderp/armorstandpet/storage/PetStorage.java
-          grep -q 'pet.health - appliedDamage' project/src/main/java/io/github/kyzderp/armorstandpet/combat/PetMortalityController.java
-          grep -q 'ATTACK_COOLDOWN_TICKS = 20L' project/src/main/java/io/github/kyzderp/armorstandpet/combat/OwnerAttackCombatController.java
-          grep -q 'ATTACK_ANIMATION_TICKS = 9L' project/src/main/java/io/github/kyzderp/armorstandpet/combat/OwnerAttackCombatController.java
-          grep -q 'MOVEMENT_STEP_INTERVAL_TICKS = 3L' project/src/main/java/io/github/kyzderp/armorstandpet/combat/OwnerAttackCombatController.java
-          grep -q 'onChangedDimension' project/src/main/java/io/github/kyzderp/armorstandpet/forge/ForgeEventHandlers.java
-          grep -q 'onEntityInteract' project/src/main/java/io/github/kyzderp/armorstandpet/forge/ForgeEventHandlers.java
-          grep -q 'onAttackEntity' project/src/main/java/io/github/kyzderp/armorstandpet/forge/ForgeEventHandlers.java
+          ! grep -R 'shadowRadius' "$src/client/PetArmorStandRenderer.java"
+
+          grep -q 'public float health' "$src/types/Pet.java"
+          grep -q 'data.healthModelVersion = 1' "$src/types/Pet.java"
+          grep -q 'data.health = 20.0F' "$src/storage/PetStorage.java"
+          grep -q 'pet.health - appliedDamage' "$src/combat/PetMortalityController.java"
+
+          grep -q 'onEntityInteractSpecific' "$src/forge/ForgeEventHandlers.java"
+          grep -q 'onEntityInteract' "$src/forge/ForgeEventHandlers.java"
+
+          grep -q 'protected final double getPerTickSpeed()' "$src/types/Pet.java"
+          grep -q 'return this.speed / 3.0D;' "$src/types/Pet.java"
+          grep -q 'public final void walkOneTickToward(Pos destination)' "$src/types/Pet.java"
+          grep -q 'public final void walkOneTickToward(ServerPlayer player)' "$src/types/Pet.java"
+          ! grep -R 'smoothStepPhase\|takeSmoothStep\|SMOOTH_STEP_SCALE' "$src"
+
+          grep -q 'walkOneTickToward(this.dest)' "$src/tasks/WalkPlayerTask.java"
+          grep -q 'walkOneTickToward(this.dest)' "$src/tasks/WalkLocTask.java"
+          grep -q 'walkOneTickToward(currLoc)' "$src/tasks/ChasePathTask.java"
+          grep -q 'walkOneTickToward(targetPosition)' "$src/combat/OwnerAttackCombatController.java"
+
+          test "$(grep -c 'runTaskLater(1)' "$src/tasks/WalkPlayerTask.java")" -eq 1
+          test "$(grep -c 'runTaskLater(1)' "$src/tasks/WalkLocTask.java")" -eq 1
+          test "$(grep -c 'runTaskLater(1)' "$src/tasks/ChasePathTask.java")" -eq 2
+          grep -q 'if (this.iters > 60)' "$src/tasks/ChasePathTask.java"
+
+          grep -q 'ATTACK_COOLDOWN_TICKS = 20L' "$src/combat/OwnerAttackCombatController.java"
+          grep -q 'ATTACK_ANIMATION_TICKS = 9L' "$src/combat/OwnerAttackCombatController.java"
+          grep -q 'MOVEMENT_STEP_INTERVAL_TICKS = 1L' "$src/combat/OwnerAttackCombatController.java"
 
       - name: Install Forge MDK wrapper
         shell: bash
@@ -108,9 +130,10 @@ jobs:
           grep -q 'Done (' ../forge-server-smoke.log
           ! grep -q 'Failed to complete lifecycle event' ../forge-server-smoke.log
           ! grep -q 'Exception caught during firing event' ../forge-server-smoke.log
+          ! grep -Eiq '(^|\]) *(ERROR|FATAL) ' ../forge-server-smoke.log
           if [ "$status" -ne 0 ] && [ "$status" -ne 124 ]; then exit "$status"; fi
 
-      - name: Validate production artifact
+      - name: Validate compiled movement and preserved features
         shell: bash
         run: |
           set -euo pipefail
@@ -118,28 +141,53 @@ jobs:
           cp forge-server-smoke.log artifact/
           jar="$(find project/build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*-sources.jar' ! -name '*-dev.jar' -print -quit)"
           test -n "$jar"
-          cp "$jar" artifact/armorstandpet-forge-1.20.1-independent-20-health.jar
-          unzip -t artifact/armorstandpet-forge-1.20.1-independent-20-health.jar
-          unzip -p artifact/armorstandpet-forge-1.20.1-independent-20-health.jar META-INF/mods.toml | grep -q 'modId="armorstandpet"'
+          out=artifact/armorstandpet-forge-1.20.1-tick-synced-movement.jar
+          cp "$jar" "$out"
+
+          unzip -t "$out"
+          unzip -p "$out" META-INF/mods.toml | grep -q 'modId="armorstandpet"'
           for required in \
             io/github/kyzderp/armorstandpet/ASPetMod.class \
             io/github/kyzderp/armorstandpet/entity/PetArmorStandEntity.class \
             io/github/kyzderp/armorstandpet/combat/PetMortalityController.class \
+            io/github/kyzderp/armorstandpet/combat/OwnerAttackCombatController.class \
+            io/github/kyzderp/armorstandpet/tasks/WalkPlayerTask.class \
+            io/github/kyzderp/armorstandpet/tasks/WalkLocTask.class \
+            io/github/kyzderp/armorstandpet/tasks/ChasePathTask.class \
             io/github/kyzderp/armorstandpet/gui/ChooseTypeScreenHandler.class \
             io/github/kyzderp/armorstandpet/client/PetArmorStandRenderer.class; do
-            jar tf artifact/armorstandpet-forge-1.20.1-independent-20-health.jar | grep -qx "$required"
+            jar tf "$out" | grep -qx "$required"
           done
-          javap -classpath artifact/armorstandpet-forge-1.20.1-independent-20-health.jar -p -c io.github.kyzderp.armorstandpet.types.Pet | tee artifact/Pet.javap.txt
+
+          javap -classpath "$out" -p -c io.github.kyzderp.armorstandpet.types.Pet | tee artifact/Pet.javap.txt
           grep -q 'float health' artifact/Pet.javap.txt
-          grep -q 'PetData.healthModelVersion' artifact/Pet.javap.txt
-          javap -classpath artifact/armorstandpet-forge-1.20.1-independent-20-health.jar -p -c io.github.kyzderp.armorstandpet.combat.PetMortalityController | tee artifact/PetMortalityController.javap.txt
+          grep -q 'getPerTickSpeed' artifact/Pet.javap.txt
+          grep -q 'walkOneTickToward' artifact/Pet.javap.txt
+          ! grep -q 'takeSmoothStep\|smoothStepPhase' artifact/Pet.javap.txt
+
+          javap -classpath "$out" -p -c io.github.kyzderp.armorstandpet.combat.PetMortalityController | tee artifact/PetMortalityController.javap.txt
           grep -q 'Pet.health' artifact/PetMortalityController.javap.txt
-          javap -classpath artifact/armorstandpet-forge-1.20.1-independent-20-health.jar -p -c io.github.kyzderp.armorstandpet.client.PetArmorStandRenderer | tee artifact/PetArmorStandRenderer.javap.txt
+
+          javap -classpath "$out" -p -c io.github.kyzderp.armorstandpet.combat.OwnerAttackCombatController | tee artifact/OwnerAttackCombatController.javap.txt
+          grep -q 'Pet.walkOneTickToward' artifact/OwnerAttackCombatController.javap.txt
+          ! grep -q 'Pet.takeSmoothStep' artifact/OwnerAttackCombatController.javap.txt
+
+          for class in WalkPlayerTask WalkLocTask ChasePathTask; do
+            javap -classpath "$out" -p -c io.github.kyzderp.armorstandpet.tasks.$class | tee artifact/$class.javap.txt
+            grep -q 'Pet.walkOneTickToward' artifact/$class.javap.txt
+          done
+
+          javap -classpath "$out" -p -c io.github.kyzderp.armorstandpet.forge.ForgeEventHandlers | tee artifact/ForgeEventHandlers.javap.txt
+          grep -q 'onEntityInteractSpecific' artifact/ForgeEventHandlers.javap.txt
+          grep -q 'onEntityInteract' artifact/ForgeEventHandlers.javap.txt
+
+          javap -classpath "$out" -p -c io.github.kyzderp.armorstandpet.client.PetArmorStandRenderer | tee artifact/PetArmorStandRenderer.javap.txt
           ! grep -q 'shadowRadius' artifact/PetArmorStandRenderer.javap.txt
-          sha256sum artifact/armorstandpet-forge-1.20.1-independent-20-health.jar | tee artifact/SHA256SUMS.txt
+
+          sha256sum "$out" | tee artifact/SHA256SUMS.txt
 
       - uses: actions/upload-artifact@v4
         with:
-          name: armorstandpet-forge-1.20.1-independent-20-health
+          name: armorstandpet-forge-1.20.1-tick-synced-movement
           path: artifact/
           if-no-files-found: error
