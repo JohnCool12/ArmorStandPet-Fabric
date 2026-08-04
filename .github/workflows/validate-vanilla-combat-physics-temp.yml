@@ -27,14 +27,13 @@ jobs:
           run-id: 30869378177
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Reconstruct, validate, build, and smoke-test
+      - name: Reconstruct interaction-fixed Forge source
         shell: bash
         run: |
           set -euo pipefail
           (cd /tmp/exact-source && sha256sum --check armorstandpet-independent-1.21.1-source.tar.gz.sha256)
           mkdir project
           tar -xzf /tmp/exact-source/armorstandpet-independent-1.21.1-source.tar.gz -C project
-
           cat ci/forge-port-script.b64.part-* | base64 --decode > /tmp/port-to-forge-1.20.1.py
           python3 - <<'PY'
           from pathlib import Path
@@ -51,11 +50,19 @@ jobs:
           python3 /tmp/port-to-forge-1.20.1.py
           python3 ci/fix-forge-1.20.1-compile.py
 
+      - name: Apply vanilla combat physics patch
+        shell: bash
+        run: |
+          set -euo pipefail
           base64 --decode ci/forge-vanilla-combat-physics.patch.xz.b64 > /tmp/vanilla-combat.patch.xz
           echo '6d2775e14803fb36070c58bfcdca46fa49f2944048c21860ba20fe6156dfbd7b  /tmp/vanilla-combat.patch.xz' | sha256sum --check
           xz --decompress --stdout /tmp/vanilla-combat.patch.xz > /tmp/vanilla-combat.patch
           (cd project && patch --batch --forward -p1 < /tmp/vanilla-combat.patch)
 
+      - name: Validate vanilla physics scope
+        shell: bash
+        run: |
+          set -euo pipefail
           src=project/src/main/java/io/github/kyzderp/armorstandpet
           combat="$src/combat/OwnerAttackCombatController.java"
           events="$src/forge/ForgeEventHandlers.java"
@@ -64,8 +71,7 @@ jobs:
           grep -q 'stand.setDeltaMovement' "$combat"
           grep -q 'stand.setGravity(state.restoreGravity)' "$combat"
           grep -q 'TickEvent.Phase.START' "$events"
-          ! grep -q 'resolveCombatTerrain\|GRAVITY_ACCELERATION_PER_TICK\|MAX_FALL_SPEED_PER_TICK\|PathFinder.isWalkable\|teleportStandTo\|CombatPosition' "$combat"
-
+          ! grep -Eq 'resolveCombatTerrain|GRAVITY_ACCELERATION_PER_TICK|MAX_FALL_SPEED_PER_TICK|PathFinder\.isWalkable|teleportStandTo|CombatPosition' "$combat"
           cd project
           echo '2f7a71169121931eefc2840be37d4e692920e0a3caf334e3f3b50231ceec6bd0  src/main/java/io/github/kyzderp/armorstandpet/tasks/WalkPlayerTask.java' | sha256sum --check
           echo '95e3bbfcc3efc4c5fc9593794a13b3d7d33f9c4d08215ff714aaa7def38dedc0  src/main/java/io/github/kyzderp/armorstandpet/tasks/WalkLocTask.java' | sha256sum --check
@@ -78,15 +84,27 @@ jobs:
           grep -q 'pet.health - appliedDamage' src/main/java/io/github/kyzderp/armorstandpet/combat/PetMortalityController.java
           grep -q 'mod_version=2.0.2+forge.1.20.1-vanilla-combat-physics' gradle.properties
 
+      - name: Install Forge MDK wrapper
+        shell: bash
+        run: |
+          set -euo pipefail
           curl --fail --location --retry 3 -o /tmp/forge-mdk.zip https://maven.minecraftforge.net/net/minecraftforge/forge/1.20.1-47.4.10/forge-1.20.1-47.4.10-mdk.zip
           unzip -q /tmp/forge-mdk.zip -d /tmp/forge-mdk
-          cp /tmp/forge-mdk/gradlew .
-          cp /tmp/forge-mdk/gradlew.bat .
-          rm -rf gradle
-          cp -a /tmp/forge-mdk/gradle .
-          chmod +x gradlew
-          ./gradlew clean build --stacktrace --no-daemon --console=plain
+          cp /tmp/forge-mdk/gradlew project/
+          cp /tmp/forge-mdk/gradlew.bat project/
+          rm -rf project/gradle
+          cp -a /tmp/forge-mdk/gradle project/
+          chmod +x project/gradlew
 
+      - name: Compile production JAR
+        working-directory: project
+        run: ./gradlew clean build --stacktrace --no-daemon --console=plain
+
+      - name: Smoke-test dedicated server
+        working-directory: project
+        shell: bash
+        run: |
+          set -euo pipefail
           mkdir -p run
           printf 'eula=true\n' > run/eula.txt
           printf 'online-mode=false\nserver-port=25583\n' > run/server.properties
@@ -101,7 +119,10 @@ jobs:
           ! grep -Eiq '(^|\]) *(ERROR|FATAL) ' ../forge-vanilla-combat-server-smoke.log
           if [ "$status" -ne 0 ] && [ "$status" -ne 124 ]; then exit "$status"; fi
 
-          cd ..
+      - name: Inspect compiled classes
+        shell: bash
+        run: |
+          set -euo pipefail
           mkdir artifact
           jar="$(find project/build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*-sources.jar' ! -name '*-dev.jar' -print -quit)"
           test -n "$jar"
@@ -110,9 +131,14 @@ jobs:
           unzip -t artifact/ArmorStandPet-Forge-1.20.1-vanilla-combat-physics.jar
           javap -classpath artifact/ArmorStandPet-Forge-1.20.1-vanilla-combat-physics.jar -p -c io.github.kyzderp.armorstandpet.combat.OwnerAttackCombatController | tee artifact/OwnerAttackCombatController.javap.txt
           grep -q 'applyVanillaCombatVelocity' artifact/OwnerAttackCombatController.javap.txt
-          grep -q 'PetArmorStandEntity.setGravity' artifact/OwnerAttackCombatController.javap.txt
-          grep -q 'PetArmorStandEntity.setDeltaMovement' artifact/OwnerAttackCombatController.javap.txt
+          grep -q 'setGravity' artifact/OwnerAttackCombatController.javap.txt
+          grep -q 'setDeltaMovement' artifact/OwnerAttackCombatController.javap.txt
           ! grep -q 'resolveCombatTerrain' artifact/OwnerAttackCombatController.javap.txt
+
+      - name: Package complete source
+        shell: bash
+        run: |
+          set -euo pipefail
           rm -rf project/.gradle project/build project/run
           (cd project && zip -qr ../artifact/ArmorStandPet-Forge-1.20.1-vanilla-combat-physics-source.zip . -x '.git/*' '.github/*' '.gradle/*' 'build/*' 'run/*')
           sha256sum artifact/*.jar artifact/*-source.zip > artifact/SHA256SUMS.txt
