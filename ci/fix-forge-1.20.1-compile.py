@@ -137,6 +137,27 @@ replace_once(
     "1.20.1 living attribute builder",
 )
 
+# The smooth-movement transform is shared with the newer Fabric source, where
+# the vanilla pose accessors can be represented differently. On Forge 1.20.1
+# ArmorStand getters return degree-based Rotations; use the custom entity's
+# existing radian-based EulerAngle conversion accessors for interpolation.
+smooth_script = Path("ci/smooth-forge-1.20.1-movement.py")
+smooth_source = smooth_script.read_text(encoding="utf-8")
+pose_getter_replacements = {
+    "this.stand.getHeadPose(),": "this.stand.getHeadPoseAngle(),",
+    "this.stand.getBodyPose(),": "this.stand.getBodyPoseAngle(),",
+    "this.stand.getLeftArmPose(),": "this.stand.getLeftArmPoseAngle(),",
+    "this.stand.getRightArmPose(),": "this.stand.getRightArmPoseAngle(),",
+    "this.stand.getLeftLegPose(),": "this.stand.getLeftLegPoseAngle(),",
+    "this.stand.getRightLegPose()": "this.stand.getRightLegPoseAngle()",
+}
+for old, new in pose_getter_replacements.items():
+    count = smooth_source.count(old)
+    if count != 1:
+        raise SystemExit(f"Expected one smooth pose getter {old!r}, found {count}")
+    smooth_source = smooth_source.replace(old, new, 1)
+smooth_script.write_text(smooth_source, encoding="utf-8")
+
 # Guard against the same removal/API bugs appearing elsewhere.
 for path in root.rglob("*.java"):
     source = path.read_text(encoding="utf-8")
@@ -179,4 +200,16 @@ if "LivingEntity.createLivingAttributes()" not in attribute_source:
 if ".add(Attributes.ATTACK_DAMAGE, 1.0D)" not in attribute_source:
     raise SystemExit("Pet attack-damage attribute was lost")
 
-print("Adapted Forge 1.20.1 persistence, armor-stand interactions, protection events, and entity attributes")
+patched_smooth_source = smooth_script.read_text(encoding="utf-8")
+for marker in [
+    "getHeadPoseAngle()",
+    "getBodyPoseAngle()",
+    "getLeftArmPoseAngle()",
+    "getRightArmPoseAngle()",
+    "getLeftLegPoseAngle()",
+    "getRightLegPoseAngle()",
+]:
+    if marker not in patched_smooth_source:
+        raise SystemExit(f"Forge smooth-pose conversion missing {marker!r}")
+
+print("Adapted Forge 1.20.1 persistence, interactions, protection, attributes, and smooth pose conversion")
