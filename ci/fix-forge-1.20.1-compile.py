@@ -36,6 +36,54 @@ replace_once(
     "StandFactory.fromData provider argument",
 )
 
+# Forge dispatches a location-aware EntityInteractSpecific event before the
+# generic EntityInteract event. Armor stands normally use that specific path,
+# so subscribing only to EntityInteract silently bypasses pet setup. Route both
+# event forms through the exact same preserved Fabric interaction logic.
+events = root / "forge/ForgeEventHandlers.java"
+generic_interaction = """    @SubscribeEvent
+    public static void onEntityInteract(PlayerInteractEvent.EntityInteract event)
+    {
+        InteractionResult result = PlayerActionListener.onUseEntity(
+                event.getEntity(), event.getLevel(), event.getHand(), event.getTarget());
+        if (result == InteractionResult.FAIL)
+        {
+            event.setCancellationResult(InteractionResult.FAIL);
+            event.setCanceled(true);
+        }
+    }
+"""
+specific_and_generic_interaction = """    @SubscribeEvent
+    public static void onEntityInteractSpecific(PlayerInteractEvent.EntityInteractSpecific event)
+    {
+        InteractionResult result = PlayerActionListener.onUseEntity(
+                event.getEntity(), event.getLevel(), event.getHand(), event.getTarget());
+        if (result == InteractionResult.FAIL)
+        {
+            event.setCancellationResult(InteractionResult.FAIL);
+            event.setCanceled(true);
+        }
+    }
+
+    @SubscribeEvent
+    public static void onEntityInteract(PlayerInteractEvent.EntityInteract event)
+    {
+        InteractionResult result = PlayerActionListener.onUseEntity(
+                event.getEntity(), event.getLevel(), event.getHand(), event.getTarget());
+        if (result == InteractionResult.FAIL)
+        {
+            event.setCancellationResult(InteractionResult.FAIL);
+            event.setCanceled(true);
+        }
+    }
+"""
+replace_once(
+    events,
+    generic_interaction,
+    specific_and_generic_interaction,
+    "Forge armor-stand interaction event bridge",
+)
+
 # Forge 1.20.1 exposes the cancellable RightClickBlock event itself rather than
 # the later ForgeEventFactory convenience method. Post the same event directly
 # so protection mods retain the opportunity to veto synthetic stand placement.
@@ -97,6 +145,20 @@ for path in root.rglob("*.java"):
     if "\n\t\t = ASPetMod" in source:
         raise SystemExit(f"Orphaned assignment remained in {path}")
 
+event_source = events.read_text(encoding="utf-8")
+if event_source.count("onEntityInteractSpecific") != 1:
+    raise SystemExit("Specific armor-stand interaction event was not registered exactly once")
+if event_source.count("PlayerActionListener.onUseEntity(") != 2:
+    raise SystemExit("Both Forge entity interaction paths are not routed to preserved setup logic")
+for marker in [
+    "PlayerInteractEvent.EntityInteractSpecific event",
+    "event.getHand(), event.getTarget()",
+    "event.setCancellationResult(InteractionResult.FAIL)",
+    "event.setCanceled(true)",
+]:
+    if marker not in event_source:
+        raise SystemExit(f"Armor-stand interaction bridge missing {marker!r}")
+
 building_source = building.read_text(encoding="utf-8")
 if "ForgeEventFactory.onRightClickBlock" in building_source:
     raise SystemExit("Unavailable ForgeEventFactory placement helper remained")
@@ -117,4 +179,4 @@ if "LivingEntity.createLivingAttributes()" not in attribute_source:
 if ".add(Attributes.ATTACK_DAMAGE, 1.0D)" not in attribute_source:
     raise SystemExit("Pet attack-damage attribute was lost")
 
-print("Adapted persistence, protection events, and entity attributes to Forge 1.20.1")
+print("Adapted Forge 1.20.1 persistence, armor-stand interactions, protection events, and entity attributes")
