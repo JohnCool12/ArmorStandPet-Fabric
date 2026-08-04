@@ -1,1 +1,1 @@
-Ready for split-stage validation workflow.
+Ready for final vanilla-physics packaging workflow.
