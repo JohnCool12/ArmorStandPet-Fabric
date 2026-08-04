@@ -98,8 +98,8 @@ replace_once(
 )
 replace_count(
     chase,
-    ").runTaskLater(3);",
-    ").runTaskLater(1);",
+    ".runTaskLater(3);",
+    ".runTaskLater(1);",
     2,
     "ChasePathTask one-tick cadence",
 )
