@@ -25,22 +25,53 @@ jobs:
         with:
           gradle-version: '8.12.1'
 
-      - name: Download validated independent-health source
+      - name: Download migrated Java sources
         uses: actions/download-artifact@v4
         with:
-          name: armorstandpet-complete-source
-          path: /tmp/base-source
-          run-id: 30740390219
+          name: migrated-src
+          path: /tmp/migrated-artifact
+          run-id: 30643325011
           github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Reconstruct exact independent-health 1.21.1 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat ci/asp.tar.xz.b64.part-* | base64 --decode > /tmp/asp.tar.xz
+          echo '3c3a2a9c821ef83ba5871678a59617b54800fb9c1926dcdb32de401881d45f8b  /tmp/asp.tar.xz' | sha256sum --check
+          mkdir -p /tmp/asp-src
+          tar -xJf /tmp/asp.tar.xz -C /tmp/asp-src
+          cp -a /tmp/asp-src/armorstandpet-fabric ./project
+
+          (cd /tmp/migrated-artifact && sha256sum --check migrated-src.tar.gz.sha256)
+          rm -rf project/src
+          tar -xzf /tmp/migrated-artifact/migrated-src.tar.gz -C project
+
+          for patch_name in asp-port asp-port-fix1 asp-port-fix2; do
+            base64 --decode "ci/${patch_name}.patch.xz.b64" > "/tmp/${patch_name}.patch.xz"
+            xz --decompress --stdout "/tmp/${patch_name}.patch.xz" > "/tmp/${patch_name}.patch"
+            (cd project && patch --batch --forward -p1 < "/tmp/${patch_name}.patch")
+          done
+
+          cp -a ci/overrides/. project/
+          python3 ci/fix-client-level.py
+          python3 ci/fix-command-args.py
+          python3 ci/add-owner-attack-combat.py
+          python3 ci/add-combat-toggle.py
+          python3 ci/add-combat-preemption.py
+          python3 ci/switch-right-arm-animation.py
+          python3 ci/remove-combat-timeout.py
+          python3 ci/add-pet-mortality.py
+          python3 ci/add-player-equipment-combat.py
+
+          python3 ci/port-to-1.21.1.py
+          python3 ci/fix-1.21.1-world-event.py
+          python3 ci/fix-1.21.1-api-batch.py
 
       - name: Apply smooth movement patch
         shell: bash
         run: |
           set -euo pipefail
-          (cd /tmp/base-source && sha256sum --check armorstandpet-complete-source.tar.gz.sha256)
-          mkdir project
-          tar -xzf /tmp/base-source/armorstandpet-complete-source.tar.gz -C project
-
           base64 --decode ci/smooth-movement-v2.patch.xz.b64 > /tmp/smooth-movement.patch.xz
           echo 'fc54c09c69c03af4ee511ceccb32e261df176333ceb9bf9ff8ee172735f818de  /tmp/smooth-movement.patch.xz' | sha256sum --check
           xz --decompress --stdout /tmp/smooth-movement.patch.xz > /tmp/smooth-movement.patch
@@ -65,6 +96,7 @@ jobs:
           ! grep -q 'nextMovementTick' "$combat"
           grep -q 'MAX_NODE_MOVEMENT_TICKS = 60' "$chase"
           grep -q 'pet.health - appliedDamage' "$mortality"
+          grep -q 'Pet.health is authoritative' project/src/main/java/io/github/kyzderp/armorstandpet/types/Pet.java
           grep -q 'mod_version=2.0.1+1.21.1' project/gradle.properties
 
       - name: Build production JAR
