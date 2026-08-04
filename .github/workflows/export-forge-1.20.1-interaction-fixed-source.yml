@@ -1,8 +1,10 @@
 name: Export Forge 1.20.1 interaction-fixed source
+# Recovery-only workflow; generated gameplay source remains pinned to d13eab67.
 
 on:
   push:
     branches: [recovery/forge-1.20.1-interaction-fixed-source]
+  pull_request:
   workflow_dispatch:
 
 permissions:
