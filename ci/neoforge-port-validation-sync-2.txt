@@ -1,0 +1,1 @@
+Trigger validation after correcting the client registration check.
