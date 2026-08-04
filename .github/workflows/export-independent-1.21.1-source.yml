@@ -1,0 +1,88 @@
+name: Export independent-health 1.21.1 source
+
+on:
+  push:
+    branches: [port/forge-1.20.1]
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download migrated sources
+        uses: actions/download-artifact@v4
+        with:
+          name: migrated-src
+          path: /tmp/migrated-artifact
+          run-id: 30643325011
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Reconstruct complete source
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat ci/asp.tar.xz.b64.part-* | base64 --decode > /tmp/asp.tar.xz
+          echo '3c3a2a9c821ef83ba5871678a59617b54800fb9c1926dcdb32de401881d45f8b  /tmp/asp.tar.xz' | sha256sum --check
+          mkdir -p /tmp/asp-src
+          tar -xJf /tmp/asp.tar.xz -C /tmp/asp-src
+          cp -a /tmp/asp-src/armorstandpet-fabric ./project
+
+          (cd /tmp/migrated-artifact && sha256sum --check migrated-src.tar.gz.sha256)
+          rm -rf project/src
+          tar -xzf /tmp/migrated-artifact/migrated-src.tar.gz -C project
+
+          base64 --decode ci/asp-port.patch.xz.b64 > /tmp/asp-port.patch.xz
+          xz --decompress --stdout /tmp/asp-port.patch.xz > /tmp/asp-port.patch
+          (cd project && patch --batch --forward -p1 < /tmp/asp-port.patch)
+
+          base64 --decode ci/asp-port-fix1.patch.xz.b64 > /tmp/asp-port-fix1.patch.xz
+          xz --decompress --stdout /tmp/asp-port-fix1.patch.xz > /tmp/asp-port-fix1.patch
+          (cd project && patch --batch --forward -p1 < /tmp/asp-port-fix1.patch)
+
+          base64 --decode ci/asp-port-fix2.patch.xz.b64 > /tmp/asp-port-fix2.patch.xz
+          xz --decompress --stdout /tmp/asp-port-fix2.patch.xz > /tmp/asp-port-fix2.patch
+          (cd project && patch --batch --forward -p1 < /tmp/asp-port-fix2.patch)
+
+          cp -a ci/overrides/. project/
+          python3 ci/fix-client-level.py
+          python3 ci/fix-command-args.py
+          python3 ci/add-owner-attack-combat.py
+          python3 ci/add-combat-toggle.py
+          python3 ci/add-combat-preemption.py
+          python3 ci/switch-right-arm-animation.py
+          python3 ci/remove-combat-timeout.py
+          python3 ci/add-pet-mortality.py
+          python3 ci/add-player-equipment-combat.py
+
+          python3 ci/port-to-1.21.1.py
+          python3 ci/fix-1.21.1-world-event.py
+          python3 ci/fix-1.21.1-api-batch.py
+
+      - name: Prove exact independent-health source
+        shell: bash
+        run: |
+          set -euo pipefail
+          pet=project/src/main/java/io/github/kyzderp/armorstandpet/types/Pet.java
+          storage=project/src/main/java/io/github/kyzderp/armorstandpet/storage/PetStorage.java
+          renderer=project/src/client/java/io/github/kyzderp/armorstandpet/client/PetArmorStandRenderer.java
+          grep -q 'public float health' "$pet"
+          grep -q 'data.healthModelVersion = 1' "$pet"
+          grep -q 'data.health = 20.0F' "$storage"
+          ! grep -q 'shadowRadius' "$renderer"
+          tar -czf armorstandpet-independent-1.21.1-source.tar.gz -C project .
+          sha256sum armorstandpet-independent-1.21.1-source.tar.gz > armorstandpet-independent-1.21.1-source.tar.gz.sha256
+
+      - name: Upload generated source
+        uses: actions/upload-artifact@v4
+        with:
+          name: armorstandpet-independent-1.21.1-source
+          path: |
+            armorstandpet-independent-1.21.1-source.tar.gz
+            armorstandpet-independent-1.21.1-source.tar.gz.sha256
+          if-no-files-found: error
