@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "id": "deeperdarker",
+  "version": "${version}",
+  "name": "Deeper and Darker",
+  "description": "A Minecraft mod featuring new blocks, items, armor, mobs, structures, and the Otherside dimension to complement the Deep Dark.",
+  "authors": ["Kyanite Team"],
+  "contributors": ["NewJumperr", "nitro_dynamite18", "angxdd", "pr_ib", "MainlyMaya"],
+  "contact": {
+    "sources": "https://github.com/KyaniteMods/DeeperAndDarker",
+    "issues": "https://github.com/KyaniteMods/DeeperAndDarker/issues"
+  },
+  "license": "GPL-3.0",
+  "environment": "*",
+  "entrypoints": {
+    "main": ["com.kyanite.deeperdarker.DeeperDarker"],
+    "client": [
+      "com.kyanite.deeperdarker.DeeperDarkerClient",
+      "com.kyanite.deeperdarker.client.ClientItemRenderSmokeTest"
+    ]
+  },
+  "mixins": ["deeperdarker.mixins.json"],
+  "accessWidener": "deeperdarker.accesswidener",
+  "depends": {
+    "fabricloader": ">=0.16.0",
+    "fabric-api": "*",
+    "minecraft": "1.21.1",
+    "java": ">=21"
+  },
+  "suggests": {
+    "jei": "*",
+    "emi": "*"
+  }
+}
