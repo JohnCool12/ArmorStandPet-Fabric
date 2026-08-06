@@ -28,7 +28,7 @@ jobs:
           path: upstream
 
       - name: Set up Java 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '21'
@@ -48,7 +48,20 @@ jobs:
               find "$root" -path '*loot_modifiers*' -delete
             fi
           done
-          cat payload/dd-build-payload-v2/chunk-*.b64 | tr -d '\n' | base64 -d > fabric-source.tar.xz
+          cat \
+            payload/dd-build-payload-v2/chunk-00.b64 \
+            payload/dd-build-payload-v2/chunk-01.b64 \
+            payload/dd-build-payload-v2/chunk-02.b64 \
+            payload/dd-build-payload-v2/chunk-03.b64 \
+            payload/dd-build-payload-v2/chunk-04.b64 \
+            payload/dd-build-payload-v2/chunk-05.b64 \
+            payload/dd-build-payload-v2/chunk-06.b64 \
+            payload/dd-build-payload-v2/chunk-07.b64 \
+            payload/dd-build-payload-v2/chunk-08.b64 \
+            payload/dd-build-payload-v2/chunk-09.b64 \
+            payload/dd-build-payload-v2/chunk-10.b64 \
+            payload/dd-build-payload-v2/chunk-11.b64 \
+            | tr -d '\n' | base64 -d > fabric-source.tar.xz
           echo "440c25d12d1cbe6899db7f4ebb6473d1e60c2ac962c07737a7e4d4ffa8a84331  fabric-source.tar.xz" | sha256sum -c -
           tar -xJf fabric-source.tar.xz -C work
           base64 -d < payload/dd-build-support/fabric_conditions.json.xz.b64 | xz -d > fabric_conditions.json
