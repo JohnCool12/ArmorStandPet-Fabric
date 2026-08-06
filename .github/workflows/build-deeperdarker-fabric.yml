@@ -62,7 +62,7 @@ jobs:
             payload/dd-build-payload-v2/chunk-10.b64 \
             payload/dd-build-payload-v2/chunk-11.b64 \
             | tr -d '\n' | base64 -d > fabric-source.tar.xz
-          echo "440c25d12d1cbe6899db7f4ebb6473d1e60c2ac962c07737a7e4d4ffa8a84331  fabric-source.tar.xz" | sha256sum -c -
+          echo "40ab0a531c4bb4123966840b468c3a0a54ae9d1f619e6f1080003c03c2eef518  fabric-source.tar.xz" | sha256sum -c -
           tar -xJf fabric-source.tar.xz -C work
           base64 -d < payload/dd-build-support/fabric_conditions.json.xz.b64 | xz -d > fabric_conditions.json
           python3 payload/dd-build-support/apply_conditions.py work fabric_conditions.json
