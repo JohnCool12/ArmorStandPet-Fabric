@@ -72,6 +72,9 @@ jobs:
           cat payload/dd-build-patch-v2/chunk-00.b64 payload/dd-build-patch-v2/chunk-01.b64 payload/dd-build-patch-v2/chunk-02.b64 | base64 -d > compiler-patches-v2.tar.xz
           echo "dc8a3f7b360950cd92722d4f7e9e7356f43b85fbd905972bc46179247ddada76  compiler-patches-v2.tar.xz" | sha256sum -c -
           tar -xJf compiler-patches-v2.tar.xz -C work
+          if [ -d payload/dd-build-patches-final ]; then
+            cp -a payload/dd-build-patches-final/. work/
+          fi
           chmod +x work/gradlew
           python3 - <<'PY'
           import json, pathlib
