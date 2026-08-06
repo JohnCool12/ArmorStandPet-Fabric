@@ -1,0 +1,125 @@
+name: Build and Publish Deeper and Darker Fabric Port
+
+on:
+  push:
+    branches:
+      - chatgpt-deeperdarker-build-20260805
+    paths:
+      - 'dd-build-trigger-publish/**'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout build payload
+        uses: actions/checkout@v4
+        with:
+          path: payload
+          ref: chatgpt-deeperdarker-build-20260805
+
+      - name: Checkout official 1.4.1 resources
+        uses: actions/checkout@v4
+        with:
+          repository: KyaniteMods/DeeperAndDarker
+          ref: v1.4.1
+          path: upstream
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Reconstruct Fabric workspace
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cp -a upstream work
+          rm -rf work/.git work/src/main/java work/src/datagen
+          rm -rf work/src/main/resources/META-INF
+          rm -rf work/src/main/resources/data/neoforge work/src/main/resources/data/forge
+          rm -rf work/src/generated/resources/data/neoforge work/src/generated/resources/data/forge
+          for root in work/src/main/resources work/src/generated/resources; do
+            if [ -d "$root" ]; then
+              find "$root" -type f \( -iname '*neoforge*' -o -iname '*forge*' \) -delete
+              find "$root" -path '*loot_modifiers*' -delete
+            fi
+          done
+          cat payload/dd-build-payload-v2/chunk-*.b64 | tr -d '\n' | base64 -d > fabric-source.tar.xz
+          echo "440c25d12d1cbe6899db7f4ebb6473d1e60c2ac962c07737a7e4d4ffa8a84331  fabric-source.tar.xz" | sha256sum -c -
+          tar -xJf fabric-source.tar.xz -C work
+          base64 -d < payload/dd-build-support/fabric_conditions.json.xz.b64 | xz -d > fabric_conditions.json
+          python3 payload/dd-build-support/apply_conditions.py work fabric_conditions.json
+          if [ -d payload/dd-build-patches ]; then
+            cp -a payload/dd-build-patches/. work/
+          fi
+          chmod +x work/gradlew
+          python3 - <<'PY'
+          import json, pathlib
+          roots=[pathlib.Path('work/src/main/resources'), pathlib.Path('work/src/generated/resources')]
+          leftovers=[]
+          count=0
+          for root in roots:
+              if not root.exists():
+                  continue
+              for path in root.rglob('*.json'):
+                  data=json.loads(path.read_text(encoding='utf-8'))
+                  count += 1
+                  if isinstance(data, dict) and ('neoforge:conditions' in data or 'forge:conditions' in data):
+                      leftovers.append(str(path))
+          print(f'Validated {count} JSON resources')
+          if leftovers:
+              raise SystemExit('Unconverted loader conditions remain: ' + ', '.join(leftovers[:10]))
+          PY
+
+      - name: Build
+        id: build
+        continue-on-error: true
+        working-directory: work
+        shell: bash
+        run: |
+          set -o pipefail
+          ./gradlew clean build --stacktrace --no-daemon 2>&1 | tee build-output.log
+          code=${PIPESTATUS[0]}
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          exit "$code"
+
+      - name: Publish build result to branch
+        if: always()
+        shell: bash
+        run: |
+          set -euxo pipefail
+          rm -rf payload/dd-build-output
+          mkdir -p payload/dd-build-output
+          if [ -f work/build-output.log ]; then cp work/build-output.log payload/dd-build-output/build-output.log; fi
+          if compgen -G 'work/build/libs/*.jar' > /dev/null; then
+            cp work/build/libs/*.jar payload/dd-build-output/
+          fi
+          cat > payload/dd-build-output/status.json <<JSON
+          {
+            "run_id": "${GITHUB_RUN_ID}",
+            "run_number": "${GITHUB_RUN_NUMBER}",
+            "commit": "${GITHUB_SHA}",
+            "build_outcome": "${{ steps.build.outcome }}",
+            "exit_code": "${{ steps.build.outputs.exit_code }}"
+          }
+          JSON
+          cd payload
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add dd-build-output
+          if git diff --cached --quiet; then
+            echo 'No result changes to commit'
+          else
+            git commit -m "Publish Deeper and Darker build result ${GITHUB_RUN_NUMBER}"
+            git push origin HEAD:chatgpt-deeperdarker-build-20260805
+          fi
+
+      - name: Enforce successful build
+        if: steps.build.outcome != 'success'
+        shell: bash
+        run: exit 1
