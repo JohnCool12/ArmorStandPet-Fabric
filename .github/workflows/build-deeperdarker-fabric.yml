@@ -1,0 +1,94 @@
+name: Build Deeper and Darker Fabric Port
+
+on:
+  push:
+    branches:
+      - chatgpt-deeperdarker-build-20260805
+    paths:
+      - 'dd-build-trigger/**'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout build payload
+        uses: actions/checkout@v4
+        with:
+          path: payload
+
+      - name: Checkout official 1.4.1 resources
+        uses: actions/checkout@v4
+        with:
+          repository: KyaniteMods/DeeperAndDarker
+          ref: v1.4.1
+          path: upstream
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Reconstruct Fabric workspace
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cp -a upstream work
+          rm -rf work/.git work/src/main/java work/src/datagen
+          rm -rf work/src/main/resources/META-INF
+          rm -rf work/src/main/resources/data/neoforge work/src/main/resources/data/forge
+          rm -rf work/src/generated/resources/data/neoforge work/src/generated/resources/data/forge
+          for root in work/src/main/resources work/src/generated/resources; do
+            if [ -d "$root" ]; then
+              find "$root" -type f \( -iname '*neoforge*' -o -iname '*forge*' \) -delete
+              find "$root" -path '*loot_modifiers*' -delete
+            fi
+          done
+          cat payload/dd-build-payload-v2/chunk-*.b64 | tr -d '\n' | base64 -d > fabric-source.tar.xz
+          echo "440c25d12d1cbe6899db7f4ebb6473d1e60c2ac962c07737a7e4d4ffa8a84331  fabric-source.tar.xz" | sha256sum -c -
+          tar -xJf fabric-source.tar.xz -C work
+          base64 -d < payload/dd-build-support/fabric_conditions.json.xz.b64 | xz -d > fabric_conditions.json
+          python3 payload/dd-build-support/apply_conditions.py work fabric_conditions.json
+          if [ -d payload/dd-build-patches ]; then
+            cp -a payload/dd-build-patches/. work/
+          fi
+          chmod +x work/gradlew
+          python3 - <<'PY'
+          import json, pathlib
+          roots=[pathlib.Path('work/src/main/resources'), pathlib.Path('work/src/generated/resources')]
+          leftovers=[]
+          count=0
+          for root in roots:
+              if not root.exists():
+                  continue
+              for path in root.rglob('*.json'):
+                  data=json.loads(path.read_text(encoding='utf-8'))
+                  count += 1
+                  if isinstance(data, dict) and ('neoforge:conditions' in data or 'forge:conditions' in data):
+                      leftovers.append(str(path))
+          print(f'Validated {count} JSON resources')
+          if leftovers:
+              raise SystemExit('Unconverted loader conditions remain: ' + ', '.join(leftovers[:10]))
+          PY
+
+      - name: Build
+        working-directory: work
+        shell: bash
+        run: |
+          set -o pipefail
+          ./gradlew clean build --stacktrace --no-daemon 2>&1 | tee build-output.log
+
+      - name: Upload JARs and reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: deeperdarker-fabric-build
+          path: |
+            work/build/libs/*.jar
+            work/build/reports/**
+            work/build-output.log
+          if-no-files-found: warn
