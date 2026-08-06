@@ -13,7 +13,7 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 55
     steps:
       - name: Checkout build payload
         uses: actions/checkout@v4
@@ -78,6 +78,10 @@ jobs:
           base64 -d < payload/dd-build-final-fixes/chunk-00.b64 > final-fixes.tar.xz
           echo "efa6e25e4bd13d7326fd3603f4db3eb6caf578faf4ca4abc6d81ec4869fa1067  final-fixes.tar.xz" | sha256sum -c -
           tar -xJf final-fixes.tar.xz -C work
+          # Reapply direct hotfix files after archived compiler fixes.
+          if [ -d payload/dd-build-patches-final ]; then
+            cp -a payload/dd-build-patches-final/. work/
+          fi
           chmod +x work/gradlew
           python3 - <<'PY'
           import json, pathlib
@@ -104,6 +108,36 @@ jobs:
           set -o pipefail
           ./gradlew clean build --stacktrace --no-daemon 2>&1 | tee build-output.log
 
+      - name: Render every mod item
+        working-directory: work
+        shell: bash
+        env:
+          DEEPERDARKER_ITEM_RENDER_SMOKE_TEST: 'true'
+        run: |
+          set -euxo pipefail
+          rm -rf run/crash-reports run/logs
+          timeout 180s xvfb-run -a ./gradlew runClient --stacktrace --no-daemon 2>&1 | tee client-item-render-smoke.log
+          grep -q 'DEEPERDARKER_ITEM_RENDER_SMOKE_TEST_PASSED' client-item-render-smoke.log
+          test ! -d run/crash-reports || test -z "$(find run/crash-reports -type f -print -quit)"
+
+      - name: Dedicated server startup smoke test
+        working-directory: work
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p run
+          printf 'eula=true\n' > run/eula.txt
+          rm -rf run/crash-reports run/logs
+          set +e
+          timeout 120s ./gradlew runServer --stacktrace --no-daemon 2>&1 | tee server-smoke.log
+          status=${PIPESTATUS[0]}
+          set -e
+          if [ "$status" -ne 0 ] && [ "$status" -ne 124 ]; then
+            exit "$status"
+          fi
+          grep -Eq 'Done \([0-9.]+s\)!|For help, type "help"' server-smoke.log
+          test ! -d run/crash-reports || test -z "$(find run/crash-reports -type f -print -quit)"
+
       - name: Upload JARs and reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -113,4 +147,8 @@ jobs:
             work/build/libs/*.jar
             work/build/reports/**
             work/build-output.log
+            work/client-item-render-smoke.log
+            work/server-smoke.log
+            work/run/logs/**
+            work/run/crash-reports/**
           if-no-files-found: warn
