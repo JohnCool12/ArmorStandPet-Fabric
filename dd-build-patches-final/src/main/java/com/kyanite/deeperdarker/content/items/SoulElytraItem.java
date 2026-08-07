@@ -1,0 +1,64 @@
+package com.kyanite.deeperdarker.content.items;
+
+import com.kyanite.deeperdarker.DeeperDarker;
+import com.kyanite.deeperdarker.DeeperDarkerConfig;
+import com.kyanite.deeperdarker.content.DDItems;
+import net.fabricmc.fabric.api.entity.event.v1.FabricElytraItem;
+import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EquipmentSlotGroup;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.ai.attributes.AttributeModifier;
+import net.minecraft.world.entity.ai.attributes.Attributes;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.ElytraItem;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.component.ItemAttributeModifiers;
+import net.minecraft.world.level.Level;
+
+/**
+ * Fabric implementation of the Soul Elytra.
+ *
+ * NeoForge recognizes ElytraItem subclasses through its own elytra hooks. Fabric does not:
+ * custom chest-slot elytras must implement FabricElytraItem so LivingEntity's flight checks
+ * delegate to the item. Without this interface the Soul Elytra can equip and render normally
+ * while never allowing fall-flying to start.
+ */
+@SuppressWarnings("NullableProblems")
+public class SoulElytraItem extends ElytraItem implements FabricElytraItem {
+    public SoulElytraItem(Properties properties) {
+        super(properties);
+    }
+
+    public static ItemAttributeModifiers createAttributes() {
+        ResourceLocation location = DeeperDarker.rl("armor.soul");
+        return ItemAttributeModifiers.builder()
+                .add(Attributes.ARMOR,
+                        new AttributeModifier(location, 3, AttributeModifier.Operation.ADD_VALUE),
+                        EquipmentSlotGroup.CHEST)
+                .build();
+    }
+
+    @Override
+    public boolean isValidRepairItem(ItemStack toRepair, ItemStack repair) {
+        return repair.is(DDItems.SOUL_CRYSTAL.get());
+    }
+
+    @Override
+    public void doVanillaElytraTick(LivingEntity entity, ItemStack chestStack) {
+        FabricElytraItem.super.doVanillaElytraTick(entity, chestStack);
+    }
+
+    @Override
+    public void inventoryTick(ItemStack stack, Level level, Entity entity, int slotId, boolean isSelected) {
+        if(level.isClientSide() && entity instanceof Player player && slotId == 38) {
+            if(player.getCooldowns().isOnCooldown(DDItems.SOUL_ELYTRA.get())) {
+                float percent = player.getCooldowns().getCooldownPercent(DDItems.SOUL_ELYTRA.get(), 0);
+                player.displayClientMessage(Component.translatable(
+                        "item." + DeeperDarker.MOD_ID + ".soul_elytra.cooldown",
+                        (int) Math.ceil(percent * DeeperDarkerConfig.CONFIG.soulElytraCooldown.get() / 20)), true);
+            }
+        }
+    }
+}
