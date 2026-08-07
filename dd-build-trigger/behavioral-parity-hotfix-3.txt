@@ -1,0 +1,1 @@
+Behavioral parity stabilization build: restore FabricElytraItem Soul Elytra flight hook and run comprehensive existing client/server regression suites plus custom-elytra eligibility test.
