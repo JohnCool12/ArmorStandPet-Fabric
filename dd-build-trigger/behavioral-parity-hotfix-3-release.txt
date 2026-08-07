@@ -1,0 +1,1 @@
+Release validation for hotfix.3: FabricElytraItem flight/tick/repair, Fabric-native transient player attachments, original Blooming Stem stripping semantics, 254+ loaded core recipes and representative tags, bidirectional Otherside portal destinations, comprehensive item/block/BE render tests, worldgen/block/entity server tests, Fabric API 0.116.14+1.21.1.
