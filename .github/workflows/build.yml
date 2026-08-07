@@ -46,6 +46,7 @@ jobs:
           patch -p1 --batch --forward < ../ci/eg-fix4.patch
           patch -p1 --batch --forward < ../ci/eg-advanced-swim.patch
           patch -p1 --batch --forward < ../ci/eg-surface-swim.patch
+          patch -p1 --batch --forward < ../ci/eg-bedrock-provocation.patch
           test -f build.gradle
           test -f src/main/resources/fabric.mod.json
           test -f src/main/resources/assets/golems/models/item/golem_spawn_egg.json
@@ -64,6 +65,13 @@ jobs:
           grep -q '"swim_ability": "swim"' src/main/resources/data/golems/golems/golem/sea_lantern.json
           grep -q '"swim_ability": "swim"' src/main/resources/data/golems/golems/golem/generic_coral.json
           grep -q '"swim_ability": "swim"' src/main/resources/data/golems/golems/golem/generic_dead_coral.json
+          grep -q '"knockback_resistance": 1.0' src/main/resources/data/golems/golems/golem/diamond.json
+          grep -q '"knockback_resistance": 1.0' src/main/resources/data/golems/golems/golem/emerald.json
+          test -f src/main/java/com/mcmoddev/golems/client/entity/layer/GolemBedrockEyesLayer.java
+          grep -q 'public boolean hurt(final DamageSource source, final float amount)' src/main/java/com/mcmoddev/golems/entity/GolemBase.java
+          grep -q 'this.setLastHurtByMob(attacker);' src/main/java/com/mcmoddev/golems/entity/GolemBase.java
+          grep -q 'this.setPersistentAngerTarget(player.getUUID());' src/main/java/com/mcmoddev/golems/entity/GolemBase.java
+          grep -q 'this.startPersistentAngerTimer();' src/main/java/com/mcmoddev/golems/entity/GolemBase.java
 
       - name: Build
         working-directory: project
@@ -138,6 +146,6 @@ jobs:
       - name: Upload mod JAR
         uses: actions/upload-artifact@v4
         with:
-          name: extra-golems-reborn-fabric-1.21.1-surface-swimming
+          name: extra-golems-reborn-fabric-1.21.1-bedrock-provocation
           path: artifact/*.jar
           if-no-files-found: error
