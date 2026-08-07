@@ -40,9 +40,7 @@ jobs:
           cd project
           git checkout 6b21ec4a59ca16e8362b26e38fc63b2807042bdf
           xz -dc /tmp/fabric-port.patch.xz | patch -p4 --batch --forward
-          if [ -d ../ci/eg-overrides ]; then
-            cp -a ../ci/eg-overrides/. .
-          fi
+          patch -p1 --batch --forward < ../ci/eg-fix1.patch
           test -f build.gradle
           test -f src/main/resources/fabric.mod.json
           grep -q 'fabric-loom' build.gradle
