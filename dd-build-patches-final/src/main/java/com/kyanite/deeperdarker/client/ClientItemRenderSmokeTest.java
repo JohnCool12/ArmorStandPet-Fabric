@@ -14,11 +14,19 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemDisplayContext;
 import net.minecraft.world.item.ItemStack;
 
-/**
- * Dormant runtime verification hook. It activates only when the CI environment
- * variable DEEPERDARKER_ITEM_RENDER_SMOKE_TEST is set to true.
- */
+/** Dormant CI-only item-render regression suite. */
 public final class ClientItemRenderSmokeTest implements ClientModInitializer {
+    private static final ItemDisplayContext[] CONTEXTS = {
+            ItemDisplayContext.GUI,
+            ItemDisplayContext.GROUND,
+            ItemDisplayContext.FIXED,
+            ItemDisplayContext.HEAD,
+            ItemDisplayContext.FIRST_PERSON_LEFT_HAND,
+            ItemDisplayContext.FIRST_PERSON_RIGHT_HAND,
+            ItemDisplayContext.THIRD_PERSON_LEFT_HAND,
+            ItemDisplayContext.THIRD_PERSON_RIGHT_HAND
+    };
+
     private int ticks;
     private boolean finished;
 
@@ -32,7 +40,8 @@ public final class ClientItemRenderSmokeTest implements ClientModInitializer {
         if (this.finished || ++this.ticks < 100 || client.getOverlay() != null || client.screen == null) return;
         this.finished = true;
 
-        int rendered = 0;
+        int items = 0;
+        int renders = 0;
         PoseStack poseStack = new PoseStack();
         MultiBufferSource.BufferSource buffers = client.renderBuffers().bufferSource();
 
@@ -40,29 +49,43 @@ public final class ClientItemRenderSmokeTest implements ClientModInitializer {
             for (Item item : BuiltInRegistries.ITEM) {
                 ResourceLocation id = BuiltInRegistries.ITEM.getKey(item);
                 if (id == null || !DeeperDarker.MOD_ID.equals(id.getNamespace())) continue;
+                ItemStack stack = new ItemStack(item);
 
-                poseStack.pushPose();
-                try {
-                    client.getItemRenderer().renderStatic(
-                            new ItemStack(item),
-                            ItemDisplayContext.GUI,
-                            LightTexture.FULL_BRIGHT,
-                            OverlayTexture.NO_OVERLAY,
-                            poseStack,
-                            buffers,
-                            null,
-                            rendered
-                    );
-                } finally {
-                    poseStack.popPose();
+                for (ItemDisplayContext context : CONTEXTS) {
+                    poseStack.pushPose();
+                    try {
+                        client.getItemRenderer().renderStatic(
+                                stack,
+                                context,
+                                LightTexture.FULL_BRIGHT,
+                                OverlayTexture.NO_OVERLAY,
+                                poseStack,
+                                buffers,
+                                null,
+                                renders
+                        );
+                    } catch (Throwable throwable) {
+                        DeeperDarker.LOGGER.error(
+                                "DEEPERDARKER_ITEM_RENDER_SMOKE_TEST_FAILED item={} context={} after {} renders",
+                                id, context, renders, throwable);
+                        throw throwable;
+                    } finally {
+                        poseStack.popPose();
+                    }
+                    renders++;
                 }
-                rendered++;
+                items++;
             }
             buffers.endBatch();
-            DeeperDarker.LOGGER.info("DEEPERDARKER_ITEM_RENDER_SMOKE_TEST_PASSED items={}", rendered);
+            DeeperDarker.LOGGER.info(
+                    "DEEPERDARKER_ITEM_RENDER_SMOKE_TEST_PASSED items={} contexts={} renders={}",
+                    items, CONTEXTS.length, renders);
             client.stop();
         } catch (Throwable throwable) {
-            DeeperDarker.LOGGER.error("DEEPERDARKER_ITEM_RENDER_SMOKE_TEST_FAILED after {} items", rendered, throwable);
+            try {
+                buffers.endBatch();
+            } catch (Throwable ignored) {
+            }
             throw throwable;
         }
     }
