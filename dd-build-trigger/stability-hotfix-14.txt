@@ -1,0 +1,1 @@
+Final client polish gate: render all custom blocks and directly exercise sign, hanging-sign, Crystallized Amber, and Gloomslate Pot block-entity renderers in addition to all item contexts and exhaustive server gameplay tests.
