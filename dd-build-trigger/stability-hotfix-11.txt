@@ -1,0 +1,1 @@
+Final hotfix.2 stabilization rerun: correct Stalker internal entity ID, exercise every custom block, generate 74 Otherside chunks across two regions, tick all custom entities five times, and rerun item rendering/server regression suites.
