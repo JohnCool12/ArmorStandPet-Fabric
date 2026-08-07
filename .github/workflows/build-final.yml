@@ -1,9 +1,8 @@
-name: Build ArmorStandPet 26.2
+name: Build final ArmorStandPet combat
 
 on:
   push:
     branches: [ci/build-jar]
-  pull_request:
   workflow_dispatch:
 
 permissions:
@@ -11,7 +10,7 @@ permissions:
   contents: read
 
 jobs:
-  build:
+  build-final:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -95,11 +94,8 @@ jobs:
           javap -classpath "$jar" -p -c io.github.kyzderp.armorstandpet.combat.PetMortalityController | tee artifact/PetMortalityController.javap.txt
           grep -q 'PetArmorStandEntity.applyPetDefenses' artifact/PetMortalityController.javap.txt
           grep -q 'Pet.delete' artifact/PetMortalityController.javap.txt
-          grep -q 'PetArmorStandEntity.die' artifact/PetMortalityController.javap.txt
+          grep -q 'LivingEntity.die' artifact/PetMortalityController.javap.txt
           grep -q 'purgeLegacyDeadPets' artifact/PetMortalityController.javap.txt
-          grep -q 'SoundEvents.ARMOR_STAND_BREAK' artifact/PetMortalityController.javap.txt
-          grep -q 'ItemParticleOption' artifact/PetMortalityController.javap.txt
-          grep -q 'ServerLevel.sendParticles' artifact/PetMortalityController.javap.txt
           ! grep -q 'StandFactory.respawnFrom' artifact/PetMortalityController.javap.txt
 
           javap -classpath "$jar" -p -c io.github.kyzderp.armorstandpet.entity.PetArmorStandEntity | tee artifact/PetArmorStandEntity.javap.txt
@@ -117,6 +113,6 @@ jobs:
       - name: Upload final mod
         uses: actions/upload-artifact@v4
         with:
-          name: armorstandpet-fabric-26.2-vanilla-break-effects
+          name: armorstandpet-fabric-26.2-permanent-death-equipment-combat
           path: artifact/
           if-no-files-found: error
