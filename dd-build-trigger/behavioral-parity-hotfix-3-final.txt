@@ -1,0 +1,1 @@
+Final hotfix.3 parity validation: Soul Elytra eligibility + tick/repair hooks, bidirectional Otherside portal destination calculation, existing exhaustive block/entity/worldgen/render regression suites.
