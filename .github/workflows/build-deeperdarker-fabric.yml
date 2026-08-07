@@ -13,7 +13,7 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 55
+    timeout-minutes: 60
     steps:
       - name: Checkout build payload
         uses: actions/checkout@v4
@@ -66,39 +66,27 @@ jobs:
           tar -xJf fabric-source.tar.xz -C work
           base64 -d < payload/dd-build-support/fabric_conditions.json.xz.b64 | xz -d > fabric_conditions.json
           python3 payload/dd-build-support/apply_conditions.py work fabric_conditions.json
-          if [ -d payload/dd-build-patches ]; then
-            cp -a payload/dd-build-patches/. work/
-          fi
+          if [ -d payload/dd-build-patches ]; then cp -a payload/dd-build-patches/. work/; fi
           cat payload/dd-build-patch-v2/chunk-00.b64 payload/dd-build-patch-v2/chunk-01.b64 payload/dd-build-patch-v2/chunk-02.b64 | base64 -d > compiler-patches-v2.tar.xz
           echo "dc8a3f7b360950cd92722d4f7e9e7356f43b85fbd905972bc46179247ddada76  compiler-patches-v2.tar.xz" | sha256sum -c -
           tar -xJf compiler-patches-v2.tar.xz -C work
-          if [ -d payload/dd-build-patches-final ]; then
-            cp -a payload/dd-build-patches-final/. work/
-          fi
+          if [ -d payload/dd-build-patches-final ]; then cp -a payload/dd-build-patches-final/. work/; fi
           base64 -d < payload/dd-build-final-fixes/chunk-00.b64 > final-fixes.tar.xz
           echo "efa6e25e4bd13d7326fd3603f4db3eb6caf578faf4ca4abc6d81ec4869fa1067  final-fixes.tar.xz" | sha256sum -c -
           tar -xJf final-fixes.tar.xz -C work
-          # Reapply direct hotfix files after archived compiler fixes.
-          if [ -d payload/dd-build-patches-final ]; then
-            cp -a payload/dd-build-patches-final/. work/
-          fi
+          if [ -d payload/dd-build-patches-final ]; then cp -a payload/dd-build-patches-final/. work/; fi
           chmod +x work/gradlew
           python3 - <<'PY'
           import json, pathlib
           roots=[pathlib.Path('work/src/main/resources'), pathlib.Path('work/src/generated/resources')]
-          leftovers=[]
-          count=0
+          leftovers=[]; count=0
           for root in roots:
-              if not root.exists():
-                  continue
+              if not root.exists(): continue
               for path in root.rglob('*.json'):
-                  data=json.loads(path.read_text(encoding='utf-8'))
-                  count += 1
-                  if isinstance(data, dict) and ('neoforge:conditions' in data or 'forge:conditions' in data):
-                      leftovers.append(str(path))
+                  data=json.loads(path.read_text(encoding='utf-8')); count += 1
+                  if isinstance(data, dict) and ('neoforge:conditions' in data or 'forge:conditions' in data): leftovers.append(str(path))
           print(f'Validated {count} JSON resources')
-          if leftovers:
-              raise SystemExit('Unconverted loader conditions remain: ' + ', '.join(leftovers[:10]))
+          if leftovers: raise SystemExit('Unconverted loader conditions remain: ' + ', '.join(leftovers[:10]))
           PY
 
       - name: Build
@@ -108,7 +96,7 @@ jobs:
           set -o pipefail
           ./gradlew clean build --stacktrace --no-daemon 2>&1 | tee build-output.log
 
-      - name: Render every mod item
+      - name: Render every mod item in every context
         working-directory: work
         shell: bash
         env:
@@ -122,9 +110,11 @@ jobs:
           ! grep -q 'Missing textures in model deeperdarker' client-item-render-smoke.log
           test ! -d run/crash-reports || test -z "$(find run/crash-reports -type f -print -quit)"
 
-      - name: Dedicated server startup smoke test
+      - name: Dedicated server gameplay smoke test
         working-directory: work
         shell: bash
+        env:
+          DEEPERDARKER_GAMEPLAY_SMOKE_TEST: 'true'
         run: |
           set -euxo pipefail
           mkdir -p run
@@ -132,13 +122,13 @@ jobs:
           printf 'online-mode=false\nserver-port=25576\n' > run/server.properties
           rm -rf run/crash-reports run/logs
           set +e
-          timeout 120s ./gradlew runServer --stacktrace --no-daemon 2>&1 | tee server-smoke.log
+          timeout 180s ./gradlew runServer --stacktrace --no-daemon 2>&1 | tee server-smoke.log
           status=${PIPESTATUS[0]}
           set -e
-          if [ "$status" -ne 0 ] && [ "$status" -ne 124 ]; then
-            exit "$status"
-          fi
+          if [ "$status" -ne 0 ] && [ "$status" -ne 124 ]; then exit "$status"; fi
           grep -Eq 'Done \([0-9.]+s\)!|For help, type "help"' server-smoke.log
+          grep -q 'DEEPERDARKER_GAMEPLAY_SMOKE_TEST_PASSED' server-smoke.log
+          ! grep -q 'DEEPERDARKER_GAMEPLAY_SMOKE_TEST_FAILED' server-smoke.log
           test ! -d run/crash-reports || test -z "$(find run/crash-reports -type f -print -quit)"
 
       - name: Upload JARs and reports
