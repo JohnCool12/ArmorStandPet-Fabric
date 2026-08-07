@@ -58,7 +58,6 @@ public final class ClientItemRenderSmokeTest implements ClientModInitializer {
         MultiBufferSource.BufferSource buffers = client.renderBuffers().bufferSource();
 
         try {
-            // Exercise every item model in every vanilla display transform.
             for (Item item : BuiltInRegistries.ITEM) {
                 ResourceLocation id = BuiltInRegistries.ITEM.getKey(item);
                 if (id == null || !DeeperDarker.MOD_ID.equals(id.getNamespace())) continue;
@@ -90,8 +89,6 @@ public final class ClientItemRenderSmokeTest implements ClientModInitializer {
                 items++;
             }
 
-            // Exercise every default block model through BlockRenderDispatcher. This catches
-            // broken baked-model references, atlas problems, and render-type assumptions.
             for (Block block : BuiltInRegistries.BLOCK) {
                 ResourceLocation id = BuiltInRegistries.BLOCK.getKey(block);
                 if (id == null || !DeeperDarker.MOD_ID.equals(id.getNamespace())) continue;
@@ -115,9 +112,6 @@ public final class ClientItemRenderSmokeTest implements ClientModInitializer {
                 blockRenders++;
             }
 
-            // Directly exercise every custom block-entity renderer that has a renderer.
-            // This specifically guards signs/hanging signs after their Fabric constructor
-            // rewrite, plus Amber and the Gloomslate Pot.
             BlockEntityRenderDispatcher dispatcher = client.getBlockEntityRenderDispatcher();
             if (dispatcher == null) throw new IllegalStateException("BlockEntityRenderDispatcher unavailable");
 
@@ -128,12 +122,12 @@ public final class ClientItemRenderSmokeTest implements ClientModInitializer {
             CrystallizedAmberBlockEntity amber = new CrystallizedAmberBlockEntity(BlockPos.ZERO, amberState);
             GloomslatePotBlockEntity pot = new GloomslatePotBlockEntity(BlockPos.ZERO, DDBlocks.GLOOMSLATE_POT.get().defaultBlockState());
 
-            Object[] blockEntities = {sign, hangingSign, amber, pot};
-            for (Object object : blockEntities) {
+            net.minecraft.world.level.block.entity.BlockEntity[] blockEntities = {sign, hangingSign, amber, pot};
+            for (net.minecraft.world.level.block.entity.BlockEntity blockEntity : blockEntities) {
                 poseStack.pushPose();
                 try {
                     dispatcher.renderItem(
-                            (net.minecraft.world.level.block.entity.BlockEntity) object,
+                            blockEntity,
                             poseStack,
                             buffers,
                             LightTexture.FULL_BRIGHT,
@@ -142,7 +136,7 @@ public final class ClientItemRenderSmokeTest implements ClientModInitializer {
                 } catch (Throwable throwable) {
                     DeeperDarker.LOGGER.error(
                             "DEEPERDARKER_BLOCK_ENTITY_RENDER_SMOKE_TEST_FAILED class={} after {} renders",
-                            object.getClass().getName(), blockEntityRenders, throwable);
+                            blockEntity.getClass().getName(), blockEntityRenders, throwable);
                     throw throwable;
                 } finally {
                     poseStack.popPose();
@@ -154,6 +148,9 @@ public final class ClientItemRenderSmokeTest implements ClientModInitializer {
             DeeperDarker.LOGGER.info(
                     "DEEPERDARKER_CLIENT_RENDER_SMOKE_TEST_PASSED items={} contexts={} itemRenders={} blockRenders={} blockEntityRenders={}",
                     items, CONTEXTS.length, itemRenders, blockRenders, blockEntityRenders);
+            // Keep the legacy marker so the CI gate remains compatible with earlier runs.
+            DeeperDarker.LOGGER.info("DEEPERDARKER_ITEM_RENDER_SMOKE_TEST_PASSED items={} contexts={} renders={}",
+                    items, CONTEXTS.length, itemRenders);
             client.stop();
         } catch (Throwable throwable) {
             try {
