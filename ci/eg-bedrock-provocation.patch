@@ -1,0 +1,56 @@
+--- a/src/main/java/com/mcmoddev/golems/entity/GolemBase.java
++++ b/src/main/java/com/mcmoddev/golems/entity/GolemBase.java
+@@ -394,6 +394,10 @@
+ 	@Override
+ 	public boolean canAttackType(final EntityType<?> type) {
+ 		if (type == EntityType.PLAYER && this.isPlayerCreated()) {
++			// Bedrock golems must be able to retaliate against a player who actually
++			// attacks them, even though mod-built golems are marked PlayerCreated.
++			if (isBedrockGolem()) return true;
+ 			return ExtraGolems.CONFIG.enableFriendlyFire();
+ 		}
+ 		if (type == EntityType.VILLAGER || type == EGRegistry.EntityReg.GOLEM.get() || type == EntityType.IRON_GOLEM
+@@ -571,6 +575,43 @@
+ 	//// ATTRIBUTE HOOKS ////
++
++	private boolean isBedrockGolem() {
++		return getGolemId().map(id -> id.getNamespace().equals(ExtraGolems.MODID)
++				&& id.getPath().equals("bedrock")).orElse(false);
++	}
++
++	/**
++	 * Bedrock rejects all actual damage in isInvulnerableTo(), which deliberately
++	 * happens before vanilla LivingEntity hurt bookkeeping. Register the attacker
++	 * here first so an attempted hit can still provoke retaliation without ever
++	 * entering the visual/physical hurt pipeline.
++	 */
++	@Override
++	public boolean hurt(final DamageSource source, final float amount) {
++		if (!this.level().isClientSide() && isBedrockGolem()) {
++			final Entity sourceEntity = source.getEntity();
++			if (sourceEntity instanceof LivingEntity attacker && attacker != this && attacker.isAlive()) {
++				// Creative/spectator players remain invalid combat targets, matching
++				// normal vanilla targeting expectations.
++				if (!(attacker instanceof Player player) || (!player.isCreative() && !player.isSpectator())) {
++					// HurtByTargetGoal normally receives this state from LivingEntity#hurt,
++					// but Bedrock's damage immunity returns before vanilla can set it.
++					this.setLastHurtByMob(attacker);
++					this.setTarget(attacker);
++
++					// Iron golems use persistent anger for players. Preserve that behavior
++					// so the Bedrock golem remembers and pursues the provoking player.
++					if (attacker instanceof Player player) {
++						this.setPersistentAngerTarget(player.getUUID());
++						this.startPersistentAngerTimer();
++					}
++				}
++			}
++		}
++
++		// For Bedrock this reaches isInvulnerableTo() and returns false before
++		// health loss, hurtTime, knockback, hurt sound, or the red damage flash.
++		return super.hurt(source, amount);
++	}
+ 
+ 	@Override
+ 	public boolean canBeAffected(MobEffectInstance pEffectInstance) {
