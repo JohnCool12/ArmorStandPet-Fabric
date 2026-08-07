@@ -42,14 +42,35 @@ jobs:
           xz -dc /tmp/fabric-port.patch.xz | patch -p4 --batch --forward
           patch -p1 --batch --forward < ../ci/eg-fix1.patch
           patch -p1 --batch --forward < ../ci/eg-fix2.patch
+          patch -p1 --batch --forward < ../ci/eg-bedrock-targetable.patch
           test -f build.gradle
           test -f src/main/resources/fabric.mod.json
           test -f src/main/resources/assets/golems/models/item/golem_spawn_egg.json
           grep -q 'fabric-loom' build.gradle
+          grep -q 'this.setInvulnerable(false);' src/main/java/com/mcmoddev/golems/entity/GolemBase.java
+          grep -q 'getAttributes().isInvulnerable())' src/main/java/com/mcmoddev/golems/entity/GolemBase.java
 
       - name: Build
         working-directory: project
         run: gradle clean build --stacktrace --no-daemon
+
+      - name: Smoke-test dedicated Fabric server
+        working-directory: project
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p run/server
+          printf 'eula=true\n' > run/server/eula.txt
+          set +e
+          timeout --signal=TERM 90s gradle runServer --no-daemon > ../server-smoke.log 2>&1
+          status=$?
+          set -e
+          cat ../server-smoke.log
+          if [ "$status" -ne 0 ] && [ "$status" -ne 124 ]; then
+            exit "$status"
+          fi
+          test -f run/server/logs/latest.log
+          grep -q 'Done (' run/server/logs/latest.log
 
       - name: Smoke-test Fabric client
         working-directory: project
@@ -102,6 +123,6 @@ jobs:
       - name: Upload mod JAR
         uses: actions/upload-artifact@v4
         with:
-          name: extra-golems-reborn-fabric-1.21.1
+          name: extra-golems-reborn-fabric-1.21.1-bedrock-targetable
           path: artifact/*.jar
           if-no-files-found: error
