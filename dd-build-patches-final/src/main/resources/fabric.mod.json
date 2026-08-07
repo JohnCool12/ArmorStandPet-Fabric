@@ -13,7 +13,10 @@
   "license": "GPL-3.0",
   "environment": "*",
   "entrypoints": {
-    "main": ["com.kyanite.deeperdarker.DeeperDarker"],
+    "main": [
+      "com.kyanite.deeperdarker.DeeperDarker",
+      "com.kyanite.deeperdarker.test.ServerGameplaySmokeTest"
+    ],
     "client": [
       "com.kyanite.deeperdarker.DeeperDarkerClient",
       "com.kyanite.deeperdarker.client.ClientItemRenderSmokeTest"
