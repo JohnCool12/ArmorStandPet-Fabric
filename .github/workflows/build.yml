@@ -41,8 +41,10 @@ jobs:
           git checkout 6b21ec4a59ca16e8362b26e38fc63b2807042bdf
           xz -dc /tmp/fabric-port.patch.xz | patch -p4 --batch --forward
           patch -p1 --batch --forward < ../ci/eg-fix1.patch
+          patch -p1 --batch --forward < ../ci/eg-fix2.patch
           test -f build.gradle
           test -f src/main/resources/fabric.mod.json
+          test -f src/main/resources/assets/golems/models/item/golem_spawn_egg.json
           grep -q 'fabric-loom' build.gradle
 
       - name: Build
@@ -55,11 +57,11 @@ jobs:
         run: |
           set -euo pipefail
           command -v xvfb-run
-          setsid xvfb-run -a gradle runClient --no-daemon > ../client-smoke.log 2>&1 &
+          setsid env ALSOFT_DRIVERS=null LIBGL_ALWAYS_SOFTWARE=true xvfb-run -a gradle runClient --no-daemon > ../client-smoke.log 2>&1 &
           pid=$!
           success=0
           for i in $(seq 1 90); do
-            if [ -f run/client/logs/latest.log ] && grep -q 'OpenAL initialized' run/client/logs/latest.log; then
+            if [ -f run/client/logs/latest.log ] && grep -q 'minecraft:textures/atlas/blocks.png-atlas' run/client/logs/latest.log; then
               sleep 10
               if kill -0 "$pid" 2>/dev/null; then
                 success=1
@@ -72,10 +74,20 @@ jobs:
             sleep 1
           done
           cat ../client-smoke.log
+          if [ -f run/client/logs/latest.log ]; then
+            if grep -q 'golems:item/golem_spawn_egg' run/client/logs/latest.log; then
+              echo 'Spawn egg model is still missing.' >&2
+              success=0
+            fi
+            if grep -q 'Mixin apply for mod golems failed' run/client/logs/latest.log; then
+              echo 'Extra Golems mixin failure detected.' >&2
+              success=0
+            fi
+          fi
           kill -TERM -- -"$pid" 2>/dev/null || true
           wait "$pid" 2>/dev/null || true
           if [ "$success" -ne 1 ]; then
-            echo 'Fabric client did not remain alive after client initialization.' >&2
+            echo 'Fabric client did not remain alive after renderer/resource initialization.' >&2
             exit 1
           fi
 
