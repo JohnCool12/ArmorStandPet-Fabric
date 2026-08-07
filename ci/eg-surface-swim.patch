@@ -1,0 +1,95 @@
+--- a/src/main/java/com/mcmoddev/golems/entity/GolemBase.java
++++ b/src/main/java/com/mcmoddev/golems/entity/GolemBase.java
+@@ -262,13 +262,11 @@
+ 					goalSelector.addGoal(0, new FloatGoal(this));
+ 					break;
+ 				case SWIM:
+-					// advanced swimming AI
+-					this.getAttribute(Attributes.STEP_HEIGHT).setBaseValue(1.0);
+-					moveControl = new SwimmingMovementController(this);
++					// Surface swimming AI: behave like an ordinary land mob that can swim.
++					// FloatGoal makes the golem paddle upward and stay at the water surface,
++					// while normal ground navigation/movement remains in control.
++					goalSelector.addGoal(0, new FloatGoal(this));
+ 					setPathfindingMalus(PathType.WATER, 0.0F);
+-					goalSelector.addGoal(1, new GoToWaterGoal(this, 14, 1.0D));
+-					goalSelector.addGoal(4, new RandomSwimmingGoal(this, 0.8F, 200));
+-					goalSelector.addGoal(5, new SwimUpGoal(this, 1.0D, level().getSeaLevel() + 1));
+ 					break;
+ 				case SINK:
+ 				default:
+@@ -1031,65 +1029,35 @@
+ 	//// SWIMMING ////
+ 
+ 	/**
+-	 * @return true when this golem is one of the data-driven advanced swimmers.
++	 * Advanced-swimmer materials intentionally use ordinary surface-swimming
++	 * mechanics. Their FloatGoal keeps them afloat; normal Mob/IronGolem
++	 * travel, fluid pushing, navigation, and swimming-state handling remain intact.
+ 	 */
+ 	private boolean isAdvancedSwimmer() {
+-		return getContainer().map(container ->
+-				container.getAttributes().getSwimAbility() == SwimAbility.SWIM).orElse(false);
++		return false;
+ 	}
+ 
+ 	@Override
+ 	public void travel(final Vec3 vec) {
+-		// Use Drowned-style water locomotion for the entire time an advanced
+-		// swimmer is submerged. The old implementation only enabled this while
+-		// SwimUpGoal was active (or its target was already in water), so an idle
+-		// aquatic golem immediately fell back to Iron Golem physics and sank.
+-		if (isEffectiveAi() && isInWater() && isAdvancedSwimmer()) {
+-			moveRelative(0.01F, vec);
+-			move(MoverType.SELF, getDeltaMovement());
+-			setDeltaMovement(getDeltaMovement().scale(0.9D));
+-		} else {
+-			super.travel(vec);
+-		}
++		super.travel(vec);
+ 	}
+ 
+ 	@Override
+ 	public void updateSwimming() {
+-		if (!isAdvancedSwimmer()) {
+-			super.updateSwimming();
+-			return;
+-		}
+-		// Advanced swimmers always use 3D water navigation while submerged, and
+-		// switch back to normal Iron Golem ground navigation when they leave water.
+-		if (!this.level().isClientSide) {
+-			if (isEffectiveAi() && isInWater()) {
+-				this.navigation = this.waterNavigator;
+-				setSwimming(true);
+-			} else {
+-				this.navigation = this.groundNavigator;
+-				setSwimming(false);
+-			}
+-		}
++		super.updateSwimming();
+ 	}
+ 
+ 	@Override
+ 	public boolean isPushedByFluid() {
+-		return !isSwimming();
++		return super.isPushedByFluid();
+ 	}
+ 
+ 	public void setSwimmingUp(boolean isSwimmingUp) {
+-		this.swimmingUp = isAdvancedSwimmer() && isSwimmingUp;
++		this.swimmingUp = false;
+ 	}
+ 
+ 	public boolean isSwimmingUp() {
+-		if (!isAdvancedSwimmer()) {
+-			return false;
+-		}
+-		if (this.swimmingUp) {
+-			return true;
+-		}
+-		LivingEntity e = getTarget();
+-		return e != null && e.isInWater();
++		return false;
+ 	}
+ 
+ 	//// MOVE CONTROLLER ////
