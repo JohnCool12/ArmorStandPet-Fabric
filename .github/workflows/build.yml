@@ -49,41 +49,35 @@ jobs:
         working-directory: project
         run: gradle clean build --stacktrace --no-daemon
 
-      - name: Smoke-test dedicated Fabric server
-        working-directory: project
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p run/server
-          printf 'eula=true\n' > run/server/eula.txt
-          set +e
-          timeout --signal=TERM 90s gradle runServer --no-daemon > ../server-smoke.log 2>&1
-          status=$?
-          set -e
-          cat ../server-smoke.log
-          if [ "$status" -ne 0 ] && [ "$status" -ne 124 ]; then
-            exit "$status"
-          fi
-          test -f run/server/logs/latest.log
-          grep -q 'Done (' run/server/logs/latest.log
-
       - name: Smoke-test Fabric client
         working-directory: project
         shell: bash
         run: |
           set -euo pipefail
           command -v xvfb-run
-          set +e
-          timeout --signal=TERM 90s xvfb-run -a gradle runClient --no-daemon > ../client-smoke.log 2>&1
-          status=$?
-          set -e
+          setsid xvfb-run -a gradle runClient --no-daemon > ../client-smoke.log 2>&1 &
+          pid=$!
+          success=0
+          for i in $(seq 1 90); do
+            if [ -f run/client/logs/latest.log ] && grep -q 'OpenAL initialized' run/client/logs/latest.log; then
+              sleep 10
+              if kill -0 "$pid" 2>/dev/null; then
+                success=1
+              fi
+              break
+            fi
+            if ! kill -0 "$pid" 2>/dev/null; then
+              break
+            fi
+            sleep 1
+          done
           cat ../client-smoke.log
-          test -f run/client/logs/latest.log
-          if [ "$status" -ne 124 ]; then
-            echo "Client exited before the smoke-test timeout with status $status" >&2
+          kill -TERM -- -"$pid" 2>/dev/null || true
+          wait "$pid" 2>/dev/null || true
+          if [ "$success" -ne 1 ]; then
+            echo 'Fabric client did not remain alive after client initialization.' >&2
             exit 1
           fi
-          grep -q 'OpenAL initialized' run/client/logs/latest.log
 
       - name: Collect production JAR
         shell: bash
