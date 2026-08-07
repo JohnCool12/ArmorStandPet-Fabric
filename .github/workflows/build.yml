@@ -43,12 +43,14 @@ jobs:
           patch -p1 --batch --forward < ../ci/eg-fix1.patch
           patch -p1 --batch --forward < ../ci/eg-fix2.patch
           patch -p1 --batch --forward < ../ci/eg-bedrock-targetable.patch
+          patch -p1 --batch --forward < ../ci/eg-fix4.patch
           test -f build.gradle
           test -f src/main/resources/fabric.mod.json
           test -f src/main/resources/assets/golems/models/item/golem_spawn_egg.json
           grep -q 'fabric-loom' build.gradle
           grep -q 'this.setInvulnerable(false);' src/main/java/com/mcmoddev/golems/entity/GolemBase.java
-          grep -q 'getAttributes().isInvulnerable())' src/main/java/com/mcmoddev/golems/entity/GolemBase.java
+          grep -q 'usesIronGolemSounds' src/main/java/com/mcmoddev/golems/entity/GolemBase.java
+          grep -q 'IRON_GOLEM_REPAIR' src/main/java/com/mcmoddev/golems/entity/GolemBase.java
 
       - name: Build
         working-directory: project
@@ -123,6 +125,6 @@ jobs:
       - name: Upload mod JAR
         uses: actions/upload-artifact@v4
         with:
-          name: extra-golems-reborn-fabric-1.21.1-bedrock-targetable
+          name: extra-golems-reborn-fabric-1.21.1-iron-sounds
           path: artifact/*.jar
           if-no-files-found: error
