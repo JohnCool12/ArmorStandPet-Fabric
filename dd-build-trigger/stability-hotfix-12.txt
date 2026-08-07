@@ -1,0 +1,1 @@
+Fix sign and hanging-sign block entity valid-block registration with FabricBlockEntityTypeBuilder and rerun the exhaustive hotfix.2 stabilization suite.
