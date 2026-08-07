@@ -6,6 +6,7 @@ import com.kyanite.deeperdarker.content.DDItems;
 import com.kyanite.deeperdarker.content.blocks.CrystallizedAmberBlock;
 import com.kyanite.deeperdarker.content.blocks.entity.CrystallizedAmberBlockEntity;
 import com.kyanite.deeperdarker.content.blocks.entity.GloomslatePotBlockEntity;
+import com.kyanite.deeperdarker.util.DDTags;
 import com.kyanite.deeperdarker.world.otherside.OthersideDimension;
 import com.kyanite.deeperdarker.world.otherside.OthersideTeleporter;
 import java.util.ArrayList;
@@ -59,6 +60,21 @@ public final class ServerGameplaySmokeTest implements ModInitializer {
                     "Soul Elytra rejected Fabric's custom-elytra tick path");
             require(soulElytra.getItem().isValidRepairItem(soulElytra, new ItemStack(DDItems.SOUL_CRYSTAL.get())),
                     "Soul Elytra no longer recognizes Soul Crystal as its repair material");
+
+            // Verify that the data-driven half of the mod is actually loaded, not merely
+            // present in the JAR. 1.4.1 contains 254 core recipes; compatibility recipes
+            // are conditional and are intentionally excluded when their target mods are absent.
+            long loadedRecipes = server.getRecipeManager().getRecipes().stream()
+                    .filter(recipe -> DeeperDarker.MOD_ID.equals(recipe.id().getNamespace()))
+                    .count();
+            require(loadedRecipes >= 254,
+                    "Only " + loadedRecipes + " Deeper and Darker recipes loaded; expected at least 254 core recipes");
+            require(new ItemStack(DDItems.SCULK_TRANSMITTER.get()).is(DDTags.Items.TRANSMITTER),
+                    "Sculk Transmitter item tag did not load");
+            require(new ItemStack(DDItems.RESONARIUM_HELMET.get()).is(DDTags.Items.RESONARIUM_ARMOR),
+                    "Resonarium armor item tag did not load");
+            require(DDBlocks.BLOOMING_STEM.get().defaultBlockState().is(DDTags.Blocks.BLOOM_STEMS),
+                    "Blooming Stem block tag did not load");
 
             int chunks = 0;
             // Generate two distinct Otherside regions to exercise more biome/feature seeds.
@@ -156,8 +172,8 @@ public final class ServerGameplaySmokeTest implements ModInitializer {
             require(!testedEntities.isEmpty(), "No Deeper and Darker entities were tested");
 
             DeeperDarker.LOGGER.info(
-                    "DEEPERDARKER_GAMEPLAY_SMOKE_TEST_PASSED chunks={} blocks={} entities={} soulElytra=true portalDestinations=true amber={} pot={} portal=true",
-                    chunks, testedBlocks, testedEntities.size(), amberPos, potPos);
+                    "DEEPERDARKER_GAMEPLAY_SMOKE_TEST_PASSED chunks={} blocks={} entities={} recipes={} soulElytra=true portalDestinations=true tags=true amber={} pot={} portal=true",
+                    chunks, testedBlocks, testedEntities.size(), loadedRecipes, amberPos, potPos);
         } catch (Throwable throwable) {
             DeeperDarker.LOGGER.error("DEEPERDARKER_GAMEPLAY_SMOKE_TEST_FAILED", throwable);
             throw throwable;
