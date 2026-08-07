@@ -21,12 +21,11 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 
-/**
- * CI-only runtime regression suite. Dormant in normal installs.
- */
+/** CI-only runtime regression suite. Dormant in normal installs. */
 public final class ServerGameplaySmokeTest implements ModInitializer {
     private static final String ENV = "DEEPERDARKER_GAMEPLAY_SMOKE_TEST";
 
@@ -38,22 +37,27 @@ public final class ServerGameplaySmokeTest implements ModInitializer {
 
     private static void run(MinecraftServer server) {
         try {
-            ServerLevel overworld = server.overworld();
             ServerLevel otherside = server.getLevel(OthersideDimension.OTHERSIDE_LEVEL);
             require(otherside != null, "Otherside ServerLevel was not created");
 
-            // Force real chunk generation in multiple Otherside regions, including the
-            // coordinates from the reported Crystallized Amber crash.
-            for (int x = -2; x <= 2; x++) {
-                for (int z = -2; z <= 2; z++) {
+            int chunks = 0;
+            // Generate two distinct Otherside regions to exercise more biome/feature seeds.
+            for (int x = -3; x <= 3; x++) {
+                for (int z = -3; z <= 3; z++) {
                     otherside.getChunk(x, z);
+                    chunks++;
                 }
             }
-            BlockPos amberPos = new BlockPos(-1328, 57, 1745);
-            otherside.getChunk(amberPos);
+            int crashChunkX = -1328 >> 4;
+            int crashChunkZ = 1745 >> 4;
+            for (int x = crashChunkX - 2; x <= crashChunkX + 2; x++) {
+                for (int z = crashChunkZ - 2; z <= crashChunkZ + 2; z++) {
+                    otherside.getChunk(x, z);
+                    chunks++;
+                }
+            }
 
-            // Reproduce the exact runtime path that previously threw because CHEST loot
-            // parameters incorrectly included BLOCK_ENTITY.
+            BlockPos amberPos = new BlockPos(-1328, 57, 1745);
             BlockState amberState = DDBlocks.CRYSTALLIZED_AMBER.get().defaultBlockState()
                     .setValue(CrystallizedAmberBlock.FOSSILIZED, true);
             otherside.setBlockAndUpdate(amberPos, amberState);
@@ -62,7 +66,6 @@ public final class ServerGameplaySmokeTest implements ModInitializer {
             CrystallizedAmberBlockEntity amber = (CrystallizedAmberBlockEntity) otherside.getBlockEntity(amberPos);
             amber.generateFossil(otherside, amberPos);
 
-            // Exercise custom block-entity state/components independently of rendering.
             BlockPos potPos = amberPos.offset(3, 0, 0);
             otherside.setBlockAndUpdate(potPos, DDBlocks.GLOOMSLATE_POT.get().defaultBlockState());
             require(otherside.getBlockEntity(potPos) instanceof GloomslatePotBlockEntity,
@@ -73,14 +76,28 @@ public final class ServerGameplaySmokeTest implements ModInitializer {
             require(pot.getUpdateTag(otherside.registryAccess()).contains("item"),
                     "Gloomslate Pot update NBT omitted its item");
 
-            // Exercise the replacement Fabric portal code and its frame construction.
             BlockPos portalOrigin = amberPos.offset(12, 8, 12);
             otherside.setBlockAndUpdate(portalOrigin.below(), Blocks.REINFORCED_DEEPSLATE.defaultBlockState());
             require(OthersideTeleporter.makePortal(otherside, portalOrigin, Direction.Axis.X).isPresent(),
                     "Otherside portal creation failed");
 
-            // Instantiate, add, tick, and remove every custom entity type. This catches
-            // missing attributes, bad constructors/synced data, and tick-time assumptions.
+            // Exercise every registered custom block through vanilla placement/update/shape/removal.
+            int testedBlocks = 0;
+            BlockPos blockBase = new BlockPos(-1280, 90, 1800);
+            for (Block block : BuiltInRegistries.BLOCK) {
+                ResourceLocation id = BuiltInRegistries.BLOCK.getKey(block);
+                if (id == null || !DeeperDarker.MOD_ID.equals(id.getNamespace())) continue;
+                BlockPos pos = blockBase.offset((testedBlocks % 16) * 3, 0, (testedBlocks / 16) * 3);
+                otherside.setBlockAndUpdate(pos.below(), Blocks.STONE.defaultBlockState());
+                otherside.setBlockAndUpdate(pos, block.defaultBlockState());
+                BlockState placed = otherside.getBlockState(pos);
+                placed.getShape(otherside, pos);
+                placed.getCollisionShape(otherside, pos);
+                otherside.removeBlock(pos, false);
+                testedBlocks++;
+            }
+            require(testedBlocks > 0, "No Deeper and Darker blocks were tested");
+
             List<String> testedEntities = new ArrayList<>();
             int index = 0;
             for (EntityType<?> type : BuiltInRegistries.ENTITY_TYPE) {
@@ -91,7 +108,7 @@ public final class ServerGameplaySmokeTest implements ModInitializer {
                 entity.moveTo(amberPos.getX() + 20.5 + index * 2.0, amberPos.getY() + 2.0,
                         amberPos.getZ() + 20.5, 0.0f, 0.0f);
                 require(otherside.addFreshEntity(entity), "Failed to add entity " + id);
-                entity.tick();
+                for (int tick = 0; tick < 5; tick++) entity.tick();
                 testedEntities.add(id.toString());
                 entity.discard();
                 index++;
@@ -99,8 +116,8 @@ public final class ServerGameplaySmokeTest implements ModInitializer {
             require(!testedEntities.isEmpty(), "No Deeper and Darker entities were tested");
 
             DeeperDarker.LOGGER.info(
-                    "DEEPERDARKER_GAMEPLAY_SMOKE_TEST_PASSED chunks=26 entities={} amber={} pot={} portal=true",
-                    testedEntities.size(), amberPos, potPos);
+                    "DEEPERDARKER_GAMEPLAY_SMOKE_TEST_PASSED chunks={} blocks={} entities={} amber={} pot={} portal=true",
+                    chunks, testedBlocks, testedEntities.size(), amberPos, potPos);
         } catch (Throwable throwable) {
             DeeperDarker.LOGGER.error("DEEPERDARKER_GAMEPLAY_SMOKE_TEST_FAILED", throwable);
             throw throwable;
