@@ -27,6 +27,7 @@ import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.portal.DimensionTransition;
 
 /** CI-only runtime regression suite. Dormant in normal installs. */
 public final class ServerGameplaySmokeTest implements ModInitializer {
@@ -40,6 +41,7 @@ public final class ServerGameplaySmokeTest implements ModInitializer {
 
     private static void run(MinecraftServer server) {
         try {
+            ServerLevel overworld = server.overworld();
             ServerLevel otherside = server.getLevel(OthersideDimension.OTHERSIDE_LEVEL);
             require(otherside != null, "Otherside ServerLevel was not created");
 
@@ -53,6 +55,10 @@ public final class ServerGameplaySmokeTest implements ModInitializer {
             FabricElytraItem fabricElytra = (FabricElytraItem) soulElytra.getItem();
             require(fabricElytra.useCustomElytra(elytraProbe, soulElytra, false),
                     "Soul Elytra rejected Fabric's custom-elytra flight eligibility check");
+            require(fabricElytra.useCustomElytra(elytraProbe, soulElytra, true),
+                    "Soul Elytra rejected Fabric's custom-elytra tick path");
+            require(soulElytra.getItem().isValidRepairItem(soulElytra, new ItemStack(DDItems.SOUL_CRYSTAL.get())),
+                    "Soul Elytra no longer recognizes Soul Crystal as its repair material");
 
             int chunks = 0;
             // Generate two distinct Otherside regions to exercise more biome/feature seeds.
@@ -91,9 +97,29 @@ public final class ServerGameplaySmokeTest implements ModInitializer {
                     "Gloomslate Pot update NBT omitted its item");
 
             BlockPos portalOrigin = amberPos.offset(12, 8, 12);
-            otherside.setBlockAndUpdate(portalOrigin.below(), Blocks.REINFORCED_DEEPSLATE.defaultBlockState());
-            require(OthersideTeleporter.makePortal(otherside, portalOrigin, Direction.Axis.X).isPresent(),
-                    "Otherside portal creation failed");
+            var othersidePortal = OthersideTeleporter.makePortal(otherside, portalOrigin, Direction.Axis.X);
+            require(othersidePortal.isPresent(), "Otherside portal creation failed");
+
+            // Exercise the actual destination calculation in both directions, not merely
+            // frame construction. This forces POI lookup/creation and collision-safe exit logic.
+            Entity othersideTraveler = EntityType.ARMOR_STAND.create(otherside);
+            require(othersideTraveler != null, "Could not create Otherside portal traveler");
+            BlockPos othersidePortalPos = othersidePortal.get().minCorner;
+            othersideTraveler.moveTo(othersidePortalPos.getCenter());
+            DimensionTransition toOverworld = DDBlocks.OTHERSIDE_PORTAL.get()
+                    .getPortalDestination(otherside, othersideTraveler, othersidePortalPos);
+            require(toOverworld != null, "Otherside-to-Overworld portal destination calculation failed");
+
+            BlockPos overworldPortalOrigin = new BlockPos(256, 90, 256);
+            var overworldPortal = OthersideTeleporter.makePortal(overworld, overworldPortalOrigin, Direction.Axis.X);
+            require(overworldPortal.isPresent(), "Overworld Otherside-portal creation failed");
+            Entity overworldTraveler = EntityType.ARMOR_STAND.create(overworld);
+            require(overworldTraveler != null, "Could not create Overworld portal traveler");
+            BlockPos overworldPortalPos = overworldPortal.get().minCorner;
+            overworldTraveler.moveTo(overworldPortalPos.getCenter());
+            DimensionTransition toOtherside = DDBlocks.OTHERSIDE_PORTAL.get()
+                    .getPortalDestination(overworld, overworldTraveler, overworldPortalPos);
+            require(toOtherside != null, "Overworld-to-Otherside portal destination calculation failed");
 
             // Exercise every registered custom block through vanilla placement/update/shape/removal.
             int testedBlocks = 0;
@@ -130,7 +156,7 @@ public final class ServerGameplaySmokeTest implements ModInitializer {
             require(!testedEntities.isEmpty(), "No Deeper and Darker entities were tested");
 
             DeeperDarker.LOGGER.info(
-                    "DEEPERDARKER_GAMEPLAY_SMOKE_TEST_PASSED chunks={} blocks={} entities={} soulElytra=true amber={} pot={} portal=true",
+                    "DEEPERDARKER_GAMEPLAY_SMOKE_TEST_PASSED chunks={} blocks={} entities={} soulElytra=true portalDestinations=true amber={} pot={} portal=true",
                     chunks, testedBlocks, testedEntities.size(), amberPos, potPos);
         } catch (Throwable throwable) {
             DeeperDarker.LOGGER.error("DEEPERDARKER_GAMEPLAY_SMOKE_TEST_FAILED", throwable);
