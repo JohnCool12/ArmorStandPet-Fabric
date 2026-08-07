@@ -1,0 +1,1 @@
+Fix custom standing/hanging sign constructors so vanilla 1.21.1 does not validate them against vanilla BlockEntityType.SIGN/HANGING_SIGN; rerun exhaustive hotfix.2 suite.
