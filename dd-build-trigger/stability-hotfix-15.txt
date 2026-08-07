@@ -1,0 +1,1 @@
+Remove misleading vanilla DataFixer ERROR spam by using EntityType.Builder.build() without a vanilla schema ID, preserving all entity dimensions/eye heights/tracking settings; rerun all final client/server gates.
