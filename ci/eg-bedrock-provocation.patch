@@ -1,6 +1,6 @@
 --- a/src/main/java/com/mcmoddev/golems/entity/GolemBase.java
 +++ b/src/main/java/com/mcmoddev/golems/entity/GolemBase.java
-@@ -394,6 +394,10 @@
+@@ -394,6 +394,9 @@
  	@Override
  	public boolean canAttackType(final EntityType<?> type) {
  		if (type == EntityType.PLAYER && this.isPlayerCreated()) {
@@ -10,7 +10,7 @@
  			return ExtraGolems.CONFIG.enableFriendlyFire();
  		}
  		if (type == EntityType.VILLAGER || type == EGRegistry.EntityReg.GOLEM.get() || type == EntityType.IRON_GOLEM
-@@ -571,6 +575,43 @@
+@@ -571,4 +574,43 @@
  	//// ATTRIBUTE HOOKS ////
 +
 +	private boolean isBedrockGolem() {
