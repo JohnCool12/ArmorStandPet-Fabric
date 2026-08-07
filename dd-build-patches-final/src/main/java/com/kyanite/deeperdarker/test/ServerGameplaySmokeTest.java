@@ -2,6 +2,7 @@ package com.kyanite.deeperdarker.test;
 
 import com.kyanite.deeperdarker.DeeperDarker;
 import com.kyanite.deeperdarker.content.DDBlocks;
+import com.kyanite.deeperdarker.content.DDItems;
 import com.kyanite.deeperdarker.content.blocks.CrystallizedAmberBlock;
 import com.kyanite.deeperdarker.content.blocks.entity.CrystallizedAmberBlockEntity;
 import com.kyanite.deeperdarker.content.blocks.entity.GloomslatePotBlockEntity;
@@ -10,6 +11,7 @@ import com.kyanite.deeperdarker.world.otherside.OthersideTeleporter;
 import java.util.ArrayList;
 import java.util.List;
 import net.fabricmc.api.ModInitializer;
+import net.fabricmc.fabric.api.entity.event.v1.FabricElytraItem;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -19,6 +21,7 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Block;
@@ -39,6 +42,17 @@ public final class ServerGameplaySmokeTest implements ModInitializer {
         try {
             ServerLevel otherside = server.getLevel(OthersideDimension.OTHERSIDE_LEVEL);
             require(otherside != null, "Otherside ServerLevel was not created");
+
+            // Fabric has a dedicated custom-elytra hook. Merely subclassing ElytraItem is
+            // not enough for a modded chest item to participate in LivingEntity flight.
+            ItemStack soulElytra = new ItemStack(DDItems.SOUL_ELYTRA.get());
+            require(soulElytra.getItem() instanceof FabricElytraItem,
+                    "Soul Elytra does not implement FabricElytraItem; Fabric flight cannot start");
+            LivingEntity elytraProbe = EntityType.ARMOR_STAND.create(otherside);
+            require(elytraProbe != null, "Could not create Soul Elytra flight probe entity");
+            FabricElytraItem fabricElytra = (FabricElytraItem) soulElytra.getItem();
+            require(fabricElytra.useCustomElytra(elytraProbe, soulElytra, false),
+                    "Soul Elytra rejected Fabric's custom-elytra flight eligibility check");
 
             int chunks = 0;
             // Generate two distinct Otherside regions to exercise more biome/feature seeds.
@@ -116,7 +130,7 @@ public final class ServerGameplaySmokeTest implements ModInitializer {
             require(!testedEntities.isEmpty(), "No Deeper and Darker entities were tested");
 
             DeeperDarker.LOGGER.info(
-                    "DEEPERDARKER_GAMEPLAY_SMOKE_TEST_PASSED chunks={} blocks={} entities={} amber={} pot={} portal=true",
+                    "DEEPERDARKER_GAMEPLAY_SMOKE_TEST_PASSED chunks={} blocks={} entities={} soulElytra=true amber={} pot={} portal=true",
                     chunks, testedBlocks, testedEntities.size(), amberPos, potPos);
         } catch (Throwable throwable) {
             DeeperDarker.LOGGER.error("DEEPERDARKER_GAMEPLAY_SMOKE_TEST_FAILED", throwable);
