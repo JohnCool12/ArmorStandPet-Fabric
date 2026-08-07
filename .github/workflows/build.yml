@@ -49,6 +49,24 @@ jobs:
         working-directory: project
         run: gradle clean build --stacktrace --no-daemon
 
+      - name: Smoke-test dedicated Fabric server
+        working-directory: project
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p run/server
+          printf 'eula=true\n' > run/server/eula.txt
+          set +e
+          timeout --signal=TERM 90s gradle runServer --no-daemon > ../server-smoke.log 2>&1
+          status=$?
+          set -e
+          cat ../server-smoke.log
+          if [ "$status" -ne 0 ] && [ "$status" -ne 124 ]; then
+            exit "$status"
+          fi
+          test -f run/server/logs/latest.log
+          grep -q 'Done (' run/server/logs/latest.log
+
       - name: Collect production JAR
         shell: bash
         run: |
