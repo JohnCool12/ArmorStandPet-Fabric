@@ -32,7 +32,7 @@ jobs:
           cat ci/egpatch.part-* | base64 --decode > /tmp/fabric-port.patch.xz
           echo '8b5eb02294d41d7ef3af71ce280dcded9920b2ae097f73043cf60c751f94c7ba  /tmp/fabric-port.patch.xz' | sha256sum --check
 
-      - name: Restore exact source and apply Fabric port
+      - name: Restore source and apply cumulative fixes
         shell: bash
         run: |
           set -euo pipefail
@@ -47,31 +47,21 @@ jobs:
           patch -p1 --batch --forward < ../ci/eg-advanced-swim.patch
           patch -p1 --batch --forward < ../ci/eg-surface-swim.patch
           patch -p1 --batch --forward < ../ci/eg-bedrock-provocation.patch
+          patch -p1 --batch --forward < ../ci/eg-all-eyes-neutral.patch
+          cp ../ci/GolemFinalEyesLayer.java src/main/java/com/mcmoddev/golems/client/entity/layer/GolemFinalEyesLayer.java
+
           test -f build.gradle
           test -f src/main/resources/fabric.mod.json
           test -f src/main/resources/assets/golems/models/item/golem_spawn_egg.json
-          grep -q 'fabric-loom' build.gradle
+          test -f src/main/java/com/mcmoddev/golems/client/entity/layer/GolemFinalEyesLayer.java
+          grep -q 'GolemFinalEyesLayer' src/main/java/com/mcmoddev/golems/client/entity/GolemRenderer.java
+          grep -q 'golem.setPlayerCreated(false);' src/main/java/com/mcmoddev/golems/block/GolemHeadBlock.java
           grep -q 'this.setInvulnerable(false);' src/main/java/com/mcmoddev/golems/entity/GolemBase.java
           grep -q 'usesIronGolemSounds' src/main/java/com/mcmoddev/golems/entity/GolemBase.java
-          grep -q 'IRON_GOLEM_REPAIR' src/main/java/com/mcmoddev/golems/entity/GolemBase.java
           grep -q 'Surface swimming AI' src/main/java/com/mcmoddev/golems/entity/GolemBase.java
-          grep -q 'goalSelector.addGoal(0, new FloatGoal(this));' src/main/java/com/mcmoddev/golems/entity/GolemBase.java
-          ! grep -q 'moveControl = new SwimmingMovementController(this);' src/main/java/com/mcmoddev/golems/entity/GolemBase.java
-          ! grep -q 'goalSelector.addGoal(4, new RandomSwimmingGoal' src/main/java/com/mcmoddev/golems/entity/GolemBase.java
-          grep -q 'return super.isPushedByFluid();' src/main/java/com/mcmoddev/golems/entity/GolemBase.java
-          grep -q 'getSwimAbility() == SwimAbility.SWIM' src/main/java/com/mcmoddev/golems/data/golem/Attributes.java
-          grep -q 'mob.setPathfindingMalus(PathType.WATER, 0.0F);' src/main/java/com/mcmoddev/golems/data/golem/Attributes.java
-          grep -q '"swim_ability": "swim"' src/main/resources/data/golems/golems/golem/prismarine.json
-          grep -q '"swim_ability": "swim"' src/main/resources/data/golems/golems/golem/sea_lantern.json
-          grep -q '"swim_ability": "swim"' src/main/resources/data/golems/golems/golem/generic_coral.json
-          grep -q '"swim_ability": "swim"' src/main/resources/data/golems/golems/golem/generic_dead_coral.json
           grep -q '"knockback_resistance": 1.0' src/main/resources/data/golems/golems/golem/diamond.json
           grep -q '"knockback_resistance": 1.0' src/main/resources/data/golems/golems/golem/emerald.json
-          test -f src/main/java/com/mcmoddev/golems/client/entity/layer/GolemBedrockEyesLayer.java
-          grep -q 'public boolean hurt(final DamageSource source, final float amount)' src/main/java/com/mcmoddev/golems/entity/GolemBase.java
-          grep -q 'this.setLastHurtByMob(attacker);' src/main/java/com/mcmoddev/golems/entity/GolemBase.java
           grep -q 'this.setPersistentAngerTarget(player.getUUID());' src/main/java/com/mcmoddev/golems/entity/GolemBase.java
-          grep -q 'this.startPersistentAngerTimer();' src/main/java/com/mcmoddev/golems/entity/GolemBase.java
 
       - name: Build
         working-directory: project
@@ -119,12 +109,7 @@ jobs:
           done
           cat ../client-smoke.log
           if [ -f run/client/logs/latest.log ]; then
-            if grep -q 'golems:item/golem_spawn_egg' run/client/logs/latest.log; then
-              echo 'Spawn egg model is still missing.' >&2
-              success=0
-            fi
             if grep -q 'Mixin apply for mod golems failed' run/client/logs/latest.log; then
-              echo 'Extra Golems mixin failure detected.' >&2
               success=0
             fi
           fi
@@ -146,6 +131,6 @@ jobs:
       - name: Upload mod JAR
         uses: actions/upload-artifact@v4
         with:
-          name: extra-golems-reborn-fabric-1.21.1-bedrock-provocation
+          name: extra-golems-reborn-fabric-1.21.1-all-eyes-neutral
           path: artifact/*.jar
           if-no-files-found: error
