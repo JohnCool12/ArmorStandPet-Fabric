@@ -1,0 +1,39 @@
+diff --git a/src/main/java/com/mcmoddev/golems/client/entity/GolemRenderer.java b/src/main/java/com/mcmoddev/golems/client/entity/GolemRenderer.java
+index 398c517..518319b 100644
+--- a/src/main/java/com/mcmoddev/golems/client/entity/GolemRenderer.java
++++ b/src/main/java/com/mcmoddev/golems/client/entity/GolemRenderer.java
+@@ -5,7 +5,7 @@ import com.mcmoddev.golems.data.GolemContainer;
+ import com.mcmoddev.golems.entity.GolemBase;
+ import com.mcmoddev.golems.client.entity.layer.GolemBannerLayer;
+ import com.mcmoddev.golems.client.entity.layer.GolemCrackinessLayer;
+-import com.mcmoddev.golems.client.entity.layer.GolemBedrockEyesLayer;
++import com.mcmoddev.golems.client.entity.layer.GolemFinalEyesLayer;
+ import com.mcmoddev.golems.client.entity.layer.GolemFlowerLayer;
+ import com.mcmoddev.golems.client.entity.layer.GolemKittyLayer;
+ import com.mcmoddev.golems.client.entity.layer.GolemLayerListLayer;
+@@ -39,8 +39,8 @@ public class GolemRenderer<T extends GolemBase> extends MobRenderer<T, GolemMode
+ 		this.addLayer(new GolemFlowerLayer<>(this));
+ 		this.addLayer(new GolemKittyLayer<>(this));
+ 		this.addLayer(new GolemBannerLayer<>(this));
+-		// Keep Bedrock Golem eyes as the final pass so texture-overlay mods cannot bury them.
+-		this.addLayer(new GolemBedrockEyesLayer<>(this));
++		// Keep every golem's own eye layer as the final pass so texture-overlay mods cannot bury it.
++		this.addLayer(new GolemFinalEyesLayer<>(this));
+ 	}
+ 
+ 	@Override
+diff --git a/src/main/java/com/mcmoddev/golems/block/GolemHeadBlock.java b/src/main/java/com/mcmoddev/golems/block/GolemHeadBlock.java
+index b6c4dfa..03cdbd9 100644
+--- a/src/main/java/com/mcmoddev/golems/block/GolemHeadBlock.java
++++ b/src/main/java/com/mcmoddev/golems/block/GolemHeadBlock.java
+@@ -239,7 +239,9 @@ public final class GolemHeadBlock extends HorizontalDirectionalBlock {
+ 				final GolemBase golem = GolemBase.create(level, golemId.location());
+ 				// spawn the entity!
+ 				removeAllGolemBlocks(level, headPos, isEastWest);
+-				golem.setPlayerCreated(true);
++				// Extra Golems built from the T-shaped block structure should behave like
++				// naturally spawned (neutral) Iron Golems, not player-created passive ones.
++				golem.setPlayerCreated(false);
+ 				golem.moveTo(spawnX, spawnY, spawnZ, 0.0F, 0.0F);
+ 				level.addFreshEntity(golem);
+ 				if (level instanceof ServerLevel) {
