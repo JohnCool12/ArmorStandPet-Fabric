@@ -64,34 +64,20 @@ replace_once(
     "strict outside-village Bedrock exclusion",
 )
 
-# Replace Bedrock's force-target/force-anger block with the minimum bookkeeping that a
-# successful vanilla LivingEntity hit supplies to HurtByTargetGoal. This is enough to
-# provoke retaliation while preserving zero damage/red flash/hurt-time, but it does not
-# bypass target range, continuation, death, village reputation, or hostile-mob scanning.
-old = '''\t\t\tif (isBedrockGolem() && sourceEntity instanceof LivingEntity attacker
-\t\t\t\t\t&& attacker != this && attacker.isAlive()) {
-\t\t\t\t// Creative/spectator players remain invalid combat targets.
-\t\t\t\tif (!(attacker instanceof Player player) || (!player.isCreative() && !player.isSpectator())) {
-\t\t\t\t\t// Constructed-neutral player provocation was already registered above.
-\t\t\t\t\t// Other Bedrock attack attempts still need explicit bookkeeping because
-\t\t\t\t\t\t// invulnerability prevents vanilla LivingEntity#hurt from doing it.
-\t\t\t\t\tif (!(attacker instanceof Player) || !isConstructedNeutral()
-\t\t\t\t\t\t\t|| isConstructedNeutralInVillage()) {
-\t\t\t\t\t\tthis.setLastHurtByMob(attacker);
-\t\t\t\t\t\tthis.setTarget(attacker);
-\t\t\t\t\t}
+# Replace the whole Bedrock special attack-attempt block by stable code boundaries,
+# rather than depending on comments that changed as the hybrid village patch evolved.
+start_marker = "\t\t\tif (isBedrockGolem() && sourceEntity instanceof LivingEntity attacker\n"
+end_marker = "\n\n\t\t// Bedrock still exits through isInvulnerableTo() before health loss, hurtTime,\n"
+start = text.find(start_marker)
+if start < 0:
+    raise SystemExit("Could not find Bedrock hurt block start")
+end = text.find(end_marker, start)
+if end < 0:
+    raise SystemExit("Could not find Bedrock hurt block end")
+if text.find(start_marker, start + 1) >= 0:
+    raise SystemExit("Found multiple Bedrock hurt block starts")
 
-\t\t\t\t\t// Preserve the earlier persistent Bedrock behavior only for Bedrock
-\t\t\t\t\t// golems that were NOT built under the new strict-neutral construction mode.
-\t\t\t\t\tif (attacker instanceof Player player
-\t\t\t\t\t\t\t&& (!isConstructedNeutral() || isConstructedNeutralInVillage())) {
-\t\t\t\t\t\tthis.setPersistentAngerTarget(player.getUUID());
-\t\t\t\t\t\tthis.startPersistentAngerTimer();
-\t\t\t\t\t}
-\t\t\t\t}
-\t\t\t}
-'''
-new = '''\t\t\tif (isBedrockGolem() && sourceEntity instanceof LivingEntity attacker
+new_block = '''\t\t\tif (isBedrockGolem() && sourceEntity instanceof LivingEntity attacker
 \t\t\t\t\t&& attacker != this && attacker.isAlive()) {
 \t\t\t\t// Creative/spectator players remain invalid combat targets. For every
 \t\t\t\t// other living attacker, record ONLY the vanilla retaliation stimulus.
@@ -100,9 +86,8 @@ new = '''\t\t\tif (isBedrockGolem() && sourceEntity instanceof LivingEntity atta
 \t\t\t\tif (!(attacker instanceof Player player) || (!player.isCreative() && !player.isSpectator())) {
 \t\t\t\t\tthis.setLastHurtByMob(attacker);
 \t\t\t\t}
-\t\t\t}
-'''
-replace_once(old, new, "Bedrock forced-target hurt block")
+\t\t\t}'''
+text = text[:start] + new_block + text[end:]
 
 p.write_text(text)
 print("Applied vanilla-target-goal Bedrock hostility fix.")
