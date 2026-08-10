@@ -1,0 +1,135 @@
+name: Build Extra Golems Bedrock Natural Hostility
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out build carrier
+        uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Gradle 9.5.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.5.1'
+
+      - name: Reconstruct Fabric port patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat ci/egpatch.part-* | base64 --decode > /tmp/fabric-port.patch.xz
+          echo '8b5eb02294d41d7ef3af71ce280dcded9920b2ae097f73043cf60c751f94c7ba  /tmp/fabric-port.patch.xz' | sha256sum --check
+
+      - name: Restore source and apply cumulative fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone https://github.com/bigenergy/extra-golems-reborn.git project
+          cd project
+          git checkout 6b21ec4a59ca16e8362b26e38fc63b2807042bdf
+          xz -dc /tmp/fabric-port.patch.xz | patch -p4 --batch --forward
+          patch -p1 --batch --forward < ../ci/eg-fix1.patch
+          patch -p1 --batch --forward < ../ci/eg-fix2.patch
+          patch -p1 --batch --forward < ../ci/eg-bedrock-targetable.patch
+          patch -p1 --batch --forward < ../ci/eg-fix4.patch
+          patch -p1 --batch --forward < ../ci/eg-advanced-swim.patch
+          patch -p1 --batch --forward < ../ci/eg-surface-swim.patch
+          patch -p1 --batch --forward < ../ci/eg-bedrock-provocation.patch
+          patch -p1 --batch --forward < ../ci/eg-all-eyes-neutral.patch
+          cp ../ci/GolemFinalEyesLayer.java src/main/java/com/mcmoddev/golems/client/entity/layer/GolemFinalEyesLayer.java
+          cd ..
+          python3 ci/apply-strict-neutral.py
+          python3 ci/apply-legacy-neutral-migration.py
+          python3 ci/apply-hybrid-village-neutral.py
+          python3 ci/apply-bedrock-natural-hostility.py
+          cd project
+
+          test -f build.gradle
+          test -f src/main/resources/fabric.mod.json
+          grep -q 'BEDROCK_NATURAL_HOSTILITY_TAG' src/main/java/com/mcmoddev/golems/entity/GolemBase.java
+          grep -q 'migrateBedrockNaturalHostilityState' src/main/java/com/mcmoddev/golems/entity/GolemBase.java
+          grep -q 'this.setLastHurtByMob(attacker);' src/main/java/com/mcmoddev/golems/entity/GolemBase.java
+          ! grep -A20 'isBedrockGolem() && sourceEntity instanceof LivingEntity attacker' src/main/java/com/mcmoddev/golems/entity/GolemBase.java | grep -q 'this.setTarget(attacker);'
+          ! grep -A20 'isBedrockGolem() && sourceEntity instanceof LivingEntity attacker' src/main/java/com/mcmoddev/golems/entity/GolemBase.java | grep -q 'this.startPersistentAngerTimer();'
+          grep -q 'serverLevel.isVillage(this.blockPosition())' src/main/java/com/mcmoddev/golems/entity/GolemBase.java
+          grep -q 'new DefendVillageTargetGoal(this)' src/main/java/com/mcmoddev/golems/entity/GolemBase.java
+          grep -q 'new HurtByTargetGoal(this)' src/main/java/com/mcmoddev/golems/entity/GolemBase.java
+          grep -q 'entity instanceof Enemy && !(entity instanceof Creeper)' src/main/java/com/mcmoddev/golems/entity/GolemBase.java
+          grep -q 'GolemFinalEyesLayer' src/main/java/com/mcmoddev/golems/client/entity/GolemRenderer.java
+          grep -q 'this.setInvulnerable(false);' src/main/java/com/mcmoddev/golems/entity/GolemBase.java
+          grep -q 'usesIronGolemSounds' src/main/java/com/mcmoddev/golems/entity/GolemBase.java
+          grep -q 'Surface swimming AI' src/main/java/com/mcmoddev/golems/entity/GolemBase.java
+          for f in diamond emerald sculk_catalyst ancient_debris obsidian crying_obsidian; do
+            grep -q '"knockback_resistance": 1.0' "src/main/resources/data/golems/golems/golem/$f.json"
+          done
+
+      - name: Build
+        working-directory: project
+        run: gradle clean build --stacktrace --no-daemon
+
+      - name: Smoke-test dedicated Fabric server
+        working-directory: project
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p run/server
+          printf 'eula=true\n' > run/server/eula.txt
+          set +e
+          timeout --signal=TERM 90s gradle runServer --no-daemon > ../server-smoke.log 2>&1
+          status=$?
+          set -e
+          cat ../server-smoke.log
+          if [ "$status" -ne 0 ] && [ "$status" -ne 124 ]; then exit "$status"; fi
+          test -f run/server/logs/latest.log
+          grep -q 'Done (' run/server/logs/latest.log
+
+      - name: Smoke-test Fabric client
+        working-directory: project
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v xvfb-run
+          setsid env ALSOFT_DRIVERS=null LIBGL_ALWAYS_SOFTWARE=true xvfb-run -a gradle runClient --no-daemon > ../client-smoke.log 2>&1 &
+          pid=$!
+          success=0
+          for i in $(seq 1 90); do
+            if [ -f run/client/logs/latest.log ] && grep -q 'minecraft:textures/atlas/blocks.png-atlas' run/client/logs/latest.log; then
+              sleep 10
+              if kill -0 "$pid" 2>/dev/null; then success=1; fi
+              break
+            fi
+            if ! kill -0 "$pid" 2>/dev/null; then break; fi
+            sleep 1
+          done
+          cat ../client-smoke.log
+          if [ -f run/client/logs/latest.log ] && grep -q 'Mixin apply for mod golems failed' run/client/logs/latest.log; then success=0; fi
+          kill -TERM -- -"$pid" 2>/dev/null || true
+          wait "$pid" 2>/dev/null || true
+          if [ "$success" -ne 1 ]; then exit 1; fi
+
+      - name: Collect production JAR
+        shell: bash
+        run: |
+          mkdir -p artifact
+          find project/build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*-sources.jar' ! -name '*-dev.jar' -exec cp {} artifact/ \;
+          test -n "$(find artifact -maxdepth 1 -type f -name '*.jar' -print -quit)"
+          ls -lah artifact
+
+      - name: Upload mod JAR
+        uses: actions/upload-artifact@v4
+        with:
+          name: extra-golems-reborn-fabric-1.21.1-bedrock-natural-hostility
+          path: artifact/*.jar
+          if-no-files-found: error
