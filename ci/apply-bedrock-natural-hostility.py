@@ -86,7 +86,8 @@ new_block = '''\t\t\tif (isBedrockGolem() && sourceEntity instanceof LivingEntit
 \t\t\t\tif (!(attacker instanceof Player player) || (!player.isCreative() && !player.isSpectator())) {
 \t\t\t\t\tthis.setLastHurtByMob(attacker);
 \t\t\t\t}
-\t\t\t}'''
+\t\t\t}
+\t\t}'''
 text = text[:start] + new_block + text[end:]
 
 p.write_text(text)
