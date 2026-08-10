@@ -39,7 +39,7 @@ index b6c4dfa..03cdbd9 100644
  				if (level instanceof ServerLevel) {
 --- a/src/main/java/com/mcmoddev/golems/entity/GolemBase.java
 +++ b/src/main/java/com/mcmoddev/golems/entity/GolemBase.java
-@@ -252,8 +252,15 @@
+@@ -252,7 +252,13 @@
  		// initialize goals and behaviors
  		if (this.isEffectiveAi()) {
 -			// remove and re-instantiate goals
