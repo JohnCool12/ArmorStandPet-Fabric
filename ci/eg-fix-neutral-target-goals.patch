@@ -1,0 +1,17 @@
+--- a/src/main/java/com/mcmoddev/golems/entity/GolemBase.java
++++ b/src/main/java/com/mcmoddev/golems/entity/GolemBase.java
+@@ -252,8 +252,15 @@
+ 		// initialize goals and behaviors
+ 		if (this.isEffectiveAi()) {
+-			// remove and re-instantiate goals
++			// remove and re-instantiate goals. registerGoals() delegates to the
++			// vanilla IronGolem implementation, which populates BOTH selectors.
++			// Clearing only goalSelector caused every setGolemId() call to stack
++			// another HurtByTargetGoal / angry-player target / village-defense /
++			// universal-anger-reset set in targetSelector. That made constructed
++			// neutral golems much stickier and less predictable than vanilla.
+ 			this.goalSelector.getAvailableGoals().clear();
++			this.targetSelector.getAvailableGoals().clear();
+ 			this.registerGoals();
+ 			// define behavior for the given swimming ability
+ 			switch (container.getAttributes().getSwimAbility()) {
