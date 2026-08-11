@@ -72,7 +72,6 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           s = Path('src/main/java/com/mcmoddev/golems/entity/GolemBase.java').read_text()
-
           start = s.index('\tprivate void configureBedrockNaturalIronGolemTargeting() {')
           end = s.index('\n\tprivate ', start + 2)
           natural = s[start:end]
@@ -84,7 +83,6 @@ jobs:
           assert 'entity instanceof Enemy && !(entity instanceof Creeper)' in natural
           assert 'new ResetUniversalAngerTargetGoal<>(this, false)' in natural
           assert 'isConstructedNeutralInVillage()' not in natural
-
           mark_start = s.index('\tpublic void markConstructedNeutral() {')
           mark_end = s.index('\n\tprivate ', mark_start + 2)
           mark = s[mark_start:mark_end]
@@ -93,7 +91,6 @@ jobs:
           assert 'setPlayerCreated(false)' in bedrock_branch
           assert 'configureBedrockNaturalIronGolemTargeting()' in bedrock_branch
           assert 'addTag(BEDROCK_NATURAL_HOSTILITY_TAG)' in bedrock_branch
-
           hurt_start = s.index('\tpublic boolean hurt(final DamageSource source, final float amount) {')
           hurt_end = s.index('\n\t@Override', hurt_start + 10)
           hurt = s[hurt_start:hurt_end]
@@ -103,7 +100,6 @@ jobs:
           assert 'this.startPersistentAngerTimer();' not in b
           print('Bedrock true-vanilla-natural AI static verification passed')
           PY
-
           grep -q 'GolemFinalEyesLayer' src/main/java/com/mcmoddev/golems/client/entity/GolemRenderer.java
           grep -q 'this.setInvulnerable(false);' src/main/java/com/mcmoddev/golems/entity/GolemBase.java
           grep -q 'usesIronGolemSounds' src/main/java/com/mcmoddev/golems/entity/GolemBase.java
@@ -112,7 +108,44 @@ jobs:
             grep -q '"knockback_resistance": 1.0' "src/main/resources/data/golems/golems/golem/$f.json"
           done
 
-      - name: Build
+      - name: Inject Bedrock AI regression GameTest
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 ci/inject-bedrock-ai-gametest.py
+          grep -q 'fabric-gametest' project/src/main/resources/fabric.mod.json
+          test -f project/src/main/java/com/mcmoddev/golems/test/BedrockNaturalAiGameTest.java
+
+      - name: Run Bedrock-vs-vanilla combat AI GameTest
+        working-directory: project
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p run/gametest
+          printf 'eula=true\n' > run/gametest/eula.txt
+          gradle tasks --all --no-daemon | grep -i 'runGametest'
+          gradle runGametest --stacktrace --no-daemon
+          test -f build/junit.xml
+          cat build/junit.xml
+          python3 - <<'PY'
+          import xml.etree.ElementTree as ET
+          root = ET.parse('build/junit.xml').getroot()
+          failures = sum(int(s.attrib.get('failures', '0')) for s in ([root] if root.tag == 'testsuite' else root.findall('testsuite')))
+          errors = sum(int(s.attrib.get('errors', '0')) for s in ([root] if root.tag == 'testsuite' else root.findall('testsuite')))
+          if failures or errors:
+              raise SystemExit(f'GameTest report contains failures={failures}, errors={errors}')
+          print('Bedrock-vs-vanilla combat AI GameTest report passed')
+          PY
+
+      - name: Remove CI-only GameTest harness
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 ci/remove-bedrock-ai-gametest.py
+          ! grep -q 'fabric-gametest' project/src/main/resources/fabric.mod.json
+          test ! -e project/src/main/java/com/mcmoddev/golems/test/BedrockNaturalAiGameTest.java
+
+      - name: Build production JAR
         working-directory: project
         run: gradle clean build --stacktrace --no-daemon
 
@@ -177,6 +210,6 @@ jobs:
       - name: Upload mod JAR
         uses: actions/upload-artifact@v4
         with:
-          name: extra-golems-reborn-fabric-1.21.1-bedrock-true-vanilla-natural-ai
+          name: extra-golems-reborn-fabric-1.21.1-bedrock-true-vanilla-natural-ai-gametest-verified
           path: artifact/*.jar
           if-no-files-found: error
