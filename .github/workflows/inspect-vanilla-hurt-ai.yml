@@ -19,46 +19,37 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.5.1'
-      - name: Reconstruct compiling cumulative port and inspect mapped Minecraft
+      - name: Reconstruct and inspect nearest-target internals
         shell: bash
         run: |
           set -euo pipefail
           cat ci/egpatch.part-* | base64 --decode > /tmp/fabric-port.patch.xz
-          git clone https://github.com/bigenergy/extra-golems-reborn.git project
+          git clone -q https://github.com/bigenergy/extra-golems-reborn.git project
           cd project
-          git checkout 6b21ec4a59ca16e8362b26e38fc63b2807042bdf
-          xz -dc /tmp/fabric-port.patch.xz | patch -p4 --batch --forward
-          patch -p1 --batch --forward < ../ci/eg-fix1.patch
-          patch -p1 --batch --forward < ../ci/eg-fix2.patch
-          patch -p1 --batch --forward < ../ci/eg-bedrock-targetable.patch
-          patch -p1 --batch --forward < ../ci/eg-fix4.patch
-          patch -p1 --batch --forward < ../ci/eg-advanced-swim.patch
-          patch -p1 --batch --forward < ../ci/eg-surface-swim.patch
-          patch -p1 --batch --forward < ../ci/eg-bedrock-provocation.patch
-          patch -p1 --batch --forward < ../ci/eg-all-eyes-neutral.patch
+          git checkout -q 6b21ec4a59ca16e8362b26e38fc63b2807042bdf
+          xz -dc /tmp/fabric-port.patch.xz | patch -p4 --batch --forward >/dev/null
+          patch -p1 --batch --forward < ../ci/eg-fix1.patch >/dev/null
+          patch -p1 --batch --forward < ../ci/eg-fix2.patch >/dev/null
+          patch -p1 --batch --forward < ../ci/eg-bedrock-targetable.patch >/dev/null
+          patch -p1 --batch --forward < ../ci/eg-fix4.patch >/dev/null
+          patch -p1 --batch --forward < ../ci/eg-advanced-swim.patch >/dev/null
+          patch -p1 --batch --forward < ../ci/eg-surface-swim.patch >/dev/null
+          patch -p1 --batch --forward < ../ci/eg-bedrock-provocation.patch >/dev/null
+          patch -p1 --batch --forward < ../ci/eg-all-eyes-neutral.patch >/dev/null
           cp ../ci/GolemFinalEyesLayer.java src/main/java/com/mcmoddev/golems/client/entity/layer/GolemFinalEyesLayer.java
           cd ..
-          python3 ci/apply-strict-neutral.py
-          python3 ci/apply-legacy-neutral-migration.py
-          python3 ci/apply-hybrid-village-neutral.py
-          python3 ci/apply-bedrock-natural-hostility.py
-          python3 ci/apply-stable-village-targeting.py
-          python3 ci/apply-bedrock-true-vanilla-natural-ai.py
+          python3 ci/apply-strict-neutral.py >/dev/null
+          python3 ci/apply-legacy-neutral-migration.py >/dev/null
+          python3 ci/apply-hybrid-village-neutral.py >/dev/null
+          python3 ci/apply-bedrock-natural-hostility.py >/dev/null
+          python3 ci/apply-stable-village-targeting.py >/dev/null
+          python3 ci/apply-bedrock-true-vanilla-natural-ai.py >/dev/null
           cd project
           gradle compileJava --no-daemon >/dev/null
           JAR=$(find .gradle/loom-cache/minecraftMaven/net/minecraft -type f -name '*.jar' | grep -v sources | head -1)
-          echo "MINECRAFT_JAR=$JAR"
-          javap -classpath "$JAR" -p -c net.minecraft.world.entity.LivingEntity > ../living.txt
-          javap -classpath "$JAR" -p -c net.minecraft.world.entity.ai.goal.target.HurtByTargetGoal > ../hurtgoal.txt
-          javap -classpath "$JAR" -p -c net.minecraft.world.entity.animal.IronGolem > ../iron.txt
-          javap -classpath "$JAR" -p -c net.minecraft.gametest.framework.GameTestHelper > ../helper.txt
-          echo '=== LivingEntity.setLastHurtByMob ==='
-          grep -n -A45 -B5 'setLastHurtByMob' ../living.txt || true
-          echo '=== LivingEntity.hurt ==='
-          grep -n -A360 -B5 'public boolean hurt' ../living.txt || true
-          echo '=== HurtByTargetGoal ==='
-          cat ../hurtgoal.txt
-          echo '=== IronGolem attack validation / hurt overrides ==='
-          grep -n -A90 -B15 -E 'canAttack|hurt\(' ../iron.txt || true
-          echo '=== GameTestHelper.makeMockPlayer ==='
-          grep -n -A90 -B15 'makeMockPlayer' ../helper.txt || true
+          echo '=== NearestAttackableTargetGoal ==='
+          javap -classpath "$JAR" -p -c net.minecraft.world.entity.ai.goal.target.NearestAttackableTargetGoal
+          echo '=== TargetingConditions ==='
+          javap -classpath "$JAR" -p -c net.minecraft.world.entity.ai.targeting.TargetingConditions
+          echo '=== TargetGoal ==='
+          javap -classpath "$JAR" -p -c net.minecraft.world.entity.ai.goal.target.TargetGoal
