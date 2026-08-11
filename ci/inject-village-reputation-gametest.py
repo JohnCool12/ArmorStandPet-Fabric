@@ -26,10 +26,15 @@ import net.minecraft.server.level.ClientInformation;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.ai.gossip.GossipType;
+import net.minecraft.world.entity.ai.goal.target.DefendVillageTargetGoal;
+import net.minecraft.world.entity.ai.targeting.TargetingConditions;
 import net.minecraft.world.entity.animal.IronGolem;
 import net.minecraft.world.entity.npc.Villager;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.GameType;
+import net.minecraft.world.phys.AABB;
 
+import java.util.List;
 import java.util.UUID;
 
 /** CI-only regression test. Deleted before the production JAR is packaged. */
@@ -115,25 +120,62 @@ public final class VillageReputationGameTest implements FabricGameTest {
                         && !extraPlayer.isSpectator() && !vanillaPlayer.isSpectator(),
                 "Listed player controls are not valid survival village-defense targets");
 
-        // DefendVillageTargetGoal is deliberately randomized, so allow a generous
-        // deterministic evaluation window. Crucially, remove the connectionless AI-only
-        // players BEFORE asserting either pass or failure; this lets GameTest report the
-        // exact failed assertion instead of crashing while trying to message them.
         helper.runAfterDelay(180L, () -> {
             final boolean vanillaOk = vanilla.getTarget() == vanillaPlayer;
             final boolean extraOk = extra.getTarget() == extraPlayer;
             final String vanillaTarget = String.valueOf(vanilla.getTarget());
             final String extraTarget = String.valueOf(extra.getTarget());
-            removeHeadlessPlayers(helper, extraPlayer, vanillaPlayer);
 
+            // This duplicates the actual 1.21.1 DefendVillageTargetGoal input queries,
+            // verified from the merged Minecraft bytecode in CI.
+            final TargetingConditions conditions = TargetingConditions.forCombat().range(64.0D);
+            final AABB vanillaBox = vanilla.getBoundingBox().inflate(10.0D, 8.0D, 10.0D);
+            final AABB extraBox = extra.getBoundingBox().inflate(10.0D, 8.0D, 10.0D);
+            final List<Villager> vanillaVillagers = helper.getLevel().getNearbyEntities(
+                    Villager.class, conditions, vanilla, vanillaBox);
+            final List<Player> vanillaPlayers = helper.getLevel().getNearbyPlayers(
+                    conditions, vanilla, vanillaBox);
+            final List<Villager> extraVillagers = helper.getLevel().getNearbyEntities(
+                    Villager.class, conditions, extra, extraBox);
+            final List<Player> extraPlayers = helper.getLevel().getNearbyPlayers(
+                    conditions, extra, extraBox);
+            final boolean vanillaGoalCanUse = new DefendVillageTargetGoal(vanilla).canUse();
+            final boolean extraGoalCanUse = new DefendVillageTargetGoal(extra).canUse();
+            final int vanillaRep = vanillaVillager.getPlayerReputation(vanillaPlayer);
+            final int extraRep = extraVillager.getPlayerReputation(extraPlayer);
+
+            final String vanillaDiag = "target=" + vanillaTarget
+                    + ", directCanUse=" + vanillaGoalCanUse
+                    + ", nearbyVillagers=" + vanillaVillagers.size()
+                    + ", expectedVillagerPresent=" + vanillaVillagers.contains(vanillaVillager)
+                    + ", nearbyPlayers=" + vanillaPlayers.size()
+                    + ", expectedPlayerPresent=" + vanillaPlayers.contains(vanillaPlayer)
+                    + ", reputation=" + vanillaRep
+                    + ", playerCreated=" + vanilla.isPlayerCreated()
+                    + ", playerCreative=" + vanillaPlayer.isCreative()
+                    + ", playerSpectator=" + vanillaPlayer.isSpectator()
+                    + ", playerAlive=" + vanillaPlayer.isAlive();
+            final String extraDiag = "target=" + extraTarget
+                    + ", directCanUse=" + extraGoalCanUse
+                    + ", nearbyVillagers=" + extraVillagers.size()
+                    + ", expectedVillagerPresent=" + extraVillagers.contains(extraVillager)
+                    + ", nearbyPlayers=" + extraPlayers.size()
+                    + ", expectedPlayerPresent=" + extraPlayers.contains(extraPlayer)
+                    + ", reputation=" + extraRep
+                    + ", playerCreated=" + extra.isPlayerCreated()
+                    + ", playerCreative=" + extraPlayer.isCreative()
+                    + ", playerSpectator=" + extraPlayer.isSpectator()
+                    + ", playerAlive=" + extraPlayer.isAlive();
+
+            removeHeadlessPlayers(helper, extraPlayer, vanillaPlayer);
             helper.assertTrue(vanillaOk,
-                    "Vanilla natural Iron Golem did not target the very-low-reputation player after 180 ticks; target=" + vanillaTarget);
+                    "Vanilla natural Iron Golem did not target low-reputation player after 180 ticks; " + vanillaDiag);
             helper.assertTrue(extraOk,
-                    "T-built Extra Golem did not match vanilla low-reputation hostility after 180 ticks; target=" + extraTarget);
+                    "T-built Extra Golem did not match vanilla low-reputation hostility after 180 ticks; " + extraDiag);
             helper.succeed();
         });
     }
 }
 ''')
 
-print('Injected deterministic Extra-vs-vanilla village reputation GameTest with clean pass/failure reporting.')
+print('Injected diagnostic Extra-vs-vanilla village reputation GameTest.')
