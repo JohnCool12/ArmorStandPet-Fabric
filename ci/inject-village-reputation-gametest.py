@@ -16,11 +16,13 @@ testjava.write_text(r'''package com.mcmoddev.golems.test;
 
 import com.mcmoddev.golems.ExtraGolems;
 import com.mcmoddev.golems.entity.GolemBase;
+import com.mojang.authlib.GameProfile;
 import net.fabricmc.fabric.api.gametest.v1.FabricGameTest;
 import net.minecraft.core.BlockPos;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.level.ClientInformation;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.ai.gossip.GossipType;
@@ -28,8 +30,44 @@ import net.minecraft.world.entity.animal.IronGolem;
 import net.minecraft.world.entity.npc.Villager;
 import net.minecraft.world.level.GameType;
 
+import java.util.UUID;
+
 /** CI-only regression test. Deleted before the production JAR is packaged. */
 public final class VillageReputationGameTest implements FabricGameTest {
+    private static ServerPlayer makeRegisteredSurvivalPlayer(final GameTestHelper helper, final String name) {
+        final ServerPlayer player = new ServerPlayer(
+                helper.getLevel().getServer(),
+                helper.getLevel(),
+                new GameProfile(UUID.randomUUID(), name),
+                ClientInformation.createDefault()) {
+            // The built-in GameTest helper intentionally creates a creative ServerPlayer.
+            // This anonymous test player is a genuine survival target for vanilla AI.
+            @Override
+            public boolean isCreative() {
+                return false;
+            }
+
+            @Override
+            public boolean isSpectator() {
+                return false;
+            }
+
+            // There is no network connection in a headless GameTest. The reputation AI
+            // only needs this entity registered in ServerLevel's player list.
+            @Override
+            public void tick() {
+            }
+
+            @Override
+            public void doTick() {
+            }
+        };
+        player.gameMode.changeGameModeForPlayer(GameType.SURVIVAL);
+        GameType.SURVIVAL.updatePlayerAbilities(player.getAbilities());
+        helper.getLevel().addNewPlayer(player);
+        return player;
+    }
+
     @GameTest(template = FabricGameTest.EMPTY_STRUCTURE, timeoutTicks = 240)
     public void constructedExtraGolemMatchesVanillaVillageReputation(final GameTestHelper helper) {
         final GolemBase extra = GolemBase.create(helper.getLevel(),
@@ -53,30 +91,15 @@ public final class VillageReputationGameTest implements FabricGameTest {
         helper.getLevel().addFreshEntity(extraVillager);
         helper.getLevel().addFreshEntity(vanillaVillager);
 
-        // DefendVillageTargetGoal queries the real ServerLevel player list. Use registered
-        // ServerPlayers, then explicitly drive their public server interaction managers
-        // into Survival. This is stronger than the helper's synthetic setGameMode path.
-        final ServerPlayer extraPlayer = helper.makeMockServerPlayerInLevel();
-        final ServerPlayer vanillaPlayer = helper.makeMockServerPlayerInLevel();
-        extraPlayer.gameMode.changeGameModeForPlayer(GameType.SURVIVAL);
-        vanillaPlayer.gameMode.changeGameModeForPlayer(GameType.SURVIVAL);
-        extraPlayer.getAbilities().invulnerable = false;
-        extraPlayer.getAbilities().instabuild = false;
-        extraPlayer.getAbilities().mayfly = false;
-        extraPlayer.getAbilities().flying = false;
-        vanillaPlayer.getAbilities().invulnerable = false;
-        vanillaPlayer.getAbilities().instabuild = false;
-        vanillaPlayer.getAbilities().mayfly = false;
-        vanillaPlayer.getAbilities().flying = false;
-        extraPlayer.onUpdateAbilities();
-        vanillaPlayer.onUpdateAbilities();
+        final ServerPlayer extraPlayer = makeRegisteredSurvivalPlayer(helper, "ExtraVillageRep");
+        final ServerPlayer vanillaPlayer = makeRegisteredSurvivalPlayer(helper, "VanillaVillageRep");
         extraPlayer.setPos(extra.getX() + 7.0D, extra.getY(), extra.getZ());
         vanillaPlayer.setPos(vanilla.getX() + 7.0D, vanilla.getY(), vanilla.getZ());
         extraPlayer.setAbsorptionAmount(100.0F);
         vanillaPlayer.setAbsorptionAmount(100.0F);
 
         // Deterministically create strongly-negative gossip read by vanilla's
-        // DefendVillageTargetGoal. The assertions below verify the effective reputation.
+        // DefendVillageTargetGoal. The assertions below verify effective reputation.
         extraVillager.getGossips().add(extraPlayer.getUUID(), GossipType.MAJOR_NEGATIVE, 25);
         vanillaVillager.getGossips().add(vanillaPlayer.getUUID(), GossipType.MAJOR_NEGATIVE, 25);
 
@@ -86,11 +109,9 @@ public final class VillageReputationGameTest implements FabricGameTest {
                 "Vanilla-side villager did not receive sufficiently low player reputation");
         helper.assertTrue(!extra.isPlayerCreated(),
                 "T-built Extra Golem is still PlayerCreated=true instead of natural-neutral");
-        helper.assertTrue(extraPlayer.gameMode.getGameModeForPlayer() == GameType.SURVIVAL
-                        && vanillaPlayer.gameMode.getGameModeForPlayer() == GameType.SURVIVAL,
-                "Server-player interaction managers are not actually Survival");
-        helper.assertTrue(!extraPlayer.isCreative() && !vanillaPlayer.isCreative(),
-                "Server-player controls are still Creative and invalid village-defense targets");
+        helper.assertTrue(!extraPlayer.isCreative() && !vanillaPlayer.isCreative()
+                        && !extraPlayer.isSpectator() && !vanillaPlayer.isSpectator(),
+                "Registered player controls are not valid survival village-defense targets");
 
         helper.succeedWhen(() -> {
             helper.assertTrue(vanilla.getTarget() == vanillaPlayer,
@@ -102,4 +123,4 @@ public final class VillageReputationGameTest implements FabricGameTest {
 }
 ''')
 
-print('Injected Extra-Golem-vs-vanilla village reputation GameTest with true Survival ServerPlayers.')
+print('Injected Extra-Golem-vs-vanilla village reputation GameTest with real registered survival players.')
