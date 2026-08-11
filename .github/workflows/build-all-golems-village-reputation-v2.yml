@@ -92,18 +92,31 @@ jobs:
             cat ../gametest-village-only-v2.log
             exit "${status:-1}"
           fi
+          set +e
           python3 - <<'PY'
           import xml.etree.ElementTree as ET
           root=ET.parse('build/junit.xml').getroot()
           cases=list(root.iter('testcase'))
-          wanted=[c for c in cases if 'constructedExtraGolemMatchesVanillaVillageReputation' in c.attrib.get('name','')]
-          if len(wanted)!=1: raise SystemExit(f'Expected village reputation test once, found {len(wanted)}')
+          names=[c.attrib.get('name','') for c in cases]
+          print('Village GameTest JUnit cases:', names)
+          wanted=[c for c in cases if 'constructedextragolemmatchesvanillavillagereputation' in c.attrib.get('name','').lower()]
+          if len(wanted)!=1:
+              raise SystemExit(f'Expected village reputation test once, found {len(wanted)}; all cases={names}')
           c=wanted[0]
-          node=c.find('failure') or c.find('error')
-          if node is not None: raise SystemExit('Village reputation parity failed: '+str(node.attrib.get('message')))
+          node=c.find('failure')
+          if node is None:
+              node=c.find('error')
+          if node is not None:
+              raise SystemExit('Village reputation parity failed: '+str(node.attrib.get('message'))+' body='+str(node.text))
           print('PASS: T-built Obsidian Extra Golem matched vanilla natural Iron Golem low-reputation hostility.')
           PY
-          if [ "$status" -ne 0 ]; then tail -300 ../gametest-village-only-v2.log; exit "$status"; fi
+          parse_status=$?
+          set -e
+          if [ "$parse_status" -ne 0 ] || [ "$status" -ne 0 ]; then
+            echo 'Village-only GameTest log:'
+            tail -400 ../gametest-village-only-v2.log
+            exit 1
+          fi
 
       - name: Restore production sources after village GameTest
         shell: bash
@@ -125,19 +138,36 @@ jobs:
           mkdir -p project/run/gametest
           printf 'eula=true\n' > project/run/gametest/eula.txt
           cd project
+          set +e
           gradle runGametest --no-daemon > ../gametest-bedrock-only-v2.log 2>&1
+          status=$?
+          set -e
           test -f build/junit.xml
+          set +e
           python3 - <<'PY'
           import xml.etree.ElementTree as ET
           root=ET.parse('build/junit.xml').getroot()
           cases=list(root.iter('testcase'))
-          wanted=[c for c in cases if 'bedrockRecoversHostileTargetAfterPlayerRetaliation' in c.attrib.get('name','')]
-          if len(wanted)!=1: raise SystemExit(f'Expected Bedrock test once, found {len(wanted)}')
+          names=[c.attrib.get('name','') for c in cases]
+          print('Bedrock GameTest JUnit cases:', names)
+          wanted=[c for c in cases if 'bedrockrecovershostiletargetafterplayerretaliation' in c.attrib.get('name','').lower()]
+          if len(wanted)!=1:
+              raise SystemExit(f'Expected Bedrock test once, found {len(wanted)}; all cases={names}')
           c=wanted[0]
-          node=c.find('failure') or c.find('error')
-          if node is not None: raise SystemExit('Bedrock AI parity failed: '+str(node.attrib.get('message')))
+          node=c.find('failure')
+          if node is None:
+              node=c.find('error')
+          if node is not None:
+              raise SystemExit('Bedrock AI parity failed: '+str(node.attrib.get('message'))+' body='+str(node.text))
           print('PASS: Bedrock retaliation/disengagement/hostile reacquisition matched vanilla control.')
           PY
+          parse_status=$?
+          set -e
+          if [ "$parse_status" -ne 0 ] || [ "$status" -ne 0 ]; then
+            echo 'Bedrock-only GameTest log:'
+            tail -400 ../gametest-bedrock-only-v2.log
+            exit 1
+          fi
           cd ..
           python3 ci/remove-bedrock-ai-gametest.py
           rm -rf project/run/gametest project/build/junit.xml
