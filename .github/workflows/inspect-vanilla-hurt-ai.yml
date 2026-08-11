@@ -50,11 +50,15 @@ jobs:
           echo "MINECRAFT_JAR=$JAR"
           javap -classpath "$JAR" -p -c net.minecraft.world.entity.LivingEntity > ../living.txt
           javap -classpath "$JAR" -p -c net.minecraft.world.entity.ai.goal.target.HurtByTargetGoal > ../hurtgoal.txt
+          javap -classpath "$JAR" -p -c net.minecraft.world.entity.animal.IronGolem > ../iron.txt
+          javap -classpath "$JAR" -p -c net.minecraft.gametest.framework.GameTestHelper > ../helper.txt
           echo '=== LivingEntity.setLastHurtByMob ==='
           grep -n -A45 -B5 'setLastHurtByMob' ../living.txt || true
-          echo '=== LivingEntity.getLastHurtByMobTimestamp ==='
-          grep -n -A20 -B5 'getLastHurtByMobTimestamp' ../living.txt || true
           echo '=== LivingEntity.hurt ==='
           grep -n -A360 -B5 'public boolean hurt' ../living.txt || true
           echo '=== HurtByTargetGoal ==='
           cat ../hurtgoal.txt
+          echo '=== IronGolem attack validation / hurt overrides ==='
+          grep -n -A90 -B15 -E 'canAttack|hurt\(' ../iron.txt || true
+          echo '=== GameTestHelper.makeMockPlayer ==='
+          grep -n -A90 -B15 'makeMockPlayer' ../helper.txt || true
