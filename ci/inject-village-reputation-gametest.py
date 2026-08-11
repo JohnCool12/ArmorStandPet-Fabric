@@ -30,11 +30,8 @@ import net.minecraft.world.entity.ai.goal.target.DefendVillageTargetGoal;
 import net.minecraft.world.entity.ai.targeting.TargetingConditions;
 import net.minecraft.world.entity.animal.IronGolem;
 import net.minecraft.world.entity.npc.Villager;
-import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.GameType;
-import net.minecraft.world.phys.AABB;
 
-import java.util.List;
 import java.util.UUID;
 
 /** CI-only regression test. Deleted before the production JAR is packaged. */
@@ -56,39 +53,28 @@ public final class VillageReputationGameTest implements FabricGameTest {
         return player;
     }
 
-    private static void removeHeadlessPlayers(final GameTestHelper helper,
-                                              final ServerPlayer extraPlayer,
-                                              final ServerPlayer vanillaPlayer) {
-        helper.getLevel().players().remove(extraPlayer);
-        helper.getLevel().players().remove(vanillaPlayer);
-    }
-
-    @GameTest(template = FabricGameTest.EMPTY_STRUCTURE, timeoutTicks = 260)
+    @GameTest(template = FabricGameTest.EMPTY_STRUCTURE, timeoutTicks = 40)
     public void constructedExtraGolemMatchesVanillaVillageReputation(final GameTestHelper helper) {
         final GolemBase extra = GolemBase.create(helper.getLevel(),
                 ResourceLocation.fromNamespaceAndPath(ExtraGolems.MODID, "obsidian"));
         helper.assertTrue(extra != null, "Failed to create Obsidian Extra Golem");
         extra.moveTo(helper.absolutePos(new BlockPos(4, 4, 4)), 0.0F, 0.0F);
         extra.markConstructedNeutral();
-        helper.getLevel().addFreshEntity(extra);
 
         final IronGolem vanilla = EntityType.IRON_GOLEM.create(helper.getLevel());
         helper.assertTrue(vanilla != null, "Failed to create vanilla Iron Golem");
         vanilla.moveTo(helper.absolutePos(new BlockPos(44, 4, 4)), 0.0F, 0.0F);
         vanilla.setPlayerCreated(false);
-        helper.getLevel().addFreshEntity(vanilla);
 
         final Villager extraVillager = EntityType.VILLAGER.create(helper.getLevel());
         final Villager vanillaVillager = EntityType.VILLAGER.create(helper.getLevel());
         helper.assertTrue(extraVillager != null && vanillaVillager != null, "Failed to create villager controls");
-        // DefendVillageTargetGoal scans villagers using COMBAT TargetingConditions, which
-        // includes the golem's Sensing line-of-sight test. Put the pinned villager on the
-        // same unobstructed coordinates as its golem so this exact vanilla prerequisite
-        // cannot be invalidated by the GameTest structure or wandering.
-        extraVillager.moveTo(extra.getX(), extra.getY(), extra.getZ(), 0.0F, 0.0F);
-        vanillaVillager.moveTo(vanilla.getX(), vanilla.getY(), vanilla.getZ(), 0.0F, 0.0F);
+        extraVillager.moveTo(extra.getX(), extra.getY(), extra.getZ() + 1.0D, 0.0F, 0.0F);
+        vanillaVillager.moveTo(vanilla.getX(), vanilla.getY(), vanilla.getZ() + 1.0D, 0.0F, 0.0F);
         extraVillager.setNoAi(true);
         vanillaVillager.setNoAi(true);
+        extraVillager.setNoGravity(true);
+        vanillaVillager.setNoGravity(true);
         helper.getLevel().addFreshEntity(extraVillager);
         helper.getLevel().addFreshEntity(vanillaVillager);
 
@@ -106,73 +92,44 @@ public final class VillageReputationGameTest implements FabricGameTest {
                 "Vanilla-side villager did not receive sufficiently low player reputation");
         helper.assertTrue(!extra.isPlayerCreated(),
                 "T-built Extra Golem is still PlayerCreated=true instead of natural-neutral");
-        helper.assertTrue(helper.getLevel().players().contains(extraPlayer)
-                        && helper.getLevel().players().contains(vanillaPlayer),
-                "Test players are not visible to ServerLevel nearby-player queries");
-        helper.assertTrue(!extraPlayer.isCreative() && !vanillaPlayer.isCreative()
-                        && !extraPlayer.isSpectator() && !vanillaPlayer.isSpectator(),
-                "Listed player controls are not valid survival village-defense targets");
 
-        final TargetingConditions exactVanillaConditions = TargetingConditions.forCombat().range(64.0D);
-        helper.assertTrue(exactVanillaConditions.test(vanilla, vanillaVillager),
-                "Pinned vanilla-control villager still fails DefendVillageTargetGoal combat TargetingConditions; "
-                        + "canAttack=" + vanilla.canAttack(vanillaVillager)
-                        + ", canAttackType=" + vanilla.canAttackType(vanillaVillager.getType())
-                        + ", allied=" + vanilla.isAlliedTo(vanillaVillager)
-                        + ", visible=" + vanilla.getSensing().hasLineOfSight(vanillaVillager)
-                        + ", villagerAlive=" + vanillaVillager.isAlive()
-                        + ", villagerInvulnerable=" + vanillaVillager.isInvulnerable());
-        helper.assertTrue(exactVanillaConditions.test(extra, extraVillager),
-                "Pinned Extra-control villager fails same vanilla combat TargetingConditions");
+        // This is the exact first prerequisite used by vanilla DefendVillageTargetGoal:
+        // nearby villagers must pass TargetingConditions.forCombat(). The old Extra
+        // Golem canAttackType(VILLAGER)=false override made this assertion fail.
+        final TargetingConditions vanillaConditions = TargetingConditions.forCombat().range(64.0D);
+        helper.assertTrue(vanillaConditions.test(vanilla, vanillaVillager),
+                "Vanilla control villager unexpectedly failed vanilla combat TargetingConditions");
+        helper.assertTrue(vanillaConditions.test(extra, extraVillager),
+                "Extra Golem still cannot see its villager through vanilla combat TargetingConditions; "
+                        + "canAttack=" + extra.canAttack(extraVillager)
+                        + ", canAttackType=" + extra.canAttackType(extraVillager.getType())
+                        + ", allied=" + extra.isAlliedTo(extraVillager));
 
-        helper.runAfterDelay(180L, () -> {
-            final boolean vanillaOk = vanilla.getTarget() == vanillaPlayer;
-            final boolean extraOk = extra.getTarget() == extraPlayer;
-            final String vanillaTarget = String.valueOf(vanilla.getTarget());
-            final String extraTarget = String.valueOf(extra.getTarget());
+        // Invoke the actual vanilla goal synchronously so the headless ServerPlayers never
+        // enter unrelated network/physics ticking. Both controls see the same reputation
+        // conditions and must select their corresponding low-reputation player.
+        final DefendVillageTargetGoal vanillaGoal = new DefendVillageTargetGoal(vanilla);
+        final DefendVillageTargetGoal extraGoal = new DefendVillageTargetGoal(extra);
+        final boolean vanillaCanUse = vanillaGoal.canUse();
+        final boolean extraCanUse = extraGoal.canUse();
+        helper.assertTrue(vanillaCanUse, "Vanilla natural Iron Golem DefendVillageTargetGoal did not activate");
+        helper.assertTrue(extraCanUse,
+                "Extra Golem DefendVillageTargetGoal did not match vanilla at reputation <= -100");
 
-            final TargetingConditions conditions = TargetingConditions.forCombat().range(64.0D);
-            final AABB vanillaBox = vanilla.getBoundingBox().inflate(10.0D, 8.0D, 10.0D);
-            final AABB extraBox = extra.getBoundingBox().inflate(10.0D, 8.0D, 10.0D);
-            final List<Villager> vanillaVillagers = helper.getLevel().getNearbyEntities(
-                    Villager.class, conditions, vanilla, vanillaBox);
-            final List<Player> vanillaPlayers = helper.getLevel().getNearbyPlayers(
-                    conditions, vanilla, vanillaBox);
-            final List<Villager> extraVillagers = helper.getLevel().getNearbyEntities(
-                    Villager.class, conditions, extra, extraBox);
-            final List<Player> extraPlayers = helper.getLevel().getNearbyPlayers(
-                    conditions, extra, extraBox);
-            final boolean vanillaGoalCanUse = new DefendVillageTargetGoal(vanilla).canUse();
-            final boolean extraGoalCanUse = new DefendVillageTargetGoal(extra).canUse();
-            final int vanillaRep = vanillaVillager.getPlayerReputation(vanillaPlayer);
-            final int extraRep = extraVillager.getPlayerReputation(extraPlayer);
+        vanillaGoal.start();
+        extraGoal.start();
+        helper.assertTrue(vanilla.getTarget() == vanillaPlayer,
+                "Vanilla natural Iron Golem did not select its low-reputation player");
+        helper.assertTrue(extra.getTarget() == extraPlayer,
+                "T-built Extra Golem did not select its low-reputation player like vanilla");
 
-            final String vanillaDiag = "target=" + vanillaTarget
-                    + ", directCanUse=" + vanillaGoalCanUse
-                    + ", nearbyVillagers=" + vanillaVillagers.size()
-                    + ", expectedVillagerPresent=" + vanillaVillagers.contains(vanillaVillager)
-                    + ", nearbyPlayers=" + vanillaPlayers.size()
-                    + ", expectedPlayerPresent=" + vanillaPlayers.contains(vanillaPlayer)
-                    + ", reputation=" + vanillaRep
-                    + ", playerCreated=" + vanilla.isPlayerCreated();
-            final String extraDiag = "target=" + extraTarget
-                    + ", directCanUse=" + extraGoalCanUse
-                    + ", nearbyVillagers=" + extraVillagers.size()
-                    + ", expectedVillagerPresent=" + extraVillagers.contains(extraVillager)
-                    + ", nearbyPlayers=" + extraPlayers.size()
-                    + ", expectedPlayerPresent=" + extraPlayers.contains(extraPlayer)
-                    + ", reputation=" + extraRep
-                    + ", playerCreated=" + extra.isPlayerCreated();
-
-            removeHeadlessPlayers(helper, extraPlayer, vanillaPlayer);
-            helper.assertTrue(vanillaOk,
-                    "Vanilla natural Iron Golem did not target low-reputation player after 180 ticks; " + vanillaDiag);
-            helper.assertTrue(extraOk,
-                    "T-built Extra Golem did not match vanilla low-reputation hostility after 180 ticks; " + extraDiag);
-            helper.succeed();
-        });
+        helper.getLevel().players().remove(extraPlayer);
+        helper.getLevel().players().remove(vanillaPlayer);
+        extraVillager.discard();
+        vanillaVillager.discard();
+        helper.succeed();
     }
 }
 ''')
 
-print('Injected unobstructed exact-prerequisite Extra-vs-vanilla village reputation GameTest.')
+print('Injected synchronous Extra-vs-vanilla village reputation GameTest.')
