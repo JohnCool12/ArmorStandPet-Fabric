@@ -50,7 +50,7 @@ import net.minecraft.world.level.GameType;
 
 /** CI-only regression test. This class is deleted before packaging the production JAR. */
 public final class BedrockNaturalAiGameTest implements FabricGameTest {
-    @GameTest(templateName = FabricGameTest.EMPTY_STRUCTURE, timeoutTicks = 260)
+    @GameTest(template = FabricGameTest.EMPTY_STRUCTURE, timeoutTicks = 260)
     public void bedrockRecoversHostileTargetAfterPlayerRetaliation(final GameTestHelper helper) {
         final GolemBase bedrock = GolemBase.create(helper.getLevel(),
                 ResourceLocation.fromNamespaceAndPath(ExtraGolems.MODID, "bedrock"));
