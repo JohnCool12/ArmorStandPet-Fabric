@@ -53,20 +53,30 @@ public final class VillageReputationGameTest implements FabricGameTest {
         helper.getLevel().addFreshEntity(extraVillager);
         helper.getLevel().addFreshEntity(vanillaVillager);
 
-        // DefendVillageTargetGoal asks ServerLevel for nearby players. GameTest's ordinary
-        // makeMockPlayer is intentionally not in that server player list, so use real
-        // mock ServerPlayers and switch them from the helper's default Creative to Survival.
+        // DefendVillageTargetGoal queries the real ServerLevel player list. Use registered
+        // ServerPlayers, then explicitly drive their public server interaction managers
+        // into Survival. This is stronger than the helper's synthetic setGameMode path.
         final ServerPlayer extraPlayer = helper.makeMockServerPlayerInLevel();
         final ServerPlayer vanillaPlayer = helper.makeMockServerPlayerInLevel();
-        extraPlayer.setGameMode(GameType.SURVIVAL);
-        vanillaPlayer.setGameMode(GameType.SURVIVAL);
+        extraPlayer.gameMode.changeGameModeForPlayer(GameType.SURVIVAL);
+        vanillaPlayer.gameMode.changeGameModeForPlayer(GameType.SURVIVAL);
+        extraPlayer.getAbilities().invulnerable = false;
+        extraPlayer.getAbilities().instabuild = false;
+        extraPlayer.getAbilities().mayfly = false;
+        extraPlayer.getAbilities().flying = false;
+        vanillaPlayer.getAbilities().invulnerable = false;
+        vanillaPlayer.getAbilities().instabuild = false;
+        vanillaPlayer.getAbilities().mayfly = false;
+        vanillaPlayer.getAbilities().flying = false;
+        extraPlayer.onUpdateAbilities();
+        vanillaPlayer.onUpdateAbilities();
         extraPlayer.setPos(extra.getX() + 7.0D, extra.getY(), extra.getZ());
         vanillaPlayer.setPos(vanilla.getX() + 7.0D, vanilla.getY(), vanilla.getZ());
         extraPlayer.setAbsorptionAmount(100.0F);
         vanillaPlayer.setAbsorptionAmount(100.0F);
 
-        // Deterministically create the strongly-negative gossip read by vanilla's
-        // DefendVillageTargetGoal. MAJOR_NEGATIVE 25 produces reputation <= -100.
+        // Deterministically create strongly-negative gossip read by vanilla's
+        // DefendVillageTargetGoal. The assertions below verify the effective reputation.
         extraVillager.getGossips().add(extraPlayer.getUUID(), GossipType.MAJOR_NEGATIVE, 25);
         vanillaVillager.getGossips().add(vanillaPlayer.getUUID(), GossipType.MAJOR_NEGATIVE, 25);
 
@@ -76,8 +86,11 @@ public final class VillageReputationGameTest implements FabricGameTest {
                 "Vanilla-side villager did not receive sufficiently low player reputation");
         helper.assertTrue(!extra.isPlayerCreated(),
                 "T-built Extra Golem is still PlayerCreated=true instead of natural-neutral");
+        helper.assertTrue(extraPlayer.gameMode.getGameModeForPlayer() == GameType.SURVIVAL
+                        && vanillaPlayer.gameMode.getGameModeForPlayer() == GameType.SURVIVAL,
+                "Server-player interaction managers are not actually Survival");
         helper.assertTrue(!extraPlayer.isCreative() && !vanillaPlayer.isCreative(),
-                "Server-player controls are still Creative and therefore invalid village-defense targets");
+                "Server-player controls are still Creative and invalid village-defense targets");
 
         helper.succeedWhen(() -> {
             helper.assertTrue(vanilla.getTarget() == vanillaPlayer,
@@ -89,4 +102,4 @@ public final class VillageReputationGameTest implements FabricGameTest {
 }
 ''')
 
-print('Injected Extra-Golem-vs-vanilla village reputation GameTest with registered ServerPlayers.')
+print('Injected Extra-Golem-vs-vanilla village reputation GameTest with true Survival ServerPlayers.')
