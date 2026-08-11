@@ -30,8 +30,11 @@ import net.minecraft.world.entity.ai.goal.target.DefendVillageTargetGoal;
 import net.minecraft.world.entity.ai.targeting.TargetingConditions;
 import net.minecraft.world.entity.animal.IronGolem;
 import net.minecraft.world.entity.npc.Villager;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.GameType;
+import net.minecraft.world.phys.AABB;
 
+import java.util.List;
 import java.util.UUID;
 
 /** CI-only regression test. Deleted before the production JAR is packaged. */
@@ -86,50 +89,87 @@ public final class VillageReputationGameTest implements FabricGameTest {
         extraVillager.getGossips().add(extraPlayer.getUUID(), GossipType.MAJOR_NEGATIVE, 25);
         vanillaVillager.getGossips().add(vanillaPlayer.getUUID(), GossipType.MAJOR_NEGATIVE, 25);
 
-        helper.assertTrue(extraVillager.getPlayerReputation(extraPlayer) <= -100,
-                "Extra-side villager did not receive sufficiently low player reputation");
-        helper.assertTrue(vanillaVillager.getPlayerReputation(vanillaPlayer) <= -100,
-                "Vanilla-side villager did not receive sufficiently low player reputation");
-        helper.assertTrue(!extra.isPlayerCreated(),
-                "T-built Extra Golem is still PlayerCreated=true instead of natural-neutral");
+        final TargetingConditions conditions = TargetingConditions.forCombat().range(64.0D);
+        final boolean vanillaVillagerCondition = conditions.test(vanilla, vanillaVillager);
+        final boolean extraVillagerCondition = conditions.test(extra, extraVillager);
+        final boolean vanillaPlayerCondition = conditions.test(vanilla, vanillaPlayer);
+        final boolean extraPlayerCondition = conditions.test(extra, extraPlayer);
 
-        // This is the exact first prerequisite used by vanilla DefendVillageTargetGoal:
-        // nearby villagers must pass TargetingConditions.forCombat(). The old Extra
-        // Golem canAttackType(VILLAGER)=false override made this assertion fail.
-        final TargetingConditions vanillaConditions = TargetingConditions.forCombat().range(64.0D);
-        helper.assertTrue(vanillaConditions.test(vanilla, vanillaVillager),
-                "Vanilla control villager unexpectedly failed vanilla combat TargetingConditions");
-        helper.assertTrue(vanillaConditions.test(extra, extraVillager),
-                "Extra Golem still cannot see its villager through vanilla combat TargetingConditions; "
-                        + "canAttack=" + extra.canAttack(extraVillager)
-                        + ", canAttackType=" + extra.canAttackType(extraVillager.getType())
-                        + ", allied=" + extra.isAlliedTo(extraVillager));
+        final AABB vanillaBox = vanilla.getBoundingBox().inflate(10.0D, 8.0D, 10.0D);
+        final AABB extraBox = extra.getBoundingBox().inflate(10.0D, 8.0D, 10.0D);
+        final List<Villager> vanillaVillagers = helper.getLevel().getNearbyEntities(
+                Villager.class, conditions, vanilla, vanillaBox);
+        final List<Villager> extraVillagers = helper.getLevel().getNearbyEntities(
+                Villager.class, conditions, extra, extraBox);
+        final List<Player> vanillaPlayers = helper.getLevel().getNearbyPlayers(
+                conditions, vanilla, vanillaBox);
+        final List<Player> extraPlayers = helper.getLevel().getNearbyPlayers(
+                conditions, extra, extraBox);
 
-        // Invoke the actual vanilla goal synchronously so the headless ServerPlayers never
-        // enter unrelated network/physics ticking. Both controls see the same reputation
-        // conditions and must select their corresponding low-reputation player.
+        final int vanillaRep = vanillaVillager.getPlayerReputation(vanillaPlayer);
+        final int extraRep = extraVillager.getPlayerReputation(extraPlayer);
+        final boolean extraPlayerCreated = extra.isPlayerCreated();
+
         final DefendVillageTargetGoal vanillaGoal = new DefendVillageTargetGoal(vanilla);
         final DefendVillageTargetGoal extraGoal = new DefendVillageTargetGoal(extra);
         final boolean vanillaCanUse = vanillaGoal.canUse();
         final boolean extraCanUse = extraGoal.canUse();
-        helper.assertTrue(vanillaCanUse, "Vanilla natural Iron Golem DefendVillageTargetGoal did not activate");
-        helper.assertTrue(extraCanUse,
-                "Extra Golem DefendVillageTargetGoal did not match vanilla at reputation <= -100");
+        if (vanillaCanUse) vanillaGoal.start();
+        if (extraCanUse) extraGoal.start();
+        final boolean vanillaTargetCorrect = vanilla.getTarget() == vanillaPlayer;
+        final boolean extraTargetCorrect = extra.getTarget() == extraPlayer;
 
-        vanillaGoal.start();
-        extraGoal.start();
-        helper.assertTrue(vanilla.getTarget() == vanillaPlayer,
-                "Vanilla natural Iron Golem did not select its low-reputation player");
-        helper.assertTrue(extra.getTarget() == extraPlayer,
-                "T-built Extra Golem did not select its low-reputation player like vanilla");
+        final String vanillaDiag = "villagerCondition=" + vanillaVillagerCondition
+                + ", playerCondition=" + vanillaPlayerCondition
+                + ", nearbyVillagers=" + vanillaVillagers.size()
+                + ", expectedVillagerPresent=" + vanillaVillagers.contains(vanillaVillager)
+                + ", nearbyPlayers=" + vanillaPlayers.size()
+                + ", expectedPlayerPresent=" + vanillaPlayers.contains(vanillaPlayer)
+                + ", reputation=" + vanillaRep
+                + ", goalCanUse=" + vanillaCanUse
+                + ", targetCorrect=" + vanillaTargetCorrect
+                + ", playerCreated=" + vanilla.isPlayerCreated();
+        final String extraDiag = "villagerCondition=" + extraVillagerCondition
+                + ", playerCondition=" + extraPlayerCondition
+                + ", playerCanAttack=" + extra.canAttack(extraPlayer)
+                + ", playerCanAttackType=" + extra.canAttackType(extraPlayer.getType())
+                + ", playerAllied=" + extra.isAlliedTo(extraPlayer)
+                + ", villagerCanAttack=" + extra.canAttack(extraVillager)
+                + ", villagerCanAttackType=" + extra.canAttackType(extraVillager.getType())
+                + ", nearbyVillagers=" + extraVillagers.size()
+                + ", expectedVillagerPresent=" + extraVillagers.contains(extraVillager)
+                + ", nearbyPlayers=" + extraPlayers.size()
+                + ", expectedPlayerPresent=" + extraPlayers.contains(extraPlayer)
+                + ", reputation=" + extraRep
+                + ", goalCanUse=" + extraCanUse
+                + ", targetCorrect=" + extraTargetCorrect
+                + ", playerCreated=" + extraPlayerCreated;
 
+        // Remove headless fake players before any assertion can fail, otherwise the
+        // GameTest reporter tries to send packets through their intentionally-null connection.
         helper.getLevel().players().remove(extraPlayer);
         helper.getLevel().players().remove(vanillaPlayer);
         extraVillager.discard();
         vanillaVillager.discard();
+
+        helper.assertTrue(vanillaVillagerCondition, "Vanilla villager prerequisite failed; " + vanillaDiag);
+        helper.assertTrue(extraVillagerCondition, "Extra villager prerequisite failed; " + extraDiag);
+        helper.assertTrue(vanillaPlayerCondition, "Vanilla player prerequisite failed; " + vanillaDiag);
+        helper.assertTrue(extraPlayerCondition, "Extra player prerequisite failed; " + extraDiag);
+        helper.assertTrue(vanillaVillagers.contains(vanillaVillager) && vanillaPlayers.contains(vanillaPlayer),
+                "Vanilla nearby-entity lists do not contain expected controls; " + vanillaDiag);
+        helper.assertTrue(extraVillagers.contains(extraVillager) && extraPlayers.contains(extraPlayer),
+                "Extra nearby-entity lists do not contain expected controls; " + extraDiag);
+        helper.assertTrue(vanillaRep <= -100 && extraRep <= -100,
+                "Reputation setup failed; vanilla=" + vanillaDiag + "; extra=" + extraDiag);
+        helper.assertTrue(!extraPlayerCreated, "T-built Extra Golem still PlayerCreated=true; " + extraDiag);
+        helper.assertTrue(vanillaCanUse, "Vanilla DefendVillageTargetGoal did not activate; " + vanillaDiag);
+        helper.assertTrue(extraCanUse, "Extra DefendVillageTargetGoal did not activate; " + extraDiag);
+        helper.assertTrue(vanillaTargetCorrect, "Vanilla did not select low-reputation player; " + vanillaDiag);
+        helper.assertTrue(extraTargetCorrect, "Extra Golem did not select low-reputation player; " + extraDiag);
         helper.succeed();
     }
 }
 ''')
 
-print('Injected synchronous Extra-vs-vanilla village reputation GameTest.')
+print('Injected detailed synchronous Extra-vs-vanilla village reputation parity GameTest.')
