@@ -75,7 +75,11 @@ jobs:
           gradle runGametest --no-daemon > ../gametest-village.log 2>&1
           status=$?
           set -e
-          test -f build/junit.xml
+          if [ ! -f build/junit.xml ]; then
+            echo 'GameTest produced no JUnit report. Full compile/startup log follows:'
+            cat ../gametest-village.log
+            exit "${status:-1}"
+          fi
           python3 - <<'PY'
           import xml.etree.ElementTree as ET
           root = ET.parse('build/junit.xml').getroot()
