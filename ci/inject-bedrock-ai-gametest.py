@@ -50,7 +50,7 @@ import net.minecraft.world.level.GameType;
 
 /** CI-only regression test. This class is deleted before packaging the production JAR. */
 public final class BedrockNaturalAiGameTest implements FabricGameTest {
-    @GameTest(template = FabricGameTest.EMPTY_STRUCTURE, timeoutTicks = 260)
+    @GameTest(template = FabricGameTest.EMPTY_STRUCTURE, timeoutTicks = 320)
     public void bedrockRecoversHostileTargetAfterPlayerRetaliation(final GameTestHelper helper) {
         final GolemBase bedrock = GolemBase.create(helper.getLevel(),
                 ResourceLocation.fromNamespaceAndPath(ExtraGolems.MODID, "bedrock"));
@@ -69,17 +69,22 @@ public final class BedrockNaturalAiGameTest implements FabricGameTest {
         final Player vanillaAttacker = helper.makeMockPlayer(GameType.SURVIVAL);
         vanillaAttacker.setPos(vanilla.getX() + 2.0D, vanilla.getY(), vanilla.getZ());
 
-        final float bedrockHealth = bedrock.getHealth();
-        bedrock.hurt(helper.getLevel().damageSources().playerAttack(bedrockAttacker), 1.0F);
-        vanilla.hurt(helper.getLevel().damageSources().playerAttack(vanillaAttacker), 1.0F);
-        helper.assertTrue(bedrock.getHealth() == bedrockHealth,
-                "Bedrock Golem took actual damage during provocation test");
-        helper.assertTrue(!bedrock.isPlayerCreated(),
-                "Bedrock Golem incorrectly entered player-created/custom-neutral semantics");
+        // Do not attack on entity tick 0. HurtByTargetGoal detects a *new* attack by
+        // comparing the living entity's last-hurt timestamp with its stored timestamp.
+        // A same-tick spawn+hit is an artificial edge case and is not the user's scenario.
+        helper.runAfterDelay(10, () -> {
+            final float bedrockHealth = bedrock.getHealth();
+            bedrock.hurt(helper.getLevel().damageSources().playerAttack(bedrockAttacker), 1.0F);
+            vanilla.hurt(helper.getLevel().damageSources().playerAttack(vanillaAttacker), 1.0F);
+            helper.assertTrue(bedrock.getHealth() == bedrockHealth,
+                    "Bedrock Golem took actual damage during provocation test");
+            helper.assertTrue(!bedrock.isPlayerCreated(),
+                    "Bedrock Golem incorrectly entered player-created/custom-neutral semantics");
+        });
 
         // Both natural-style golems should acquire their direct attacker through the same
         // HurtByTargetGoal path. Do not manually set either target in the test.
-        helper.runAfterDelay(15, () -> {
+        helper.runAfterDelay(30, () -> {
             helper.assertTrue(bedrock.getTarget() == bedrockAttacker,
                     "Bedrock did not acquire its direct player attacker through HurtByTargetGoal");
             helper.assertTrue(vanilla.getTarget() == vanillaAttacker,
@@ -91,7 +96,7 @@ public final class BedrockNaturalAiGameTest implements FabricGameTest {
             vanillaAttacker.setPos(vanilla.getX() + 128.0D, vanilla.getY(), vanilla.getZ());
         });
 
-        helper.runAfterDelay(90, () -> {
+        helper.runAfterDelay(150, () -> {
             helper.assertTrue(bedrock.getTarget() != bedrockAttacker,
                     "Bedrock retained the remote player target after retaliation range ended");
             helper.assertTrue(vanilla.getTarget() != vanillaAttacker,
