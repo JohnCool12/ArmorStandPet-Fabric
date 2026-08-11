@@ -21,11 +21,11 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.ai.gossip.GossipType;
 import net.minecraft.world.entity.animal.IronGolem;
 import net.minecraft.world.entity.npc.Villager;
-import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.GameType;
 
 /** CI-only regression test. Deleted before the production JAR is packaged. */
@@ -53,16 +53,20 @@ public final class VillageReputationGameTest implements FabricGameTest {
         helper.getLevel().addFreshEntity(extraVillager);
         helper.getLevel().addFreshEntity(vanillaVillager);
 
-        final Player extraPlayer = helper.makeMockPlayer(GameType.SURVIVAL);
-        final Player vanillaPlayer = helper.makeMockPlayer(GameType.SURVIVAL);
+        // DefendVillageTargetGoal asks ServerLevel for nearby players. GameTest's ordinary
+        // makeMockPlayer is intentionally not in that server player list, so use real
+        // mock ServerPlayers and switch them from the helper's default Creative to Survival.
+        final ServerPlayer extraPlayer = helper.makeMockServerPlayerInLevel();
+        final ServerPlayer vanillaPlayer = helper.makeMockServerPlayerInLevel();
+        extraPlayer.setGameMode(GameType.SURVIVAL);
+        vanillaPlayer.setGameMode(GameType.SURVIVAL);
         extraPlayer.setPos(extra.getX() + 7.0D, extra.getY(), extra.getZ());
         vanillaPlayer.setPos(vanilla.getX() + 7.0D, vanilla.getY(), vanilla.getZ());
         extraPlayer.setAbsorptionAmount(100.0F);
         vanillaPlayer.setAbsorptionAmount(100.0F);
 
-        // Deterministically create the same strongly-negative villager gossip that the
-        // vanilla DefendVillageTargetGoal reads. MAJOR_NEGATIVE value 25 has weighted
-        // reputation -125, past vanilla's -100 attack threshold.
+        // Deterministically create the strongly-negative gossip read by vanilla's
+        // DefendVillageTargetGoal. MAJOR_NEGATIVE 25 produces reputation <= -100.
         extraVillager.getGossips().add(extraPlayer.getUUID(), GossipType.MAJOR_NEGATIVE, 25);
         vanillaVillager.getGossips().add(vanillaPlayer.getUUID(), GossipType.MAJOR_NEGATIVE, 25);
 
@@ -72,10 +76,12 @@ public final class VillageReputationGameTest implements FabricGameTest {
                 "Vanilla-side villager did not receive sufficiently low player reputation");
         helper.assertTrue(!extra.isPlayerCreated(),
                 "T-built Extra Golem is still PlayerCreated=true instead of natural-neutral");
+        helper.assertTrue(!extraPlayer.isCreative() && !vanillaPlayer.isCreative(),
+                "Server-player controls are still Creative and therefore invalid village-defense targets");
 
         helper.succeedWhen(() -> {
             helper.assertTrue(vanilla.getTarget() == vanillaPlayer,
-                    "Vanilla natural Iron Golem has not targeted the very-low-reputation player yet");
+                    "Vanilla natural Iron Golem has not targeted the very-low-reputation player yet; target=" + vanilla.getTarget());
             helper.assertTrue(extra.getTarget() == extraPlayer,
                     "T-built Extra Golem failed vanilla village-reputation hostility; target=" + extra.getTarget());
         });
@@ -83,4 +89,4 @@ public final class VillageReputationGameTest implements FabricGameTest {
 }
 ''')
 
-print('Injected Extra-Golem-vs-vanilla village reputation GameTest.')
+print('Injected Extra-Golem-vs-vanilla village reputation GameTest with registered ServerPlayers.')
