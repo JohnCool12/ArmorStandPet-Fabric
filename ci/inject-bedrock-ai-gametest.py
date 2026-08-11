@@ -6,8 +6,6 @@ build = root / 'build.gradle'
 modjson = root / 'src/main/resources/fabric.mod.json'
 testjava = root / 'src/main/java/com/mcmoddev/golems/test/BedrockNaturalAiGameTest.java'
 
-# Preserve exact post-port/post-patch files so the test harness can be removed before
-# the production build without reverting any real mod changes.
 (root / 'build.gradle.gametest-backup').write_text(build.read_text())
 (root / 'src/main/resources/fabric.mod.json.gametest-backup').write_text(modjson.read_text())
 
@@ -69,38 +67,66 @@ public final class BedrockNaturalAiGameTest implements FabricGameTest {
         final Player vanillaAttacker = helper.makeMockPlayer(GameType.SURVIVAL);
         vanillaAttacker.setPos(vanilla.getX() + 2.0D, vanilla.getY(), vanilla.getZ());
 
-        // Do not attack on entity tick 0. HurtByTargetGoal detects a *new* attack by
-        // comparing the living entity's last-hurt timestamp with its stored timestamp.
-        // A same-tick spawn+hit is an artificial edge case and is not the user's scenario.
+        final int[] bedrockTimestampBefore = new int[1];
+        final int[] vanillaTimestampBefore = new int[1];
+
         helper.runAfterDelay(10, () -> {
+            bedrockTimestampBefore[0] = bedrock.getLastHurtByMobTimestamp();
+            vanillaTimestampBefore[0] = vanilla.getLastHurtByMobTimestamp();
             final float bedrockHealth = bedrock.getHealth();
             bedrock.hurt(helper.getLevel().damageSources().playerAttack(bedrockAttacker), 1.0F);
             vanilla.hurt(helper.getLevel().damageSources().playerAttack(vanillaAttacker), 1.0F);
+
             helper.assertTrue(bedrock.getHealth() == bedrockHealth,
                     "Bedrock Golem took actual damage during provocation test");
             helper.assertTrue(!bedrock.isPlayerCreated(),
                     "Bedrock Golem incorrectly entered player-created/custom-neutral semantics");
+            helper.assertTrue(bedrock.getLastHurtByMob() == bedrockAttacker,
+                    "Bedrock fake-hit bridge did not preserve the player as lastHurtByMob");
+            helper.assertTrue(bedrock.getLastHurtByMobTimestamp() != bedrockTimestampBefore[0],
+                    "Bedrock fake-hit bridge did not advance lastHurtByMobTimestamp");
+            helper.assertTrue(vanilla.getLastHurtByMob() == vanillaAttacker,
+                    "Vanilla control did not record its player attacker");
+            helper.assertTrue(vanilla.getLastHurtByMobTimestamp() != vanillaTimestampBefore[0],
+                    "Vanilla control did not advance lastHurtByMobTimestamp");
+
+            final boolean bedrockType = bedrock.canAttackType(EntityType.PLAYER);
+            final boolean vanillaType = vanilla.canAttackType(EntityType.PLAYER);
+            final boolean bedrockAttack = bedrock.canAttack(bedrockAttacker);
+            final boolean vanillaAttack = vanilla.canAttack(vanillaAttacker);
+            helper.assertTrue(vanillaType,
+                    "Vanilla natural Iron Golem baseline unexpectedly rejects EntityType.PLAYER");
+            helper.assertTrue(vanillaAttack,
+                    "Vanilla natural Iron Golem baseline unexpectedly rejects its survival attacker");
+            helper.assertTrue(bedrockType,
+                    "Bedrock canAttackType(PLAYER) is false while PlayerCreated=false");
+            helper.assertTrue(bedrockAttack,
+                    "Bedrock canAttack(player) is false despite natural semantics; playerCreated="
+                            + bedrock.isPlayerCreated() + ", typeAllowed=" + bedrockType
+                            + ", vanillaCanAttack=" + vanillaAttack);
         });
 
-        // Both natural-style golems should acquire their direct attacker through the same
-        // HurtByTargetGoal path. Do not manually set either target in the test.
         helper.runAfterDelay(30, () -> {
-            helper.assertTrue(bedrock.getTarget() == bedrockAttacker,
-                    "Bedrock did not acquire its direct player attacker through HurtByTargetGoal");
+            // Check the vanilla control first so a Bedrock failure cannot hide a broken
+            // test baseline.
             helper.assertTrue(vanilla.getTarget() == vanillaAttacker,
                     "Vanilla Iron Golem baseline did not acquire its direct attacker");
+            helper.assertTrue(bedrock.getTarget() == bedrockAttacker,
+                    "Bedrock did not acquire its direct player attacker through HurtByTargetGoal; "
+                            + "lastHurtMatches=" + (bedrock.getLastHurtByMob() == bedrockAttacker)
+                            + ", canAttack=" + bedrock.canAttack(bedrockAttacker)
+                            + ", canAttackType=" + bedrock.canAttackType(EntityType.PLAYER)
+                            + ", playerCreated=" + bedrock.isPlayerCreated());
 
-            // Teleport the attackers far beyond ordinary follow range. This reproduces the
-            // user's 'successfully got it to stop being provoked' condition without death.
             bedrockAttacker.setPos(bedrock.getX() + 128.0D, bedrock.getY(), bedrock.getZ());
             vanillaAttacker.setPos(vanilla.getX() + 128.0D, vanilla.getY(), vanilla.getZ());
         });
 
         helper.runAfterDelay(150, () -> {
-            helper.assertTrue(bedrock.getTarget() != bedrockAttacker,
-                    "Bedrock retained the remote player target after retaliation range ended");
             helper.assertTrue(vanilla.getTarget() != vanillaAttacker,
                     "Vanilla baseline unexpectedly retained the remote player target");
+            helper.assertTrue(bedrock.getTarget() != bedrockAttacker,
+                    "Bedrock retained the remote player target after retaliation range ended");
 
             final Zombie bedrockZombie = EntityType.ZOMBIE.create(helper.getLevel());
             final Zombie vanillaZombie = EntityType.ZOMBIE.create(helper.getLevel());
@@ -111,17 +137,17 @@ public final class BedrockNaturalAiGameTest implements FabricGameTest {
             helper.getLevel().addFreshEntity(bedrockZombie);
             helper.getLevel().addFreshEntity(vanillaZombie);
 
-            // succeedWhen retries every tick. It catches target acquisition before either
-            // golem has time to kill and clear the zombie target.
             helper.succeedWhen(() -> {
                 helper.assertTrue(vanilla.getTarget() == vanillaZombie,
                         "Vanilla baseline has not acquired its hostile mob yet");
                 helper.assertTrue(bedrock.getTarget() == bedrockZombie,
-                        "Bedrock failed to reacquire a hostile mob after player retaliation ended");
+                        "Bedrock failed to reacquire a hostile mob after player retaliation ended; "
+                                + "currentTarget=" + bedrock.getTarget()
+                                + ", lastHurt=" + bedrock.getLastHurtByMob());
             });
         });
     }
 }
 ''')
 
-print('Injected temporary Bedrock-vs-vanilla AI GameTest harness.')
+print('Injected diagnostic Bedrock-vs-vanilla AI GameTest harness.')
