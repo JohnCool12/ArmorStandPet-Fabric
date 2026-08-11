@@ -18,7 +18,7 @@ def replace_method(signature: str, replacement: str) -> None:
         if text[i] == '{':
             depth += 1
         elif text[i] == '}':
-            depth -= -= 1
+            depth -= 1
             if depth == 0:
                 end = i + 1
                 break
@@ -125,7 +125,11 @@ mark_end = text.index('\n\tprivate ', mark_start)
 mark_body = text[mark_start:mark_end]
 if 'setPlayerCreated(true)' in mark_body:
     raise SystemExit('Constructed golem still becomes PlayerCreated=true')
-if 'type == EntityType.VILLAGER' in text[text.index('public boolean canAttackType'):text.index('public ItemStack getPickResult') if 'public ItemStack getPickResult' in text else text.index('public ItemStack getPickedResult')]:
+can_attack_start = text.index('public boolean canAttackType')
+can_attack_end = text.find('\n\t@Override', can_attack_start + 1)
+if can_attack_end < 0:
+    can_attack_end = can_attack_start + 1200
+if 'type == EntityType.VILLAGER' in text[can_attack_start:can_attack_end]:
     raise SystemExit('Villager canAttackType exclusion still present')
 for token in ('DefendVillageTargetGoal', 'HurtByTargetGoal', 'NearestAttackableTargetGoal', 'ResetUniversalAngerTargetGoal'):
     if token not in text:
