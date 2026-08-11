@@ -96,6 +96,11 @@ public final class VillageReputationGameTest implements FabricGameTest {
         helper.assertTrue(extraVillager != null && vanillaVillager != null, "Failed to create villager controls");
         extraVillager.moveTo(extra.getX() + 2.0D, extra.getY(), extra.getZ(), 0.0F, 0.0F);
         vanillaVillager.moveTo(vanilla.getX() + 2.0D, vanilla.getY(), vanilla.getZ(), 0.0F, 0.0F);
+        // The vanilla defense goal only scans a 10x8x10 box around the golem. Pin the
+        // test villagers so their own AI cannot wander them outside that box before the
+        // delayed reputation assertion runs.
+        extraVillager.setNoAi(true);
+        vanillaVillager.setNoAi(true);
         helper.getLevel().addFreshEntity(extraVillager);
         helper.getLevel().addFreshEntity(vanillaVillager);
 
@@ -126,8 +131,6 @@ public final class VillageReputationGameTest implements FabricGameTest {
             final String vanillaTarget = String.valueOf(vanilla.getTarget());
             final String extraTarget = String.valueOf(extra.getTarget());
 
-            // This duplicates the actual 1.21.1 DefendVillageTargetGoal input queries,
-            // verified from the merged Minecraft bytecode in CI.
             final TargetingConditions conditions = TargetingConditions.forCombat().range(64.0D);
             final AABB vanillaBox = vanilla.getBoundingBox().inflate(10.0D, 8.0D, 10.0D);
             final AABB extraBox = extra.getBoundingBox().inflate(10.0D, 8.0D, 10.0D);
@@ -178,4 +181,4 @@ public final class VillageReputationGameTest implements FabricGameTest {
 }
 ''')
 
-print('Injected diagnostic Extra-vs-vanilla village reputation GameTest.')
+print('Injected pinned-villager Extra-vs-vanilla village reputation GameTest.')
