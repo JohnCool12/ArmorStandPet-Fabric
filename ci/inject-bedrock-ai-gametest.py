@@ -63,9 +63,9 @@ public final class BedrockNaturalAiGameTest implements FabricGameTest {
         helper.getLevel().addFreshEntity(vanilla);
 
         final Player bedrockAttacker = helper.makeMockPlayer(GameType.SURVIVAL);
-        bedrockAttacker.setPos(bedrock.getX() + 2.0D, bedrock.getY(), bedrock.getZ());
+        bedrockAttacker.setPos(bedrock.getX() + 6.0D, bedrock.getY(), bedrock.getZ());
         final Player vanillaAttacker = helper.makeMockPlayer(GameType.SURVIVAL);
-        vanillaAttacker.setPos(vanilla.getX() + 2.0D, vanilla.getY(), vanilla.getZ());
+        vanillaAttacker.setPos(vanilla.getX() + 6.0D, vanilla.getY(), vanilla.getZ());
 
         helper.runAfterDelay(20, () -> {
             helper.assertTrue(bedrock.tickCount > 0,
@@ -103,13 +103,18 @@ public final class BedrockNaturalAiGameTest implements FabricGameTest {
                     "Bedrock attempted-hit bridge did not advance the hurt timestamp; tickCount="
                             + bedrock.tickCount + ", timestamp=" + bedrock.getLastHurtByMobTimestamp());
 
-            // Give the vanilla control the exact same retaliation stimulus instead of
-            // relying on GameTest's mock-player damage path. From this point forward the
-            // target-goal comparison is apples-to-apples.
+            // Give the vanilla control the exact same retaliation stimulus. From this point
+            // forward the target-goal comparison is apples-to-apples.
             vanilla.setLastHurtByMob(vanillaAttacker);
         });
 
-        helper.runAfterDelay(45, () -> {
+        // Check retaliation almost immediately, before Bedrock's stronger attack can kill
+        // the mock player and invalidate the disengagement scenario.
+        helper.runAfterDelay(23, () -> {
+            helper.assertTrue(vanillaAttacker.isAlive(),
+                    "Vanilla mock attacker died before the retaliation checkpoint");
+            helper.assertTrue(bedrockAttacker.isAlive(),
+                    "Bedrock mock attacker died before the retaliation checkpoint");
             helper.assertTrue(vanilla.getTarget() == vanillaAttacker,
                     "Vanilla target stack did not respond to setLastHurtByMob stimulus; "
                             + "tickCount=" + vanilla.tickCount
@@ -123,6 +128,8 @@ public final class BedrockNaturalAiGameTest implements FabricGameTest {
                             + ", canAttackType=" + bedrock.canAttackType(EntityType.PLAYER)
                             + ", playerCreated=" + bedrock.isPlayerCreated());
 
+            // Reproduce the user's successful escape: move each provoking player far beyond
+            // the golem's normal targeting range before either can be killed.
             bedrockAttacker.setPos(bedrock.getX() + 128.0D, bedrock.getY(), bedrock.getZ());
             vanillaAttacker.setPos(vanilla.getX() + 128.0D, vanilla.getY(), vanilla.getZ());
         });
@@ -137,16 +144,21 @@ public final class BedrockNaturalAiGameTest implements FabricGameTest {
             final Zombie vanillaZombie = EntityType.ZOMBIE.create(helper.getLevel());
             helper.assertTrue(bedrockZombie != null && vanillaZombie != null,
                     "Failed to create hostile-mob probes");
+            bedrockZombie.setNoAi(true);
+            vanillaZombie.setNoAi(true);
             bedrockZombie.moveTo(bedrock.getX() + 4.0D, bedrock.getY(), bedrock.getZ(), 0.0F, 0.0F);
             vanillaZombie.moveTo(vanilla.getX() + 4.0D, vanilla.getY(), vanilla.getZ(), 0.0F, 0.0F);
             helper.getLevel().addFreshEntity(bedrockZombie);
             helper.getLevel().addFreshEntity(vanillaZombie);
 
+            // The zombies cannot attack, so success requires proactive hostile-mob target
+            // acquisition rather than HurtBy retaliation. Either zombie is acceptable because
+            // both are valid hostile targets in the shared test area.
             helper.succeedWhen(() -> {
-                helper.assertTrue(vanilla.getTarget() == vanillaZombie,
-                        "Vanilla baseline has not acquired its hostile mob yet");
-                helper.assertTrue(bedrock.getTarget() == bedrockZombie,
-                        "Bedrock failed hostile-mob reacquisition after player retaliation; currentTarget="
+                helper.assertTrue(vanilla.getTarget() instanceof Zombie,
+                        "Vanilla baseline has not proactively acquired a hostile mob yet");
+                helper.assertTrue(bedrock.getTarget() instanceof Zombie,
+                        "Bedrock failed proactive hostile-mob reacquisition after player retaliation; currentTarget="
                                 + bedrock.getTarget() + ", lastHurt=" + bedrock.getLastHurtByMob());
             });
         });
@@ -154,4 +166,4 @@ public final class BedrockNaturalAiGameTest implements FabricGameTest {
 }
 ''')
 
-print('Injected equal-stimulus Bedrock-vs-vanilla AI GameTest harness.')
+print('Injected escape-safe Bedrock-vs-vanilla AI GameTest harness.')
