@@ -53,8 +53,10 @@ jobs:
           set -uo pipefail
           mkdir -p run/gametest
           printf 'eula=true\n' > run/gametest/eula.txt
+          set +e
           gradle runGametest --no-daemon > ../gametest-full.log 2>&1
           status=$?
+          set -e
           if [ -f build/junit.xml ]; then
             python3 - <<'PY'
           import xml.etree.ElementTree as ET
