@@ -45,23 +45,10 @@ public final class VillageReputationGameTest implements FabricGameTest {
                 helper.getLevel(),
                 new GameProfile(UUID.randomUUID(), name),
                 ClientInformation.createDefault()) {
-            @Override
-            public boolean isCreative() {
-                return false;
-            }
-
-            @Override
-            public boolean isSpectator() {
-                return false;
-            }
-
-            @Override
-            public void tick() {
-            }
-
-            @Override
-            public void doTick() {
-            }
+            @Override public boolean isCreative() { return false; }
+            @Override public boolean isSpectator() { return false; }
+            @Override public void tick() { }
+            @Override public void doTick() { }
         };
         player.gameMode.changeGameModeForPlayer(GameType.SURVIVAL);
         GameType.SURVIVAL.updatePlayerAbilities(player.getAbilities());
@@ -81,24 +68,25 @@ public final class VillageReputationGameTest implements FabricGameTest {
         final GolemBase extra = GolemBase.create(helper.getLevel(),
                 ResourceLocation.fromNamespaceAndPath(ExtraGolems.MODID, "obsidian"));
         helper.assertTrue(extra != null, "Failed to create Obsidian Extra Golem");
-        extra.moveTo(helper.absolutePos(new BlockPos(4, 2, 4)), 0.0F, 0.0F);
+        extra.moveTo(helper.absolutePos(new BlockPos(4, 4, 4)), 0.0F, 0.0F);
         extra.markConstructedNeutral();
         helper.getLevel().addFreshEntity(extra);
 
         final IronGolem vanilla = EntityType.IRON_GOLEM.create(helper.getLevel());
         helper.assertTrue(vanilla != null, "Failed to create vanilla Iron Golem");
-        vanilla.moveTo(helper.absolutePos(new BlockPos(44, 2, 4)), 0.0F, 0.0F);
+        vanilla.moveTo(helper.absolutePos(new BlockPos(44, 4, 4)), 0.0F, 0.0F);
         vanilla.setPlayerCreated(false);
         helper.getLevel().addFreshEntity(vanilla);
 
         final Villager extraVillager = EntityType.VILLAGER.create(helper.getLevel());
         final Villager vanillaVillager = EntityType.VILLAGER.create(helper.getLevel());
         helper.assertTrue(extraVillager != null && vanillaVillager != null, "Failed to create villager controls");
-        extraVillager.moveTo(extra.getX() + 2.0D, extra.getY(), extra.getZ(), 0.0F, 0.0F);
-        vanillaVillager.moveTo(vanilla.getX() + 2.0D, vanilla.getY(), vanilla.getZ(), 0.0F, 0.0F);
-        // The vanilla defense goal only scans a 10x8x10 box around the golem. Pin the
-        // test villagers so their own AI cannot wander them outside that box before the
-        // delayed reputation assertion runs.
+        // DefendVillageTargetGoal scans villagers using COMBAT TargetingConditions, which
+        // includes the golem's Sensing line-of-sight test. Put the pinned villager on the
+        // same unobstructed coordinates as its golem so this exact vanilla prerequisite
+        // cannot be invalidated by the GameTest structure or wandering.
+        extraVillager.moveTo(extra.getX(), extra.getY(), extra.getZ(), 0.0F, 0.0F);
+        vanillaVillager.moveTo(vanilla.getX(), vanilla.getY(), vanilla.getZ(), 0.0F, 0.0F);
         extraVillager.setNoAi(true);
         vanillaVillager.setNoAi(true);
         helper.getLevel().addFreshEntity(extraVillager);
@@ -124,6 +112,18 @@ public final class VillageReputationGameTest implements FabricGameTest {
         helper.assertTrue(!extraPlayer.isCreative() && !vanillaPlayer.isCreative()
                         && !extraPlayer.isSpectator() && !vanillaPlayer.isSpectator(),
                 "Listed player controls are not valid survival village-defense targets");
+
+        final TargetingConditions exactVanillaConditions = TargetingConditions.forCombat().range(64.0D);
+        helper.assertTrue(exactVanillaConditions.test(vanilla, vanillaVillager),
+                "Pinned vanilla-control villager still fails DefendVillageTargetGoal combat TargetingConditions; "
+                        + "canAttack=" + vanilla.canAttack(vanillaVillager)
+                        + ", canAttackType=" + vanilla.canAttackType(vanillaVillager.getType())
+                        + ", allied=" + vanilla.isAlliedTo(vanillaVillager)
+                        + ", visible=" + vanilla.getSensing().hasLineOfSight(vanillaVillager)
+                        + ", villagerAlive=" + vanillaVillager.isAlive()
+                        + ", villagerInvulnerable=" + vanillaVillager.isInvulnerable());
+        helper.assertTrue(exactVanillaConditions.test(extra, extraVillager),
+                "Pinned Extra-control villager fails same vanilla combat TargetingConditions");
 
         helper.runAfterDelay(180L, () -> {
             final boolean vanillaOk = vanilla.getTarget() == vanillaPlayer;
@@ -154,10 +154,7 @@ public final class VillageReputationGameTest implements FabricGameTest {
                     + ", nearbyPlayers=" + vanillaPlayers.size()
                     + ", expectedPlayerPresent=" + vanillaPlayers.contains(vanillaPlayer)
                     + ", reputation=" + vanillaRep
-                    + ", playerCreated=" + vanilla.isPlayerCreated()
-                    + ", playerCreative=" + vanillaPlayer.isCreative()
-                    + ", playerSpectator=" + vanillaPlayer.isSpectator()
-                    + ", playerAlive=" + vanillaPlayer.isAlive();
+                    + ", playerCreated=" + vanilla.isPlayerCreated();
             final String extraDiag = "target=" + extraTarget
                     + ", directCanUse=" + extraGoalCanUse
                     + ", nearbyVillagers=" + extraVillagers.size()
@@ -165,10 +162,7 @@ public final class VillageReputationGameTest implements FabricGameTest {
                     + ", nearbyPlayers=" + extraPlayers.size()
                     + ", expectedPlayerPresent=" + extraPlayers.contains(extraPlayer)
                     + ", reputation=" + extraRep
-                    + ", playerCreated=" + extra.isPlayerCreated()
-                    + ", playerCreative=" + extraPlayer.isCreative()
-                    + ", playerSpectator=" + extraPlayer.isSpectator()
-                    + ", playerAlive=" + extraPlayer.isAlive();
+                    + ", playerCreated=" + extra.isPlayerCreated();
 
             removeHeadlessPlayers(helper, extraPlayer, vanillaPlayer);
             helper.assertTrue(vanillaOk,
@@ -181,4 +175,4 @@ public final class VillageReputationGameTest implements FabricGameTest {
 }
 ''')
 
-print('Injected pinned-villager Extra-vs-vanilla village reputation GameTest.')
+print('Injected unobstructed exact-prerequisite Extra-vs-vanilla village reputation GameTest.')
