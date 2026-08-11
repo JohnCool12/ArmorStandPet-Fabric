@@ -34,14 +34,12 @@ import java.util.UUID;
 
 /** CI-only regression test. Deleted before the production JAR is packaged. */
 public final class VillageReputationGameTest implements FabricGameTest {
-    private static ServerPlayer makeRegisteredSurvivalPlayer(final GameTestHelper helper, final String name) {
+    private static ServerPlayer makeListedSurvivalPlayer(final GameTestHelper helper, final String name) {
         final ServerPlayer player = new ServerPlayer(
                 helper.getLevel().getServer(),
                 helper.getLevel(),
                 new GameProfile(UUID.randomUUID(), name),
                 ClientInformation.createDefault()) {
-            // The built-in GameTest helper intentionally creates a creative ServerPlayer.
-            // This anonymous test player is a genuine survival target for vanilla AI.
             @Override
             public boolean isCreative() {
                 return false;
@@ -52,8 +50,6 @@ public final class VillageReputationGameTest implements FabricGameTest {
                 return false;
             }
 
-            // There is no network connection in a headless GameTest. The reputation AI
-            // only needs this entity registered in ServerLevel's player list.
             @Override
             public void tick() {
             }
@@ -64,7 +60,12 @@ public final class VillageReputationGameTest implements FabricGameTest {
         };
         player.gameMode.changeGameModeForPlayer(GameType.SURVIVAL);
         GameType.SURVIVAL.updatePlayerAbilities(player.getAbilities());
-        helper.getLevel().addNewPlayer(player);
+
+        // DefendVillageTargetGoal discovers players through ServerLevel.players(). We
+        // deliberately insert the headless player into that list directly rather than
+        // addNewPlayer(), which would start chunk/network tracking and require a packet
+        // connection irrelevant to this AI test.
+        helper.getLevel().players().add(player);
         return player;
     }
 
@@ -91,15 +92,11 @@ public final class VillageReputationGameTest implements FabricGameTest {
         helper.getLevel().addFreshEntity(extraVillager);
         helper.getLevel().addFreshEntity(vanillaVillager);
 
-        final ServerPlayer extraPlayer = makeRegisteredSurvivalPlayer(helper, "ExtraVillageRep");
-        final ServerPlayer vanillaPlayer = makeRegisteredSurvivalPlayer(helper, "VanillaVillageRep");
+        final ServerPlayer extraPlayer = makeListedSurvivalPlayer(helper, "ExtraVillageRep");
+        final ServerPlayer vanillaPlayer = makeListedSurvivalPlayer(helper, "VanillaVillageRep");
         extraPlayer.setPos(extra.getX() + 7.0D, extra.getY(), extra.getZ());
         vanillaPlayer.setPos(vanilla.getX() + 7.0D, vanilla.getY(), vanilla.getZ());
-        extraPlayer.setAbsorptionAmount(100.0F);
-        vanillaPlayer.setAbsorptionAmount(100.0F);
 
-        // Deterministically create strongly-negative gossip read by vanilla's
-        // DefendVillageTargetGoal. The assertions below verify effective reputation.
         extraVillager.getGossips().add(extraPlayer.getUUID(), GossipType.MAJOR_NEGATIVE, 25);
         vanillaVillager.getGossips().add(vanillaPlayer.getUUID(), GossipType.MAJOR_NEGATIVE, 25);
 
@@ -109,9 +106,12 @@ public final class VillageReputationGameTest implements FabricGameTest {
                 "Vanilla-side villager did not receive sufficiently low player reputation");
         helper.assertTrue(!extra.isPlayerCreated(),
                 "T-built Extra Golem is still PlayerCreated=true instead of natural-neutral");
+        helper.assertTrue(helper.getLevel().players().contains(extraPlayer)
+                        && helper.getLevel().players().contains(vanillaPlayer),
+                "Test players are not visible to ServerLevel nearby-player queries");
         helper.assertTrue(!extraPlayer.isCreative() && !vanillaPlayer.isCreative()
                         && !extraPlayer.isSpectator() && !vanillaPlayer.isSpectator(),
-                "Registered player controls are not valid survival village-defense targets");
+                "Listed player controls are not valid survival village-defense targets");
 
         helper.succeedWhen(() -> {
             helper.assertTrue(vanilla.getTarget() == vanillaPlayer,
@@ -123,4 +123,4 @@ public final class VillageReputationGameTest implements FabricGameTest {
 }
 ''')
 
-print('Injected Extra-Golem-vs-vanilla village reputation GameTest with real registered survival players.')
+print('Injected Extra-Golem-vs-vanilla village reputation GameTest with direct ServerLevel player-list registration.')
