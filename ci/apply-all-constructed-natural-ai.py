@@ -18,7 +18,7 @@ def replace_method(signature: str, replacement: str) -> None:
         if text[i] == '{':
             depth += 1
         elif text[i] == '}':
-            depth -= 1
+            depth -= -= 1
             if depth == 0:
                 end = i + 1
                 break
@@ -54,6 +54,18 @@ replace_method(
 \t\t}
 \t}'''
 )
+
+# Vanilla DefendVillageTargetGoal finds nearby villagers with
+# TargetingConditions.forCombat(). GolemBase historically rejected VILLAGER in
+# canAttackType(), so those villagers were filtered out before reputation was ever
+# evaluated. Natural Iron Golems do not have that extra Villager exclusion. Removing
+# it does not add a villager attack goal; it only lets vanilla village-defense AI see
+# villagers for reputation checks.
+old_villager_guard = 'if (type == EntityType.VILLAGER || type == EGRegistry.EntityReg.GOLEM.get()'
+new_villager_guard = 'if (type == EGRegistry.EntityReg.GOLEM.get()'
+if text.count(old_villager_guard) != 1:
+    raise SystemExit(f'Expected one Villager canAttackType exclusion, found {text.count(old_villager_guard)}')
+text = text.replace(old_villager_guard, new_villager_guard, 1)
 
 # Prevent the old strict-neutral compatibility heuristic from converting a naturalized
 # constructed golem back to PlayerCreated=true after its first player fight.
@@ -105,16 +117,19 @@ if text.count(needle) != 1:
     raise SystemExit(f'Expected one readContainer load hook, found {text.count(needle)}')
 text = text.replace(needle, replacement, 1)
 
-# Sanity assertions: the natural stack must include all vanilla target goals, and new
-# constructed golems must never enter PlayerCreated=true semantics.
+# Sanity assertions: the natural stack must include all vanilla target goals, new
+# constructed golems must never enter PlayerCreated=true semantics, and the legacy
+# Villager exclusion must be gone so DefendVillageTargetGoal can see villagers.
 mark_start = text.index('\tpublic void markConstructedNeutral() {')
 mark_end = text.index('\n\tprivate ', mark_start)
 mark_body = text[mark_start:mark_end]
 if 'setPlayerCreated(true)' in mark_body:
     raise SystemExit('Constructed golem still becomes PlayerCreated=true')
+if 'type == EntityType.VILLAGER' in text[text.index('public boolean canAttackType'):text.index('public ItemStack getPickResult') if 'public ItemStack getPickResult' in text else text.index('public ItemStack getPickedResult')]:
+    raise SystemExit('Villager canAttackType exclusion still present')
 for token in ('DefendVillageTargetGoal', 'HurtByTargetGoal', 'NearestAttackableTargetGoal', 'ResetUniversalAngerTargetGoal'):
     if token not in text:
         raise SystemExit(f'Missing vanilla target goal: {token}')
 
 p.write_text(text)
-print('Applied permanent natural Iron Golem target AI to all T-built Extra Golems.')
+print('Applied permanent natural Iron Golem target AI and fixed village reputation visibility for all T-built Extra Golems.')
