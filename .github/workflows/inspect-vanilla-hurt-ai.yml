@@ -1,0 +1,41 @@
+name: Inspect Vanilla 1.21.1 Hurt AI
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.5.1'
+      - name: Reconstruct project enough to resolve mapped Minecraft
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat ci/egpatch.part-* | base64 --decode > /tmp/fabric-port.patch.xz
+          git clone https://github.com/bigenergy/extra-golems-reborn.git project
+          cd project
+          git checkout 6b21ec4a59ca16e8362b26e38fc63b2807042bdf
+          xz -dc /tmp/fabric-port.patch.xz | patch -p4 --batch --forward
+          gradle compileJava --no-daemon >/dev/null
+          JAR=$(find .gradle/loom-cache/minecraftMaven/net/minecraft -type f -name '*.jar' | grep -v sources | head -1)
+          echo "MINECRAFT_JAR=$JAR"
+          javap -classpath "$JAR" -p -c net.minecraft.world.entity.LivingEntity > ../living.txt
+          javap -classpath "$JAR" -p -c net.minecraft.world.entity.ai.goal.target.HurtByTargetGoal > ../hurtgoal.txt
+          echo '=== LivingEntity.setLastHurtByMob ==='
+          grep -n -A35 -B5 'setLastHurtByMob' ../living.txt || true
+          echo '=== LivingEntity.hurt ==='
+          grep -n -A260 -B5 'public boolean hurt' ../living.txt || true
+          echo '=== HurtByTargetGoal ==='
+          cat ../hurtgoal.txt
