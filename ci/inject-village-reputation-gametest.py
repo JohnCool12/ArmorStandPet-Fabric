@@ -64,7 +64,14 @@ public final class VillageReputationGameTest implements FabricGameTest {
         return player;
     }
 
-    @GameTest(template = FabricGameTest.EMPTY_STRUCTURE, timeoutTicks = 240)
+    private static void removeHeadlessPlayers(final GameTestHelper helper,
+                                              final ServerPlayer extraPlayer,
+                                              final ServerPlayer vanillaPlayer) {
+        helper.getLevel().players().remove(extraPlayer);
+        helper.getLevel().players().remove(vanillaPlayer);
+    }
+
+    @GameTest(template = FabricGameTest.EMPTY_STRUCTURE, timeoutTicks = 260)
     public void constructedExtraGolemMatchesVanillaVillageReputation(final GameTestHelper helper) {
         final GolemBase extra = GolemBase.create(helper.getLevel(),
                 ResourceLocation.fromNamespaceAndPath(ExtraGolems.MODID, "obsidian"));
@@ -108,18 +115,25 @@ public final class VillageReputationGameTest implements FabricGameTest {
                         && !extraPlayer.isSpectator() && !vanillaPlayer.isSpectator(),
                 "Listed player controls are not valid survival village-defense targets");
 
-        helper.succeedWhen(() -> {
-            helper.assertTrue(vanilla.getTarget() == vanillaPlayer,
-                    "Vanilla natural Iron Golem has not targeted the very-low-reputation player yet; target=" + vanilla.getTarget());
-            helper.assertTrue(extra.getTarget() == extraPlayer,
-                    "T-built Extra Golem failed vanilla village-reputation hostility; target=" + extra.getTarget());
-            // Assertions passed. Remove connectionless AI-only players before the
-            // GameTest reporter broadcasts its success message to every level player.
-            helper.getLevel().players().remove(extraPlayer);
-            helper.getLevel().players().remove(vanillaPlayer);
+        // DefendVillageTargetGoal is deliberately randomized, so allow a generous
+        // deterministic evaluation window. Crucially, remove the connectionless AI-only
+        // players BEFORE asserting either pass or failure; this lets GameTest report the
+        // exact failed assertion instead of crashing while trying to message them.
+        helper.runAfterDelay(180L, () -> {
+            final boolean vanillaOk = vanilla.getTarget() == vanillaPlayer;
+            final boolean extraOk = extra.getTarget() == extraPlayer;
+            final String vanillaTarget = String.valueOf(vanilla.getTarget());
+            final String extraTarget = String.valueOf(extra.getTarget());
+            removeHeadlessPlayers(helper, extraPlayer, vanillaPlayer);
+
+            helper.assertTrue(vanillaOk,
+                    "Vanilla natural Iron Golem did not target the very-low-reputation player after 180 ticks; target=" + vanillaTarget);
+            helper.assertTrue(extraOk,
+                    "T-built Extra Golem did not match vanilla low-reputation hostility after 180 ticks; target=" + extraTarget);
+            helper.succeed();
         });
     }
 }
 ''')
 
-print('Injected Extra-Golem-vs-vanilla village reputation GameTest with direct player-list registration and post-pass cleanup.')
+print('Injected deterministic Extra-vs-vanilla village reputation GameTest with clean pass/failure reporting.')
