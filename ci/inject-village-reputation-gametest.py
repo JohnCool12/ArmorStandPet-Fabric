@@ -33,10 +33,17 @@ public final class VillageReputationGameTest implements FabricGameTest {
     @GameTest(template = FabricGameTest.EMPTY_STRUCTURE, timeoutTicks = 300)
     public void constructedExtraGolemObeysVanillaVillageReputation(final GameTestHelper helper) {
         // DefendVillageTargetGoal discovers candidates through the server level's player list.
-        // makeMockServerPlayerInLevel() registers a genuine ServerPlayer there; force its
-        // underlying game-mode controller to Survival so vanilla targeting can select it.
+        // GameTest's embedded ServerPlayer starts with test-only creative-like abilities even
+        // after its game-mode controller is switched. Normalize those abilities too, while
+        // keeping the player registered in ServerLevel.players(), so vanilla targeting gets
+        // the same kind of candidate it would see on a real survival server.
         final ServerPlayer dislikedPlayer = helper.makeMockServerPlayerInLevel();
         dislikedPlayer.gameMode.changeGameModeForPlayer(GameType.SURVIVAL);
+        dislikedPlayer.getAbilities().instabuild = false;
+        dislikedPlayer.getAbilities().mayfly = false;
+        dislikedPlayer.getAbilities().flying = false;
+        dislikedPlayer.getAbilities().invulnerable = false;
+        dislikedPlayer.onUpdateAbilities();
         dislikedPlayer.setPos(helper.absolutePos(new BlockPos(8, 2, 8)).getCenter());
 
         final Villager villager = EntityType.VILLAGER.create(helper.getLevel());
@@ -65,7 +72,10 @@ public final class VillageReputationGameTest implements FabricGameTest {
             helper.assertTrue(dislikedPlayer.gameMode.isSurvival(),
                     "Registered ServerPlayer game-mode controller is not Survival");
             helper.assertTrue(!dislikedPlayer.isCreative() && !dislikedPlayer.isSpectator(),
-                    "Reputation test player is not a valid survival target");
+                    "Reputation test player is not targetable: creative=" + dislikedPlayer.isCreative()
+                            + ", spectator=" + dislikedPlayer.isSpectator()
+                            + ", instabuild=" + dislikedPlayer.getAbilities().instabuild
+                            + ", invulnerable=" + dislikedPlayer.getAbilities().invulnerable);
             helper.assertTrue(!vanilla.isPlayerCreated(), "Vanilla control unexpectedly player-created");
             helper.assertTrue(!extra.isPlayerCreated(),
                     "T-built Extra Golem is still player-created and cannot use natural village reputation AI");
@@ -81,6 +91,8 @@ public final class VillageReputationGameTest implements FabricGameTest {
                     "Vanilla natural Iron Golem control has not targeted the registered low-reputation ServerPlayer yet; "
                             + "playerListed=" + helper.getLevel().players().contains(dislikedPlayer)
                             + ", survival=" + dislikedPlayer.gameMode.isSurvival()
+                            + ", creative=" + dislikedPlayer.isCreative()
+                            + ", spectator=" + dislikedPlayer.isSpectator()
                             + ", reputation=" + villager.getPlayerReputation(dislikedPlayer));
             helper.assertTrue(extra.getTarget() == dislikedPlayer,
                     "T-built Extra Golem failed vanilla village-reputation targeting; currentTarget=" + extra.getTarget());
@@ -88,4 +100,4 @@ public final class VillageReputationGameTest implements FabricGameTest {
     }
 }
 ''')
-print('Injected registered-survival-ServerPlayer Extra-Golem-vs-vanilla village reputation GameTest.')
+print('Injected normalized survival ServerPlayer Extra-Golem-vs-vanilla village reputation GameTest.')
