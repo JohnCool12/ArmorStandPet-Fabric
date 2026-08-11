@@ -1,4 +1,4 @@
-name: Build Extra Golems Bedrock Natural Hostility
+name: Build Extra Golems Stable Village Targeting
 
 on:
   pull_request:
@@ -54,11 +54,12 @@ jobs:
           python3 ci/apply-legacy-neutral-migration.py
           python3 ci/apply-hybrid-village-neutral.py
           python3 ci/apply-bedrock-natural-hostility.py
+          python3 ci/apply-stable-village-targeting.py
           cd project
 
           test -f build.gradle
           test -f src/main/resources/fabric.mod.json
-          grep -q 'BEDROCK_NATURAL_HOSTILITY_TAG' src/main/java/com/mcmoddev/golems/entity/GolemBase.java
+          grep -q 'extra_golems_bedrock_natural_hostility_v3_stable_village' src/main/java/com/mcmoddev/golems/entity/GolemBase.java
           grep -q 'migrateBedrockNaturalHostilityState' src/main/java/com/mcmoddev/golems/entity/GolemBase.java
           grep -q 'this.setLastHurtByMob(attacker);' src/main/java/com/mcmoddev/golems/entity/GolemBase.java
           ! grep -A20 'isBedrockGolem() && sourceEntity instanceof LivingEntity attacker' src/main/java/com/mcmoddev/golems/entity/GolemBase.java | grep -q 'this.setTarget(attacker);'
@@ -66,7 +67,28 @@ jobs:
           grep -q 'serverLevel.isVillage(this.blockPosition())' src/main/java/com/mcmoddev/golems/entity/GolemBase.java
           grep -q 'new DefendVillageTargetGoal(this)' src/main/java/com/mcmoddev/golems/entity/GolemBase.java
           grep -q 'new HurtByTargetGoal(this)' src/main/java/com/mcmoddev/golems/entity/GolemBase.java
+          grep -q 'return isConstructedNeutralInVillage() && super.canUse();' src/main/java/com/mcmoddev/golems/entity/GolemBase.java
           grep -q 'entity instanceof Enemy && !(entity instanceof Creeper)' src/main/java/com/mcmoddev/golems/entity/GolemBase.java
+          python3 - <<'PY'
+          from pathlib import Path
+          s = Path('src/main/java/com/mcmoddev/golems/entity/GolemBase.java').read_text()
+          start = s.index('\tprivate void updateConstructedNeutralTargetingMode() {')
+          end = s.index('\n\tprivate void configureConstructedNeutralTargeting() {', start)
+          body = s[start:end]
+          assert 'targetSelector.getAvailableGoals().clear()' not in body
+          assert 'configureConstructedVillageTargeting();' not in body
+          assert 'configureConstructedNeutralTargeting();' not in body
+          assert 'stopBeingAngry();' not in body
+          stable_start = end
+          stable_end = s.index('\n\tprivate ', stable_start + 2)
+          stable = s[stable_start:stable_end]
+          assert stable.count('targetSelector.getAvailableGoals().clear()') == 1
+          assert 'new DefendVillageTargetGoal(this)' in stable
+          assert 'new HurtByTargetGoal(this)' in stable
+          assert 'new NearestAttackableTargetGoal<Player>' in stable
+          assert 'entity instanceof Enemy && !(entity instanceof Creeper)' in stable
+          print('Stable selector static verification passed')
+          PY
           grep -q 'GolemFinalEyesLayer' src/main/java/com/mcmoddev/golems/client/entity/GolemRenderer.java
           grep -q 'this.setInvulnerable(false);' src/main/java/com/mcmoddev/golems/entity/GolemBase.java
           grep -q 'usesIronGolemSounds' src/main/java/com/mcmoddev/golems/entity/GolemBase.java
@@ -130,6 +152,6 @@ jobs:
       - name: Upload mod JAR
         uses: actions/upload-artifact@v4
         with:
-          name: extra-golems-reborn-fabric-1.21.1-bedrock-natural-hostility
+          name: extra-golems-reborn-fabric-1.21.1-stable-village-targeting
           path: artifact/*.jar
           if-no-files-found: error
