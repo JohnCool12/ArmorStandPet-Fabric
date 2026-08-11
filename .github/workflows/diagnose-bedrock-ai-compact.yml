@@ -46,7 +46,6 @@ jobs:
           python3 ci/apply-bedrock-true-vanilla-natural-ai.py >/dev/null
           python3 ci/inject-bedrock-ai-gametest.py >/dev/null
           python3 ci/patch-bedrock-gametest-normal-difficulty.py >/dev/null
-          python3 ci/patch-bedrock-gametest-goal-debug.py >/dev/null
           python3 ci/patch-bedrock-gametest-candidate-debug.py >/dev/null
           echo 'Reconstruction complete'
       - name: Run test and print only assertion
