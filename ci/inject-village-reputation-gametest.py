@@ -60,11 +60,6 @@ public final class VillageReputationGameTest implements FabricGameTest {
         };
         player.gameMode.changeGameModeForPlayer(GameType.SURVIVAL);
         GameType.SURVIVAL.updatePlayerAbilities(player.getAbilities());
-
-        // DefendVillageTargetGoal discovers players through ServerLevel.players(). We
-        // deliberately insert the headless player into that list directly rather than
-        // addNewPlayer(), which would start chunk/network tracking and require a packet
-        // connection irrelevant to this AI test.
         helper.getLevel().players().add(player);
         return player;
     }
@@ -118,9 +113,13 @@ public final class VillageReputationGameTest implements FabricGameTest {
                     "Vanilla natural Iron Golem has not targeted the very-low-reputation player yet; target=" + vanilla.getTarget());
             helper.assertTrue(extra.getTarget() == extraPlayer,
                     "T-built Extra Golem failed vanilla village-reputation hostility; target=" + extra.getTarget());
+            // Assertions passed. Remove connectionless AI-only players before the
+            // GameTest reporter broadcasts its success message to every level player.
+            helper.getLevel().players().remove(extraPlayer);
+            helper.getLevel().players().remove(vanillaPlayer);
         });
     }
 }
 ''')
 
-print('Injected Extra-Golem-vs-vanilla village reputation GameTest with direct ServerLevel player-list registration.')
+print('Injected Extra-Golem-vs-vanilla village reputation GameTest with direct player-list registration and post-pass cleanup.')
