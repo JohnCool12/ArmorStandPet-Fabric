@@ -1,4 +1,4 @@
-name: Build Extra Golems Stable Village Targeting
+name: Build Extra Golems Bedrock Vanilla Natural AI
 
 on:
   pull_request:
@@ -55,39 +55,55 @@ jobs:
           python3 ci/apply-hybrid-village-neutral.py
           python3 ci/apply-bedrock-natural-hostility.py
           python3 ci/apply-stable-village-targeting.py
+          python3 ci/apply-bedrock-vanilla-natural.py
           cd project
 
           test -f build.gradle
           test -f src/main/resources/fabric.mod.json
-          grep -q 'extra_golems_bedrock_natural_hostility_v3_stable_village' src/main/java/com/mcmoddev/golems/entity/GolemBase.java
-          grep -q 'migrateBedrockNaturalHostilityState' src/main/java/com/mcmoddev/golems/entity/GolemBase.java
-          grep -q 'this.setLastHurtByMob(attacker);' src/main/java/com/mcmoddev/golems/entity/GolemBase.java
-          ! grep -A20 'isBedrockGolem() && sourceEntity instanceof LivingEntity attacker' src/main/java/com/mcmoddev/golems/entity/GolemBase.java | grep -q 'this.setTarget(attacker);'
-          ! grep -A20 'isBedrockGolem() && sourceEntity instanceof LivingEntity attacker' src/main/java/com/mcmoddev/golems/entity/GolemBase.java | grep -q 'this.startPersistentAngerTimer();'
-          grep -q 'serverLevel.isVillage(this.blockPosition())' src/main/java/com/mcmoddev/golems/entity/GolemBase.java
+          grep -q 'extra_golems_bedrock_natural_hostility_v4_vanilla_natural' src/main/java/com/mcmoddev/golems/entity/GolemBase.java
+          grep -q 'private void configureBedrockNaturalTargeting()' src/main/java/com/mcmoddev/golems/entity/GolemBase.java
+          grep -q '!isBedrockGolem() && this.getTags().contains(NEUTRAL_CONSTRUCTED_TAG)' src/main/java/com/mcmoddev/golems/entity/GolemBase.java
+          grep -q 'this.removeTag(NEUTRAL_CONSTRUCTED_TAG);' src/main/java/com/mcmoddev/golems/entity/GolemBase.java
           grep -q 'new DefendVillageTargetGoal(this)' src/main/java/com/mcmoddev/golems/entity/GolemBase.java
           grep -q 'new HurtByTargetGoal(this)' src/main/java/com/mcmoddev/golems/entity/GolemBase.java
-          grep -q 'return isConstructedNeutralInVillage() && super.canUse();' src/main/java/com/mcmoddev/golems/entity/GolemBase.java
+          grep -q 'this::isAngryAt' src/main/java/com/mcmoddev/golems/entity/GolemBase.java
           grep -q 'entity instanceof Enemy && !(entity instanceof Creeper)' src/main/java/com/mcmoddev/golems/entity/GolemBase.java
+          grep -q 'new ResetUniversalAngerTargetGoal' src/main/java/com/mcmoddev/golems/entity/GolemBase.java
+          grep -q 'this.setLastHurtByMob(attacker);' src/main/java/com/mcmoddev/golems/entity/GolemBase.java
+          ! grep -A20 'public boolean hurt(final DamageSource source' src/main/java/com/mcmoddev/golems/entity/GolemBase.java | grep -q 'this.setTarget(attacker);'
+          ! grep -A20 'public boolean hurt(final DamageSource source' src/main/java/com/mcmoddev/golems/entity/GolemBase.java | grep -q 'startPersistentAngerTimer'
           python3 - <<'PY'
           from pathlib import Path
           s = Path('src/main/java/com/mcmoddev/golems/entity/GolemBase.java').read_text()
-          start = s.index('\tprivate void updateConstructedNeutralTargetingMode() {')
-          end = s.index('\n\tprivate void configureConstructedNeutralTargeting() {', start)
-          body = s[start:end]
-          assert 'targetSelector.getAvailableGoals().clear()' not in body
-          assert 'configureConstructedVillageTargeting();' not in body
-          assert 'configureConstructedNeutralTargeting();' not in body
-          assert 'stopBeingAngry();' not in body
-          stable_start = end
-          stable_end = s.index('\n\tprivate ', stable_start + 2)
-          stable = s[stable_start:stable_end]
-          assert stable.count('targetSelector.getAvailableGoals().clear()') == 1
-          assert 'new DefendVillageTargetGoal(this)' in stable
-          assert 'new HurtByTargetGoal(this)' in stable
-          assert 'new NearestAttackableTargetGoal<Player>' in stable
-          assert 'entity instanceof Enemy && !(entity instanceof Creeper)' in stable
-          print('Stable selector static verification passed')
+          # Bedrock is excluded from custom constructed-neutral semantics.
+          a = s.index('\tprivate boolean isConstructedNeutral() {')
+          b = s.index('\n\tprivate ', a + 2)
+          assert '!isBedrockGolem()' in s[a:b]
+          # Bedrock's natural target selector has the vanilla target priorities and no village gating wrappers.
+          a = s.index('\tprivate void configureBedrockNaturalTargeting() {')
+          b = s.index('\n\tprivate ', a + 2)
+          natural = s[a:b]
+          assert natural.count('targetSelector.getAvailableGoals().clear()') == 1
+          assert 'new DefendVillageTargetGoal(this)' in natural
+          assert 'new HurtByTargetGoal(this)' in natural
+          assert 'new NearestAttackableTargetGoal<>(this, Player.class' in natural
+          assert 'this::isAngryAt' in natural
+          assert 'entity instanceof Enemy && !(entity instanceof Creeper)' in natural
+          assert 'new ResetUniversalAngerTargetGoal<>(this, false)' in natural
+          assert 'isConstructedNeutralInVillage()' not in natural
+          # Bedrock hit bridge only records the attacker; it never forces a target/anger.
+          a = s.index('\t@Override\n\tpublic boolean hurt(final DamageSource source, final float amount) {')
+          b = s.index('\n\t@Override', a + 15) if '\n\t@Override' in s[a + 15:] else len(s)
+          hurt = s[a:b]
+          assert 'this.setLastHurtByMob(attacker);' in hurt
+          assert 'this.setTarget(attacker);' not in hurt
+          assert 'startPersistentAngerTimer' not in hurt
+          # Custom mode maintenance contains explicit Bedrock exits as defense-in-depth.
+          for sig in ('\tprivate void maintainConstructedNeutralRetaliation() {', '\tprivate void updateConstructedNeutralTargetingMode() {'):
+              a = s.index(sig)
+              b = s.index('\n\tprivate ', a + 2)
+              assert 'if (isBedrockGolem())' in s[a:b]
+          print('Permanent natural-Iron-Golem Bedrock static verification passed')
           PY
           grep -q 'GolemFinalEyesLayer' src/main/java/com/mcmoddev/golems/client/entity/GolemRenderer.java
           grep -q 'this.setInvulnerable(false);' src/main/java/com/mcmoddev/golems/entity/GolemBase.java
@@ -152,6 +168,6 @@ jobs:
       - name: Upload mod JAR
         uses: actions/upload-artifact@v4
         with:
-          name: extra-golems-reborn-fabric-1.21.1-stable-village-targeting
+          name: extra-golems-reborn-fabric-1.21.1-bedrock-vanilla-natural
           path: artifact/*.jar
           if-no-files-found: error
