@@ -19,7 +19,7 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.5.1'
-      - name: Reconstruct project enough to resolve mapped Minecraft
+      - name: Reconstruct compiling cumulative port and inspect mapped Minecraft
         shell: bash
         run: |
           set -euo pipefail
@@ -28,14 +28,33 @@ jobs:
           cd project
           git checkout 6b21ec4a59ca16e8362b26e38fc63b2807042bdf
           xz -dc /tmp/fabric-port.patch.xz | patch -p4 --batch --forward
+          patch -p1 --batch --forward < ../ci/eg-fix1.patch
+          patch -p1 --batch --forward < ../ci/eg-fix2.patch
+          patch -p1 --batch --forward < ../ci/eg-bedrock-targetable.patch
+          patch -p1 --batch --forward < ../ci/eg-fix4.patch
+          patch -p1 --batch --forward < ../ci/eg-advanced-swim.patch
+          patch -p1 --batch --forward < ../ci/eg-surface-swim.patch
+          patch -p1 --batch --forward < ../ci/eg-bedrock-provocation.patch
+          patch -p1 --batch --forward < ../ci/eg-all-eyes-neutral.patch
+          cp ../ci/GolemFinalEyesLayer.java src/main/java/com/mcmoddev/golems/client/entity/layer/GolemFinalEyesLayer.java
+          cd ..
+          python3 ci/apply-strict-neutral.py
+          python3 ci/apply-legacy-neutral-migration.py
+          python3 ci/apply-hybrid-village-neutral.py
+          python3 ci/apply-bedrock-natural-hostility.py
+          python3 ci/apply-stable-village-targeting.py
+          python3 ci/apply-bedrock-true-vanilla-natural-ai.py
+          cd project
           gradle compileJava --no-daemon >/dev/null
           JAR=$(find .gradle/loom-cache/minecraftMaven/net/minecraft -type f -name '*.jar' | grep -v sources | head -1)
           echo "MINECRAFT_JAR=$JAR"
           javap -classpath "$JAR" -p -c net.minecraft.world.entity.LivingEntity > ../living.txt
           javap -classpath "$JAR" -p -c net.minecraft.world.entity.ai.goal.target.HurtByTargetGoal > ../hurtgoal.txt
           echo '=== LivingEntity.setLastHurtByMob ==='
-          grep -n -A35 -B5 'setLastHurtByMob' ../living.txt || true
+          grep -n -A45 -B5 'setLastHurtByMob' ../living.txt || true
+          echo '=== LivingEntity.getLastHurtByMobTimestamp ==='
+          grep -n -A20 -B5 'getLastHurtByMobTimestamp' ../living.txt || true
           echo '=== LivingEntity.hurt ==='
-          grep -n -A260 -B5 'public boolean hurt' ../living.txt || true
+          grep -n -A360 -B5 'public boolean hurt' ../living.txt || true
           echo '=== HurtByTargetGoal ==='
           cat ../hurtgoal.txt
