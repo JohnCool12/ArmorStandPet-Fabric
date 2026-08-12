@@ -1,4 +1,4 @@
-name: Build All Extra Golems Village Reputation V2
+name: Verify Bedrock Village Reputation Parity
 
 on:
   pull_request:
@@ -65,7 +65,7 @@ jobs:
               runs {
                   gametest {
                       server()
-                      name "Village Reputation Game Test"
+                      name "Bedrock Village Reputation Game Test"
                       vmArg "-Dfabric-api.gametest"
                       vmArg "-Dfabric-api.gametest.report-file=${project.buildDir}/junit.xml"
                       runDir "run/gametest"
@@ -77,7 +77,7 @@ jobs:
           test -f project/src/main/java/com/mcmoddev/golems/test/VillageReputationGameTest.java
           grep -q 'fabric-gametest' project/src/main/resources/fabric.mod.json
 
-      - name: Require vanilla village reputation parity
+      - name: Require Bedrock vanilla village reputation parity
         working-directory: project
         shell: bash
         run: |
@@ -85,11 +85,11 @@ jobs:
           mkdir -p run/gametest
           printf 'eula=true\n' > run/gametest/eula.txt
           set +e
-          gradle runGametest --no-daemon > ../gametest-village-only-v2.log 2>&1
+          gradle runGametest --no-daemon > ../gametest-bedrock-village-reputation.log 2>&1
           status=$?
           set -e
           if [ ! -f build/junit.xml ]; then
-            cat ../gametest-village-only-v2.log
+            cat ../gametest-bedrock-village-reputation.log
             exit "${status:-1}"
           fi
           set +e
@@ -98,23 +98,23 @@ jobs:
           root=ET.parse('build/junit.xml').getroot()
           cases=list(root.iter('testcase'))
           names=[c.attrib.get('name','') for c in cases]
-          print('Village GameTest JUnit cases:', names)
+          print('Bedrock village GameTest JUnit cases:', names)
           wanted=[c for c in cases if 'constructedextragolemmatchesvanillavillagereputation' in c.attrib.get('name','').lower()]
           if len(wanted)!=1:
-              raise SystemExit(f'Expected village reputation test once, found {len(wanted)}; all cases={names}')
+              raise SystemExit(f'Expected Bedrock village reputation test once, found {len(wanted)}; all cases={names}')
           c=wanted[0]
           node=c.find('failure')
           if node is None:
               node=c.find('error')
           if node is not None:
-              raise SystemExit('Village reputation parity failed: '+str(node.attrib.get('message'))+' body='+str(node.text))
-          print('PASS: T-built Obsidian Extra Golem matched vanilla natural Iron Golem low-reputation hostility.')
+              raise SystemExit('Bedrock village reputation parity failed: '+str(node.attrib.get('message'))+' body='+str(node.text))
+          print('PASS: Bedrock Extra Golem matched vanilla natural Iron Golem low-reputation hostility.')
           PY
           parse_status=$?
           set -e
           if [ "$parse_status" -ne 0 ] || [ "$status" -ne 0 ]; then
-            echo 'Village-only GameTest log:'
-            tail -400 ../gametest-village-only-v2.log
+            echo 'Bedrock village reputation GameTest log:'
+            tail -400 ../gametest-bedrock-village-reputation.log
             exit 1
           fi
 
@@ -182,12 +182,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          javap -classpath build/classes/java/main -p -c com.mcmoddev.golems.entity.GolemBase > ../golem-base-village-v2.txt
-          grep -q 'DefendVillageTargetGoal' ../golem-base-village-v2.txt
-          grep -q 'HurtByTargetGoal' ../golem-base-village-v2.txt
-          grep -q 'NearestAttackableTargetGoal' ../golem-base-village-v2.txt
-          grep -q 'ResetUniversalAngerTargetGoal' ../golem-base-village-v2.txt
-          grep -q 'extra_golems_constructed_true_natural_ai_v1' ../golem-base-village-v2.txt
+          javap -classpath build/classes/java/main -p -c com.mcmoddev.golems.entity.GolemBase > ../golem-base-bedrock-village.txt
+          grep -q 'DefendVillageTargetGoal' ../golem-base-bedrock-village.txt
+          grep -q 'HurtByTargetGoal' ../golem-base-bedrock-village.txt
+          grep -q 'NearestAttackableTargetGoal' ../golem-base-bedrock-village.txt
+          grep -q 'ResetUniversalAngerTargetGoal' ../golem-base-bedrock-village.txt
+          grep -q 'extra_golems_bedrock_true_vanilla_natural_ai_v4' ../golem-base-bedrock-village.txt
 
       - name: Dedicated server smoke test
         working-directory: project
@@ -197,10 +197,10 @@ jobs:
           mkdir -p run/server
           printf 'eula=true\n' > run/server/eula.txt
           set +e
-          timeout --signal=TERM 90s gradle runServer --no-daemon > ../server-village-v2.log 2>&1
+          timeout --signal=TERM 90s gradle runServer --no-daemon > ../server-bedrock-village.log 2>&1
           status=$?
           set -e
-          if [ "$status" -ne 0 ] && [ "$status" -ne 124 ]; then cat ../server-village-v2.log; exit "$status"; fi
+          if [ "$status" -ne 0 ] && [ "$status" -ne 124 ]; then cat ../server-bedrock-village.log; exit "$status"; fi
           grep -q 'Done (' run/server/logs/latest.log
 
       - name: Client resource/render smoke test
@@ -208,7 +208,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          setsid env ALSOFT_DRIVERS=null LIBGL_ALWAYS_SOFTWARE=true xvfb-run -a gradle runClient --no-daemon > ../client-village-v2.log 2>&1 &
+          setsid env ALSOFT_DRIVERS=null LIBGL_ALWAYS_SOFTWARE=true xvfb-run -a gradle runClient --no-daemon > ../client-bedrock-village.log 2>&1 &
           pid=$!
           ok=0
           for i in $(seq 1 90); do
@@ -231,6 +231,6 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: extra-golems-reborn-fabric-1.21.1-vanilla-village-reputation-verified-v2
+          name: extra-golems-reborn-fabric-1.21.1-bedrock-village-reputation-verified
           path: artifact/*.jar
           if-no-files-found: error
