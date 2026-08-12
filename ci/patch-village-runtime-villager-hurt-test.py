@@ -17,28 +17,56 @@ method = r'''    @GameTest(template = FabricGameTest.EMPTY_STRUCTURE, timeoutTic
         extraPlayer.setPos(extra.getX() + 7.0D, extra.getY(), extra.getZ());
         vanillaPlayer.setPos(vanilla.getX() + 7.0D, vanilla.getY(), vanilla.getZ());
 
-        // This is the vanilla Villager hook invoked when a LivingEntity becomes the
-        // villager's attacker. It dispatches the VILLAGER_HURT reputation event.
+        // One vanilla VILLAGER_HURT event adds 25 MINOR_NEGATIVE gossip. First prove
+        // that Extra and vanilla receive exactly the same reputation and targeting
+        // result below the -100 DefendVillageTargetGoal threshold.
         extraVillager.setLastHurtByMob(extraPlayer);
         vanillaVillager.setLastHurtByMob(vanillaPlayer);
-        final int extraRep = extraVillager.getPlayerReputation(extraPlayer);
-        final int vanillaRep = vanillaVillager.getPlayerReputation(vanillaPlayer);
-        helper.assertTrue(vanillaRep <= -100, "Vanilla villager-hurt event did not cross hostility threshold; rep=" + vanillaRep);
-        helper.assertTrue(extraRep == vanillaRep, "Extra-side villager reputation differs from vanilla; extra=" + extraRep + ", vanilla=" + vanillaRep);
+        final int extraRepAfterOne = extraVillager.getPlayerReputation(extraPlayer);
+        final int vanillaRepAfterOne = vanillaVillager.getPlayerReputation(vanillaPlayer);
+        helper.assertTrue(extraRepAfterOne == vanillaRepAfterOne,
+                "One-hit reputation differs; extra=" + extraRepAfterOne + ", vanilla=" + vanillaRepAfterOne);
+        helper.assertTrue(vanillaRepAfterOne == -25,
+                "Unexpected vanilla 1.21.1 one-hit reputation; got " + vanillaRepAfterOne);
 
         tickUntilPlayerTarget(extra, extraPlayer);
         tickUntilPlayerTarget(vanilla, vanillaPlayer);
-        final boolean extraTargeted = extra.getTarget() == extraPlayer;
-        final boolean vanillaTargeted = vanilla.getTarget() == vanillaPlayer;
+        final boolean extraAfterOne = extra.getTarget() == extraPlayer;
+        final boolean vanillaAfterOne = vanilla.getTarget() == vanillaPlayer;
+        helper.assertTrue(extraAfterOne == vanillaAfterOne,
+                "One-hit target behavior differs; extra=" + extraAfterOne + ", vanilla=" + vanillaAfterOne);
+
+        // Clear any transient target, then add three more identical vanilla hurt
+        // events. Four total MINOR_NEGATIVE(25) events reach reputation -100, which
+        // is exactly the vanilla DefendVillageTargetGoal hostility threshold.
+        extra.setTarget(null);
+        vanilla.setTarget(null);
+        for (int i = 0; i < 3; i++) {
+            extraVillager.setLastHurtByMob(extraPlayer);
+            vanillaVillager.setLastHurtByMob(vanillaPlayer);
+        }
+        final int extraRepAtThreshold = extraVillager.getPlayerReputation(extraPlayer);
+        final int vanillaRepAtThreshold = vanillaVillager.getPlayerReputation(vanillaPlayer);
+        helper.assertTrue(extraRepAtThreshold == vanillaRepAtThreshold,
+                "Threshold reputation differs; extra=" + extraRepAtThreshold + ", vanilla=" + vanillaRepAtThreshold);
+        helper.assertTrue(vanillaRepAtThreshold <= -100,
+                "Repeated vanilla villager-hurt events failed to reach hostility threshold; rep=" + vanillaRepAtThreshold);
+
+        tickUntilPlayerTarget(extra, extraPlayer);
+        tickUntilPlayerTarget(vanilla, vanillaPlayer);
+        final boolean extraAtThreshold = extra.getTarget() == extraPlayer;
+        final boolean vanillaAtThreshold = vanilla.getTarget() == vanillaPlayer;
 
         cleanupPlayer(helper, extraPlayer); cleanupPlayer(helper, vanillaPlayer);
         extraVillager.discard(); vanillaVillager.discard(); vanilla.discard(); extra.discard();
-        helper.assertTrue(vanillaTargeted, "Vanilla natural Iron Golem ignored villager-hurt player");
-        helper.assertTrue(extraTargeted, "Real T-built Extra Golem ignored villager-hurt player");
+        helper.assertTrue(vanillaAtThreshold,
+                "Vanilla natural Iron Golem did not target player after villager-hurt reputation crossed threshold");
+        helper.assertTrue(extraAtThreshold,
+                "Real T-built Extra Golem did not target player after identical villager-hurt reputation crossed threshold");
         helper.succeed();
     }
 
 '''
 s = s.replace(marker, method + marker, 1)
 p.write_text(s)
-print('Added real villager-hurt -> reputation -> runtime target parity test.')
+print('Added one-hit and repeated-hurt vanilla-vs-Extra runtime reputation parity test.')
