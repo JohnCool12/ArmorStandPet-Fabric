@@ -1,0 +1,6 @@
+--- /dev/null
++++ b/src/main/resources/assets/golems/models/item/golem_spawn_egg.json
+@@ -0,0 +1,3 @@
++{
++  "parent": "minecraft:item/template_spawn_egg"
++}
