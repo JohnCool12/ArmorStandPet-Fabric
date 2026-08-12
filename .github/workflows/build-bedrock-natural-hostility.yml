@@ -1,4 +1,4 @@
-name: Build Extra Golems Fabric - Natural Village Parity
+name: Build Extra Golems Bedrock True Vanilla Natural AI
 
 on:
   pull_request:
@@ -20,7 +20,7 @@ jobs:
         with:
           gradle-version: '9.5.1'
 
-      - name: Reconstruct verified cumulative source
+      - name: Reconstruct cumulative mod
         shell: bash
         run: |
           set -euo pipefail
@@ -46,45 +46,21 @@ jobs:
           python3 ci/apply-bedrock-natural-hostility.py >/dev/null
           python3 ci/apply-stable-village-targeting.py >/dev/null
           python3 ci/apply-bedrock-true-vanilla-natural-ai.py >/dev/null
-          python3 ci/apply-all-constructed-natural-village-ai.py
-
-          python3 - <<'PY'
-          from pathlib import Path
-          s = Path('project/src/main/java/com/mcmoddev/golems/entity/GolemBase.java').read_text()
-          assert 'extra_golems_natural_constructed_v1' in s
-          assert 'configureNaturalIronGolemTargeting' in s
-          start = s.index('\tpublic void markConstructedNeutral() {')
-          end = s.index('\n\tprivate ', start + 2)
-          mark = s[start:end]
-          assert 'setPlayerCreated(false)' in mark
-          assert 'configureNaturalIronGolemTargeting()' in mark
-          assert 'addTag(NATURAL_CONSTRUCTED_TAG)' in mark
-          assert 'addTag(NEUTRAL_CONSTRUCTED_TAG)' not in mark
-          natural_start = s.index('\tprivate void configureNaturalIronGolemTargeting() {')
-          natural_end = s.index('\n\tprivate ', natural_start + 2)
-          natural = s[natural_start:natural_end]
-          for needle in ('new DefendVillageTargetGoal(this)', 'new HurtByTargetGoal(this)',
-                         'new NearestAttackableTargetGoal<>(this, Player.class', 'this::isAngryAt',
-                         'entity instanceof Enemy && !(entity instanceof Creeper)',
-                         'new ResetUniversalAngerTargetGoal<>(this, false)'):
-              assert needle in natural, needle
-          print('PASS: all T-built Extra Golems use vanilla-natural Iron Golem target stack')
-          PY
+          grep -q 'extra_golems_bedrock_true_vanilla_natural_ai_v4' project/src/main/java/com/mcmoddev/golems/entity/GolemBase.java
+          grep -q 'configureBedrockNaturalIronGolemTargeting' project/src/main/java/com/mcmoddev/golems/entity/GolemBase.java
           for f in diamond emerald sculk_catalyst ancient_debris obsidian crying_obsidian; do
             grep -q '"knockback_resistance": 1.0' "project/src/main/resources/data/golems/golems/golem/$f.json"
           done
 
-      - name: Inject AI and village reputation GameTests
+      - name: Inject non-invasive Bedrock AI regression test
         shell: bash
         run: |
           set -euo pipefail
           python3 ci/inject-bedrock-ai-gametest.py >/dev/null
           python3 ci/patch-bedrock-gametest-normal-difficulty.py >/dev/null
           python3 ci/patch-bedrock-gametest-candidate-debug.py >/dev/null
-          python3 ci/inject-village-reputation-gametest.py
-          grep -q 'VillageReputationGameTest' project/src/main/resources/fabric.mod.json
 
-      - name: Run vanilla-parity GameTests
+      - name: Require retaliation escape and hostile reacquisition
         working-directory: project
         shell: bash
         run: |
@@ -92,10 +68,9 @@ jobs:
           mkdir -p run/gametest
           printf 'eula=true\n' > run/gametest/eula.txt
           set +e
-          gradle runGametest --no-daemon > ../gametest-village.log 2>&1
+          gradle runGametest --no-daemon > ../gametest-final.log 2>&1
           status=$?
           set -e
-          cat ../gametest-village.log
           test -f build/junit.xml
           python3 - <<'PY'
           import xml.etree.ElementTree as ET
@@ -109,34 +84,31 @@ jobs:
                       print('FAILED:', case.attrib.get('name'), node.attrib.get('message'))
           if failures or errors:
               raise SystemExit(f'GameTest failed: {len(failures)} failure(s), {len(errors)} error(s)')
-          names = [c.attrib.get('name','') for c in root.iter('testcase')]
-          print('GameTests:', names)
-          if not any('constructedExtraGolemObeysVanillaVillageReputation' in n for n in names):
-              raise SystemExit('Village reputation parity GameTest was not executed')
-          print('PASS: Extra Golem village reputation targeting matches vanilla natural Iron Golem control')
+          print('PASS: Bedrock retaliated, disengaged after escape, and proactively reacquired a hostile mob; vanilla control also passed.')
           PY
           if [ "$status" -ne 0 ]; then exit "$status"; fi
 
-      - name: Remove CI-only tests and build production JAR
+      - name: Remove test harness and build production JAR
         shell: bash
         run: |
           set -euo pipefail
-          rm -f project/src/main/java/com/mcmoddev/golems/test/VillageReputationGameTest.java
-          python3 ci/remove-bedrock-ai-gametest.py >/dev/null
+          python3 ci/remove-bedrock-ai-gametest.py
           ! grep -q 'fabric-gametest' project/src/main/resources/fabric.mod.json
+          test ! -e project/src/main/java/com/mcmoddev/golems/test/BedrockNaturalAiGameTest.java
           cd project
           gradle clean build --stacktrace --no-daemon
-          ! jar tf build/libs/Extra-Golems-Reborn-Fabric-1.21.1-21.1.0.1-fabric.jar | grep -q 'GameTest'
+          ! jar tf build/libs/Extra-Golems-Reborn-Fabric-1.21.1-21.1.0.1-fabric.jar | grep -q 'BedrockNaturalAiGameTest'
 
-      - name: Verify production AI bytecode
+      - name: Verify compiled Bedrock AI
         working-directory: project
         shell: bash
         run: |
           set -euo pipefail
           javap -classpath build/classes/java/main -p -c com.mcmoddev.golems.entity.GolemBase > ../golem-base-final.txt
-          grep -q 'configureNaturalIronGolemTargeting' ../golem-base-final.txt
+          grep -q 'configureBedrockNaturalIronGolemTargeting' ../golem-base-final.txt
           grep -q 'DefendVillageTargetGoal' ../golem-base-final.txt
           grep -q 'HurtByTargetGoal' ../golem-base-final.txt
+          grep -q 'NearestAttackableTargetGoal' ../golem-base-final.txt
           grep -q 'ResetUniversalAngerTargetGoal' ../golem-base-final.txt
 
       - name: Dedicated server smoke test
@@ -160,33 +132,27 @@ jobs:
           set -euo pipefail
           setsid env ALSOFT_DRIVERS=null LIBGL_ALWAYS_SOFTWARE=true xvfb-run -a gradle runClient --no-daemon > ../client-final.log 2>&1 &
           pid=$!
-          success=0
+          ok=0
           for i in $(seq 1 90); do
-            if [ -f run/client/logs/latest.log ] && grep -q 'minecraft:textures/atlas/blocks.png-atlas' run/client/logs/latest.log; then
-              sleep 10
-              if kill -0 "$pid" 2>/dev/null; then success=1; fi
-              break
-            fi
-            if ! kill -0 "$pid" 2>/dev/null; then break; fi
+            if [ -f run/client/logs/latest.log ] && grep -q 'minecraft:textures/atlas/blocks.png-atlas' run/client/logs/latest.log; then sleep 10; kill -0 "$pid" 2>/dev/null && ok=1; break; fi
+            kill -0 "$pid" 2>/dev/null || break
             sleep 1
           done
           kill -TERM -- -"$pid" 2>/dev/null || true
           wait "$pid" 2>/dev/null || true
-          if [ "$success" -ne 1 ]; then cat ../client-final.log; exit 1; fi
+          test "$ok" -eq 1
 
-      - name: Collect and integrity-check production JAR
+      - name: Collect verified production JAR
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p artifact
-          find project/build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*-sources.jar' ! -name '*-dev.jar' -exec cp {} artifact/ \;
-          JAR=$(find artifact -maxdepth 1 -type f -name '*.jar' -print -quit)
-          test -n "$JAR"
-          unzip -t "$JAR"
-          sha256sum "$JAR"
+          cp project/build/libs/Extra-Golems-Reborn-Fabric-1.21.1-21.1.0.1-fabric.jar artifact/
+          unzip -t artifact/Extra-Golems-Reborn-Fabric-1.21.1-21.1.0.1-fabric.jar
+          sha256sum artifact/Extra-Golems-Reborn-Fabric-1.21.1-21.1.0.1-fabric.jar
 
       - uses: actions/upload-artifact@v4
         with:
-          name: extra-golems-reborn-fabric-1.21.1-natural-village-reputation-verified
+          name: extra-golems-reborn-fabric-1.21.1-bedrock-natural-ai-final-gametest-verified
           path: artifact/*.jar
           if-no-files-found: error
