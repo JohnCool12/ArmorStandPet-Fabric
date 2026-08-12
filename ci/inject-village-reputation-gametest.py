@@ -58,8 +58,8 @@ public final class VillageReputationGameTest implements FabricGameTest {
     @GameTest(template = FabricGameTest.EMPTY_STRUCTURE, timeoutTicks = 40)
     public void constructedExtraGolemMatchesVanillaVillageReputation(final GameTestHelper helper) {
         final GolemBase extra = GolemBase.create(helper.getLevel(),
-                ResourceLocation.fromNamespaceAndPath(ExtraGolems.MODID, "obsidian"));
-        helper.assertTrue(extra != null, "Failed to create Obsidian Extra Golem");
+                ResourceLocation.fromNamespaceAndPath(ExtraGolems.MODID, "bedrock"));
+        helper.assertTrue(extra != null, "Failed to create Bedrock Extra Golem");
         extra.moveTo(helper.absolutePos(new BlockPos(4, 20, 4)), 0.0F, 0.0F);
         extra.setNoGravity(true);
         extra.markConstructedNeutral();
@@ -80,7 +80,7 @@ public final class VillageReputationGameTest implements FabricGameTest {
         helper.getLevel().addFreshEntity(extraVillager);
         helper.getLevel().addFreshEntity(vanillaVillager);
 
-        final ServerPlayer extraPlayer = makeListedSurvivalPlayer(helper, "ExtraVillageRep");
+        final ServerPlayer extraPlayer = makeListedSurvivalPlayer(helper, "BedrockVillageRep");
         final ServerPlayer vanillaPlayer = makeListedSurvivalPlayer(helper, "VanillaVillageRep");
         extraPlayer.setPos(extra.getX() + 7.0D, extra.getY(), extra.getZ());
         vanillaPlayer.setPos(vanilla.getX() + 7.0D, vanilla.getY(), vanilla.getZ());
@@ -146,16 +146,16 @@ public final class VillageReputationGameTest implements FabricGameTest {
         extraVillager.discard(); vanillaVillager.discard();
 
         helper.assertTrue(vanillaVillagerCondition, "Vanilla villager prerequisite failed; " + vanillaDiag);
-        helper.assertTrue(extraVillagerCondition, "Extra villager prerequisite failed; " + extraDiag);
+        helper.assertTrue(extraVillagerCondition, "Bedrock villager prerequisite failed; " + extraDiag);
         helper.assertTrue(vanillaPlayerCondition, "Vanilla player prerequisite failed; " + vanillaDiag);
-        helper.assertTrue(extraPlayerCondition, "Extra player prerequisite failed; vanilla=" + vanillaDiag + "; extra=" + extraDiag);
-        helper.assertTrue(vanillaRep <= -100 && extraRep <= -100, "Reputation setup failed; vanilla=" + vanillaDiag + "; extra=" + extraDiag);
-        helper.assertTrue(!extraPlayerCreated, "T-built Extra Golem still PlayerCreated=true; " + extraDiag);
-        helper.assertTrue(vanillaCanUse && extraCanUse, "DefendVillageTargetGoal parity failed; vanilla=" + vanillaDiag + "; extra=" + extraDiag);
-        helper.assertTrue(vanillaTargetCorrect && extraTargetCorrect, "Low-reputation target selection failed; vanilla=" + vanillaDiag + "; extra=" + extraDiag);
+        helper.assertTrue(extraPlayerCondition, "Bedrock player prerequisite failed; vanilla=" + vanillaDiag + "; bedrock=" + extraDiag);
+        helper.assertTrue(vanillaRep <= -100 && extraRep <= -100, "Reputation setup failed; vanilla=" + vanillaDiag + "; bedrock=" + extraDiag);
+        helper.assertTrue(!extraPlayerCreated, "Bedrock Golem is PlayerCreated=true; " + extraDiag);
+        helper.assertTrue(vanillaCanUse && extraCanUse, "DefendVillageTargetGoal parity failed; vanilla=" + vanillaDiag + "; bedrock=" + extraDiag);
+        helper.assertTrue(vanillaTargetCorrect && extraTargetCorrect, "Low-reputation target selection failed; vanilla=" + vanillaDiag + "; bedrock=" + extraDiag);
         helper.succeed();
     }
 }
 ''')
 
-print('Injected final TargetingConditions diagnostics for village reputation parity.')
+print('Injected Bedrock-vs-vanilla village reputation parity GameTest.')
