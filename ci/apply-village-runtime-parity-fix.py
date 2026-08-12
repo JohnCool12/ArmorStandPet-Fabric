@@ -1,5 +1,6 @@
 from pathlib import Path
 
+# Deep-runtime V2: preserve this migration in the production source after CI tests.
 p = Path('project/src/main/java/com/mcmoddev/golems/entity/GolemBase.java')
 text = p.read_text()
 
