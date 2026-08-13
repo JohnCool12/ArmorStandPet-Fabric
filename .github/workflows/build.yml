@@ -1,4 +1,4 @@
-name: Build ArmorStandPet
+name: Build Limitless Fabric Vanilla Generation Rules
 
 on:
   workflow_dispatch:
@@ -11,38 +11,62 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Check out build host
+        uses: actions/checkout@v4
 
-      - name: Reconstruct source
+      - name: Check out exact Limitless Enchantments 1.21.1 source
+        uses: actions/checkout@v4
+        with:
+          repository: ThomasDarkson/limitlessenchantments
+          ref: d372fac9103613fefdbffb0fcd70f99223f9726f
+          path: project
+
+      - name: Apply requested Fabric 1.21.1 patch
         shell: bash
         run: |
-          tr -d '[:space:]' < projectsrc.b64 | base64 --decode > projectsrc.zip
-          mkdir project
-          unzip -q projectsrc.zip -d project
-          test -f project/build.gradle
+          set -euo pipefail
+          cd project
+          git apply --check ../ci/limitless-vanilla-generation.patch
+          git apply ../ci/limitless-vanilla-generation.patch
+          chmod +x gradlew
+          grep -q 'VanillaEnchantmentLevels.shouldUseVanillaMaxLevel' common/src/main/java/limitless/enchantments/mixin/EnchantmentMixin.java
+          grep -q 'LootTableMixin' common/src/main/resources/limitlessenchantments.mixins.json
+          grep -q 'EnchantmentMenuMixin' common/src/main/resources/limitlessenchantments.mixins.json
 
-      - uses: actions/setup-java@v4
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '25'
+          java-version: '21'
 
-      - uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '9.5.0'
-
-      - name: Build
+      - name: Build Fabric remapped JAR
         working-directory: project
-        run: gradle build --stacktrace --warning-mode all
+        run: ./gradlew :fabric:remapJar --stacktrace --no-daemon
 
-      - name: Collect production jar
+      - name: Verify and collect production artifact
         shell: bash
         run: |
-          mkdir artifact
-          find project/build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*-sources.jar' -exec cp {} artifact/ \;
-          ls -lah artifact
+          set -euo pipefail
+          mkdir -p artifact
+          jar_path="$(find project/fabric/build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*-sources.jar' ! -name '*-dev.jar' | head -n 1)"
+          test -n "$jar_path"
+          unzip -t "$jar_path"
+          unzip -p "$jar_path" fabric.mod.json | tee artifact/fabric.mod.json
+          unzip -p "$jar_path" limitlessenchantments.mixins.json | tee artifact/limitlessenchantments.mixins.json
+          grep -q '"minecraft": "1.21.1"' artifact/fabric.mod.json
+          grep -q 'EnchantmentMenuMixin' artifact/limitlessenchantments.mixins.json
+          grep -q 'LootTableMixin' artifact/limitlessenchantments.mixins.json
+          javap -p -classpath "$jar_path" limitless.enchantments.mixin.CreativeModeTabsMixin | tee artifact/CreativeModeTabsMixin.javap.txt
+          grep -q 'public static void method_45428' artifact/CreativeModeTabsMixin.javap.txt
+          javap -p -classpath "$jar_path" limitless.enchantments.mixin.EnchantmentMenuMixin | tee artifact/EnchantmentMenuMixin.javap.txt
+          javap -p -classpath "$jar_path" limitless.enchantments.mixin.LootTableMixin | tee artifact/LootTableMixin.javap.txt
+          javap -p -classpath "$jar_path" limitless.enchantments.VanillaEnchantmentLevels | tee artifact/VanillaEnchantmentLevels.javap.txt
+          cp "$jar_path" artifact/limitless-fabric-2.0.0-1.21.1-vanilla-generation.jar
+          sha256sum artifact/limitless-fabric-2.0.0-1.21.1-vanilla-generation.jar | tee artifact/SHA256.txt
 
-      - uses: actions/upload-artifact@v4
+      - name: Upload fixed Fabric JAR
+        uses: actions/upload-artifact@v4
         with:
-          name: armorstandpet-fabric-26.2
-          path: artifact/*.jar
+          name: limitless-fabric-2.0.0-1.21.1-vanilla-generation
+          path: artifact/
           if-no-files-found: error
