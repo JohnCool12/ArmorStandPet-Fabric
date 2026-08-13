@@ -57,7 +57,6 @@ jobs:
 
           base64 --decode ci/asp-port-fix2.patch.xz.b64 > /tmp/asp-port-fix2.patch.xz
           xz --decompress --stdout /tmp/asp-port-fix2.patch.xz > /tmp/asp-port-fix2.patch
-          (cd project && patch --batch --forward -p1 < /tmp/asp-port-fix2.patch)
 
           cp -a ci/overrides/. project/
           python3 ci/fix-client-level.py
