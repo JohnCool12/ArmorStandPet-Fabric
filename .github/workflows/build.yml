@@ -76,8 +76,8 @@ jobs:
           )
           replace_once(
               'common/src/main/java/artifacts/mixin/ability/deathprotectionteleport/LivingEntityMixin.java',
-              '                    if (ability.consumedOnUse().get()) {\n                        totem.shrink(1);\n                    } else if (entity instanceof Player player) {',
-              '                    if (ability.consumedOnUse().get()) {\n                        int usesLeft = totem.getOrDefault(ModDataComponents.CHORUS_TOTEM_USES.get(), 3);\n                        if (usesLeft <= 1) {\n                            totem.shrink(1);\n                        } else {\n                            totem.set(ModDataComponents.CHORUS_TOTEM_USES.get(), usesLeft - 1);\n                        }\n                    } else if (entity instanceof Player player) {'
+              '                    if (ability.consumedOnUse().get()) {\n                        totem.shrink(1);\n                    } else if (entity instanceof Player player) {\n                        player.getCooldowns().addCooldown(totem.getItem(), ability.cooldown().get() * 20);\n                    }',
+              '                    int usesLeft = totem.getOrDefault(ModDataComponents.CHORUS_TOTEM_USES.get(), 3);\n                    if (usesLeft <= 1) {\n                        totem.shrink(1);\n                    } else {\n                        totem.set(ModDataComponents.CHORUS_TOTEM_USES.get(), usesLeft - 1);\n                    }'
           )
           replace_once(
               'common/src/main/java/artifacts/item/WearableArtifactItem.java',
@@ -87,7 +87,7 @@ jobs:
           replace_once(
               'common/src/generated/resources/assets/artifacts/lang/en_us.json',
               '  "artifacts.config.items.chorus_totem.consumeOnUse.description": "Whether the Chorus Totem is consumed after activating",',
-              '  "artifacts.config.items.chorus_totem.consumeOnUse.description": "Whether the Chorus Totem loses a use after activating",'
+              '  "artifacts.config.items.chorus_totem.consumeOnUse.description": "Legacy compatibility setting; the Chorus Totem always consumes one of its three uses in this build",'
           )
           replace_once(
               'common/src/generated/resources/assets/artifacts/lang/en_us.json',
@@ -99,6 +99,7 @@ jobs:
           grep -F 'CHORUS_TOTEM_USES' common/src/main/java/artifacts/registry/ModItems.java
           grep -F 'Codec.intRange(1, 3)' common/src/main/java/artifacts/registry/ModDataComponents.java
           ! grep -F 'BYPASSES_INVULNERABILITY' common/src/main/java/artifacts/mixin/ability/deathprotectionteleport/LivingEntityMixin.java
+          ! grep -F 'ability.consumedOnUse().get()' common/src/main/java/artifacts/mixin/ability/deathprotectionteleport/LivingEntityMixin.java
           python -m json.tool common/src/generated/resources/assets/artifacts/lang/en_us.json >/dev/null
           git diff --check
           git diff --stat
