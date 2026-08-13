@@ -33,17 +33,75 @@ jobs:
           grep -Fx 'minecraft_version=1.21.1' gradle.properties
           grep -Fx 'mod_version=13.2.1' gradle.properties
 
-      - name: Apply and verify Chorus Totem changes
+      - name: Apply asserted Chorus Totem source changes
         shell: bash
         run: |
           set -euo pipefail
           cd project
-          git apply --check "$GITHUB_WORKSPACE/ci/chorus_totem.patch"
-          git apply "$GITHUB_WORKSPACE/ci/chorus_totem.patch"
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              text = p.read_text(encoding='utf-8')
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{path}: expected exactly one match, found {count}')
+              p.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          replace_once(
+              'common/src/main/java/artifacts/registry/ModDataComponents.java',
+              'import net.minecraft.network.RegistryFriendlyByteBuf;\nimport net.minecraft.network.codec.StreamCodec;',
+              'import net.minecraft.network.RegistryFriendlyByteBuf;\nimport net.minecraft.network.codec.ByteBufCodecs;\nimport net.minecraft.network.codec.StreamCodec;'
+          )
+          replace_once(
+              'common/src/main/java/artifacts/registry/ModDataComponents.java',
+              '    public static final Supplier<DataComponentType<Value<Boolean>>> HIDE_WHEN_INVISIBLE = registerSynced("hide_when_invisible", ValueTypes.enabledField().codec(), ValueTypes.BOOLEAN.streamCodec());\n',
+              '    public static final Supplier<DataComponentType<Value<Boolean>>> HIDE_WHEN_INVISIBLE = registerSynced("hide_when_invisible", ValueTypes.enabledField().codec(), ValueTypes.BOOLEAN.streamCodec());\n    public static final Supplier<DataComponentType<Integer>> CHORUS_TOTEM_USES = registerSynced("chorus_totem_uses", Codec.intRange(1, 3), ByteBufCodecs.INT);\n'
+          )
+          replace_once(
+              'common/src/main/java/artifacts/registry/ModItems.java',
+              '    public static final Holder<Item> CHORUS_TOTEM = wearableItem("chorus_totem", builder -> builder\n            .component(ModDataComponents.DEATH_PROTECTION_TELEPORT.get(), new DeathProtectionTeleport(',
+              '    public static final Holder<Item> CHORUS_TOTEM = wearableItem("chorus_totem", builder -> builder\n            .component(ModDataComponents.CHORUS_TOTEM_USES.get(), 3)\n            .component(ModDataComponents.DEATH_PROTECTION_TELEPORT.get(), new DeathProtectionTeleport('
+          )
+          replace_once(
+              'common/src/main/java/artifacts/mixin/ability/deathprotectionteleport/LivingEntityMixin.java',
+              'import net.minecraft.tags.DamageTypeTags;\n',
+              ''
+          )
+          replace_once(
+              'common/src/main/java/artifacts/mixin/ability/deathprotectionteleport/LivingEntityMixin.java',
+              '        if (!totem.isEmpty()\n                && entity.level() instanceof ServerLevel level\n                && !damageSource.is(DamageTypeTags.BYPASSES_INVULNERABILITY)\n        ) {',
+              '        if (!totem.isEmpty()\n                && entity.level() instanceof ServerLevel level\n        ) {'
+          )
+          replace_once(
+              'common/src/main/java/artifacts/mixin/ability/deathprotectionteleport/LivingEntityMixin.java',
+              '                    if (ability.consumedOnUse().get()) {\n                        totem.shrink(1);\n                    } else if (entity instanceof Player player) {',
+              '                    if (ability.consumedOnUse().get()) {\n                        int usesLeft = totem.getOrDefault(ModDataComponents.CHORUS_TOTEM_USES.get(), 3);\n                        if (usesLeft <= 1) {\n                            totem.shrink(1);\n                        } else {\n                            totem.set(ModDataComponents.CHORUS_TOTEM_USES.get(), usesLeft - 1);\n                        }\n                    } else if (entity instanceof Player player) {'
+          )
+          replace_once(
+              'common/src/main/java/artifacts/item/WearableArtifactItem.java',
+              '    public void appendHoverText(ItemStack itemStack, TooltipContext tooltipContext, List<Component> list, TooltipFlag tooltipFlag) {\n        if (Artifacts.CONFIG.client.showTooltips.get()',
+              '    public void appendHoverText(ItemStack itemStack, TooltipContext tooltipContext, List<Component> list, TooltipFlag tooltipFlag) {\n        Integer chorusTotemUses = itemStack.get(ModDataComponents.CHORUS_TOTEM_USES.get());\n        if (chorusTotemUses != null) {\n            list.add(Component.translatable("artifacts.tooltip.chorus_totem_uses", chorusTotemUses)\n                    .withStyle(ChatFormatting.LIGHT_PURPLE));\n        }\n\n        if (Artifacts.CONFIG.client.showTooltips.get()'
+          )
+          replace_once(
+              'common/src/generated/resources/assets/artifacts/lang/en_us.json',
+              '  "artifacts.config.items.chorus_totem.consumeOnUse.description": "Whether the Chorus Totem is consumed after activating",',
+              '  "artifacts.config.items.chorus_totem.consumeOnUse.description": "Whether the Chorus Totem loses a use after activating",'
+          )
+          replace_once(
+              'common/src/generated/resources/assets/artifacts/lang/en_us.json',
+              '  "item.artifacts.chorus_totem": "Chorus Totem",',
+              '  "item.artifacts.chorus_totem": "Chorus Totem",\n  "artifacts.tooltip.chorus_totem_uses": "%s uses left",'
+          )
+          PY
+
           grep -F 'CHORUS_TOTEM_USES' common/src/main/java/artifacts/registry/ModItems.java
           grep -F 'Codec.intRange(1, 3)' common/src/main/java/artifacts/registry/ModDataComponents.java
           ! grep -F 'BYPASSES_INVULNERABILITY' common/src/main/java/artifacts/mixin/ability/deathprotectionteleport/LivingEntityMixin.java
+          python -m json.tool common/src/generated/resources/assets/artifacts/lang/en_us.json >/dev/null
           git diff --check
+          git diff --stat
 
       - name: Build Fabric 1.21.1 JAR
         working-directory: project
