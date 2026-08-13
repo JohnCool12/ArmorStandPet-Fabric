@@ -1,4 +1,4 @@
-name: Build Artifacts Chorus Totem
+name: Build Artifacts Chorus Totem Belt Fix
 
 on:
   push:
@@ -96,11 +96,17 @@ jobs:
           )
           PY
 
+          python "$GITHUB_WORKSPACE/ci/artifacts-chorus-beltfix.py"
+
           grep -F 'CHORUS_TOTEM_USES' common/src/main/java/artifacts/registry/ModItems.java
           grep -F 'Codec.intRange(1, 3)' common/src/main/java/artifacts/registry/ModDataComponents.java
           ! grep -F 'BYPASSES_INVULNERABILITY' common/src/main/java/artifacts/mixin/ability/deathprotectionteleport/LivingEntityMixin.java
           ! grep -F 'ability.consumedOnUse().get()' common/src/main/java/artifacts/mixin/ability/deathprotectionteleport/LivingEntityMixin.java
+          grep -F 'EquipmentHelper.reduceAbilities' common/src/main/java/artifacts/mixin/compat/hardcorerevival/KnockoutHandlerMixin.java
+          grep -F 'compat.hardcorerevival.KnockoutHandlerMixin' common/src/main/resources/mixins.artifacts.common.json
+          ! grep -F 'getInventory()' common/src/main/java/artifacts/mixin/compat/hardcorerevival/KnockoutHandlerMixin.java
           python -m json.tool common/src/generated/resources/assets/artifacts/lang/en_us.json >/dev/null
+          python -m json.tool common/src/main/resources/mixins.artifacts.common.json >/dev/null
           git diff --check
           git diff --stat
 
@@ -117,18 +123,21 @@ jobs:
           mkdir -p artifact
           JAR="$(find project/fabric/build/libs -maxdepth 1 -type f -name 'artifacts-fabric-*.jar' ! -name '*-sources.jar' ! -name '*-dev-shadow.jar' -print -quit)"
           test -n "$JAR"
-          cp "$JAR" artifact/artifacts-fabric-13.2.1-chorus-totem-3uses.jar
-          unzip -p artifact/artifacts-fabric-13.2.1-chorus-totem-3uses.jar fabric.mod.json | grep -q '"id": "artifacts"'
-          jar tf artifact/artifacts-fabric-13.2.1-chorus-totem-3uses.jar | grep -q 'artifacts/mixin/ability/deathprotectionteleport/LivingEntityMixin.class'
-          jar tf artifact/artifacts-fabric-13.2.1-chorus-totem-3uses.jar | grep -q 'artifacts/registry/ModDataComponents.class'
-          unzip -p artifact/artifacts-fabric-13.2.1-chorus-totem-3uses.jar assets/artifacts/lang/en_us.json | grep -q 'artifacts.tooltip.chorus_totem_uses'
-          sha256sum artifact/artifacts-fabric-13.2.1-chorus-totem-3uses.jar > artifact/SHA256SUMS.txt
+          OUT=artifact/artifacts-fabric-13.2.1-chorus-totem-3uses-beltfix.jar
+          cp "$JAR" "$OUT"
+          unzip -p "$OUT" fabric.mod.json | grep -q '"id": "artifacts"'
+          jar tf "$OUT" | grep -q 'artifacts/mixin/ability/deathprotectionteleport/LivingEntityMixin.class'
+          jar tf "$OUT" | grep -q 'artifacts/mixin/compat/hardcorerevival/KnockoutHandlerMixin.class'
+          jar tf "$OUT" | grep -q 'artifacts/registry/ModDataComponents.class'
+          unzip -p "$OUT" assets/artifacts/lang/en_us.json | grep -q 'artifacts.tooltip.chorus_totem_uses'
+          unzip -p "$OUT" mixins.artifacts.common.json | grep -q 'compat.hardcorerevival.KnockoutHandlerMixin'
+          sha256sum "$OUT" > artifact/SHA256SUMS.txt
           ls -lah artifact
           cat artifact/SHA256SUMS.txt
 
       - name: Upload finished mod
         uses: actions/upload-artifact@v4
         with:
-          name: artifacts-fabric-1.21.1-chorus-totem-3uses
+          name: artifacts-fabric-1.21.1-chorus-totem-3uses-beltfix
           path: artifact/*
           if-no-files-found: error
