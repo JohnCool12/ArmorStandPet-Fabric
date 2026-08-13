@@ -1,0 +1,187 @@
+diff --git a/common/src/main/java/limitless/enchantments/VanillaEnchantmentLevels.java b/common/src/main/java/limitless/enchantments/VanillaEnchantmentLevels.java
+new file mode 100644
+index 0000000..d0ead71
+--- /dev/null
++++ b/common/src/main/java/limitless/enchantments/VanillaEnchantmentLevels.java
+@@ -0,0 +1,58 @@
++package limitless.enchantments;
++
++import java.util.ArrayList;
++
++import net.minecraft.core.Holder;
++import net.minecraft.world.item.ItemStack;
++import net.minecraft.world.item.enchantment.Enchantment;
++import net.minecraft.world.item.enchantment.EnchantmentHelper;
++
++/**
++ * Keeps naturally generated enchantment levels vanilla while leaving the
++ * mod's intentionally limitless progression paths (anvils, trades, commands,
++ * existing stacks, etc.) unchanged.
++ */
++public final class VanillaEnchantmentLevels {
++    private static final ThreadLocal<Integer> VANILLA_GENERATION_DEPTH = ThreadLocal.withInitial(() -> 0);
++
++    private VanillaEnchantmentLevels() {
++    }
++
++    public static void beginVanillaGeneration() {
++        VANILLA_GENERATION_DEPTH.set(VANILLA_GENERATION_DEPTH.get() + 1);
++    }
++
++    public static void endVanillaGeneration() {
++        int depth = VANILLA_GENERATION_DEPTH.get() - 1;
++        if (depth <= 0) {
++            VANILLA_GENERATION_DEPTH.remove();
++        } else {
++            VANILLA_GENERATION_DEPTH.set(depth);
++        }
++    }
++
++    public static boolean shouldUseVanillaMaxLevel() {
++        return VANILLA_GENERATION_DEPTH.get() > 0;
++    }
++
++    /**
++     * Safety backstop for loot-table-filled containers. This clamps both
++     * normal item enchantments and stored enchanted-book enchantments because
++     * EnchantmentHelper.updateEnchantments chooses the correct component type.
++     */
++    public static void clampStackToVanillaMax(ItemStack stack) {
++        if (stack.isEmpty()) {
++            return;
++        }
++
++        EnchantmentHelper.updateEnchantments(stack, enchantments -> {
++            for (Holder<Enchantment> enchantment : new ArrayList<>(enchantments.getEnchantments())) {
++                int level = enchantments.getLevel(enchantment);
++                int vanillaMax = enchantment.value().definition().maxLevel();
++                if (level > vanillaMax) {
++                    enchantments.set(enchantment, vanillaMax);
++                }
++            }
++        });
++    }
++}
+diff --git a/common/src/main/java/limitless/enchantments/mixin/CreativeModeTabsMixin.java b/common/src/main/java/limitless/enchantments/mixin/CreativeModeTabsMixin.java
+index 1cbbd5c..5579c7b 100644
+--- a/common/src/main/java/limitless/enchantments/mixin/CreativeModeTabsMixin.java
++++ b/common/src/main/java/limitless/enchantments/mixin/CreativeModeTabsMixin.java
+@@ -13,7 +13,7 @@ import org.spongepowered.asm.mixin.Overwrite;
+ @Mixin(CreativeModeTabs.class)
+ public class CreativeModeTabsMixin {
+     @Overwrite
+-    private static void generateEnchantmentBookTypesOnlyMaxLevel(CreativeModeTab.Output entries, HolderLookup<Enchantment> registryWrapper, CreativeModeTab.TabVisibility stackVisibility) {
++    public static void generateEnchantmentBookTypesOnlyMaxLevel(CreativeModeTab.Output entries, HolderLookup<Enchantment> registryWrapper, CreativeModeTab.TabVisibility stackVisibility) {
+         registryWrapper.listElements().map((enchantmentEntry) -> {
+             return EnchantedBookItem.createForEnchantment(new EnchantmentInstance(enchantmentEntry, Math.min(255, ((Enchantment)enchantmentEntry.value()).getMaxLevel())));
+         }).forEach((stack) -> {
+@@ -22,7 +22,7 @@ public class CreativeModeTabsMixin {
+     }
+ 
+     @Overwrite
+-    private static void generateEnchantmentBookTypesAllLevels(CreativeModeTab.Output entries, HolderLookup<Enchantment> registryWrapper, CreativeModeTab.TabVisibility stackVisibility) {
++    public static void generateEnchantmentBookTypesAllLevels(CreativeModeTab.Output entries, HolderLookup<Enchantment> registryWrapper, CreativeModeTab.TabVisibility stackVisibility) {
+         registryWrapper.listElements().flatMap((enchantmentEntry) -> {
+             return IntStream.rangeClosed(((Enchantment)enchantmentEntry.value()).getMinLevel(), Math.min(255, ((Enchantment)enchantmentEntry.value()).getMaxLevel())).mapToObj((level) -> {
+                 return EnchantedBookItem.createForEnchantment(new EnchantmentInstance(enchantmentEntry, level));
+diff --git a/common/src/main/java/limitless/enchantments/mixin/EnchantmentMenuMixin.java b/common/src/main/java/limitless/enchantments/mixin/EnchantmentMenuMixin.java
+new file mode 100644
+index 0000000..ac75f57
+--- /dev/null
++++ b/common/src/main/java/limitless/enchantments/mixin/EnchantmentMenuMixin.java
+@@ -0,0 +1,33 @@
++package limitless.enchantments.mixin;
++
++import java.util.List;
++
++import org.spongepowered.asm.mixin.Mixin;
++import org.spongepowered.asm.mixin.injection.At;
++import org.spongepowered.asm.mixin.injection.Inject;
++import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
++
++import limitless.enchantments.VanillaEnchantmentLevels;
++import net.minecraft.core.RegistryAccess;
++import net.minecraft.world.inventory.EnchantmentMenu;
++import net.minecraft.world.item.ItemStack;
++import net.minecraft.world.item.enchantment.EnchantmentInstance;
++
++/**
++ * The enchanting table should only ever roll levels that vanilla considers
++ * valid. Limitless progression still becomes available later through combining.
++ */
++@Mixin(EnchantmentMenu.class)
++public class EnchantmentMenuMixin {
++    @Inject(method = "getEnchantmentList", at = @At("HEAD"))
++    private void limitless$beginVanillaTableGeneration(RegistryAccess registryAccess, ItemStack stack, int slot, int level,
++            CallbackInfoReturnable<List<EnchantmentInstance>> info) {
++        VanillaEnchantmentLevels.beginVanillaGeneration();
++    }
++
++    @Inject(method = "getEnchantmentList", at = @At("RETURN"))
++    private void limitless$endVanillaTableGeneration(RegistryAccess registryAccess, ItemStack stack, int slot, int level,
++            CallbackInfoReturnable<List<EnchantmentInstance>> info) {
++        VanillaEnchantmentLevels.endVanillaGeneration();
++    }
++}
+diff --git a/common/src/main/java/limitless/enchantments/mixin/EnchantmentMixin.java b/common/src/main/java/limitless/enchantments/mixin/EnchantmentMixin.java
+index dfac5e7..1f4b956 100644
+--- a/common/src/main/java/limitless/enchantments/mixin/EnchantmentMixin.java
++++ b/common/src/main/java/limitless/enchantments/mixin/EnchantmentMixin.java
+@@ -23,6 +23,10 @@ import net.minecraft.world.item.enchantment.Enchantments;
+ public class EnchantmentMixin {
+ 	@Inject(at = @At("TAIL"), method = "getMaxLevel", cancellable = true)
+ 	private void getMaxLevel(CallbackInfoReturnable<Integer> info) {
++		if (limitless.enchantments.VanillaEnchantmentLevels.shouldUseVanillaMaxLevel()) {
++			return;
++		}
++
+ 		Enchantment e = (Enchantment) (Object) this;
+ 		if (LimitlessEnchantments.MAX_ENCHANTMENT_LEVEL > 0) {
+ 			ArrayList<Enchantment> list = new ArrayList<>();
+diff --git a/common/src/main/java/limitless/enchantments/mixin/LootTableMixin.java b/common/src/main/java/limitless/enchantments/mixin/LootTableMixin.java
+new file mode 100644
+index 0000000..87f3fb8
+--- /dev/null
++++ b/common/src/main/java/limitless/enchantments/mixin/LootTableMixin.java
+@@ -0,0 +1,26 @@
++package limitless.enchantments.mixin;
++
++import org.spongepowered.asm.mixin.Mixin;
++import org.spongepowered.asm.mixin.injection.At;
++import org.spongepowered.asm.mixin.injection.Inject;
++import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
++
++import limitless.enchantments.VanillaEnchantmentLevels;
++import net.minecraft.world.Container;
++import net.minecraft.world.level.storage.loot.LootParams;
++import net.minecraft.world.level.storage.loot.LootTable;
++
++/**
++ * Final safety gate for generated container/chest loot. No item placed into a
++ * container by LootTable.fill may retain an enchantment above that enchantment's
++ * vanilla definition max level.
++ */
++@Mixin(LootTable.class)
++public class LootTableMixin {
++    @Inject(method = "fill", at = @At("RETURN"))
++    private void limitless$clampGeneratedContainerLoot(Container container, LootParams params, long seed, CallbackInfo info) {
++        for (int slot = 0; slot < container.getContainerSize(); slot++) {
++            VanillaEnchantmentLevels.clampStackToVanillaMax(container.getItem(slot));
++        }
++    }
++}
+diff --git a/common/src/main/resources/limitlessenchantments.mixins.json b/common/src/main/resources/limitlessenchantments.mixins.json
+index d0036e7..3279961 100644
+--- a/common/src/main/resources/limitlessenchantments.mixins.json
++++ b/common/src/main/resources/limitlessenchantments.mixins.json
+@@ -13,7 +13,9 @@
+     "AnvilMenuMixin",
+ 		"ItemEnchantmentsMixin",
+ 		"ItemEnchantmentsMutableMixin",
+-		"CreativeModeTabsMixin"
++		"CreativeModeTabsMixin",
++		"EnchantmentMenuMixin",
++		"LootTableMixin"
+   ],
+   "injectors": {
+     "defaultRequire": 1
