@@ -1,6 +1,6 @@
 diff --git a/common/src/main/java/limitless/enchantments/VanillaEnchantmentLevels.java b/common/src/main/java/limitless/enchantments/VanillaEnchantmentLevels.java
 new file mode 100644
-index 0000000..d0ead71
+index 0000000..5770629
 --- /dev/null
 +++ b/common/src/main/java/limitless/enchantments/VanillaEnchantmentLevels.java
 @@ -0,0 +1,58 @@
@@ -52,7 +52,7 @@ index 0000000..d0ead71
 +        }
 +
 +        EnchantmentHelper.updateEnchantments(stack, enchantments -> {
-+            for (Holder<Enchantment> enchantment : new ArrayList<>(enchantments.getEnchantments())) {
++            for (Holder<Enchantment> enchantment : new ArrayList<>(enchantments.keySet())) {
 +                int level = enchantments.getLevel(enchantment);
 +                int vanillaMax = enchantment.value().definition().maxLevel();
 +                if (level > vanillaMax) {
