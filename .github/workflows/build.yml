@@ -1,9 +1,9 @@
-name: Build Fabric Mod
+name: Build Artifacts Chorus Totem
 
 on:
   push:
-    branches: [main]
-  pull_request:
+    branches:
+      - ci/artifacts-chorus-totem-20260812
   workflow_dispatch:
 
 permissions:
@@ -13,49 +13,160 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-
-      - name: Set up Java 25
+      - name: Set up Java 21
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '25'
+          java-version: '21'
 
-      - name: Set up Gradle 9.5.1
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '9.5.1'
-
-      - name: Restore source project
+      - name: Check out exact Artifacts 13.2.1 source
         shell: bash
         run: |
           set -euo pipefail
-          cat ci/asp.tar.xz.b64.part-* | base64 --decode > /tmp/asp.tar.xz
-          echo '3c3a2a9c821ef83ba5871678a59617b54800fb9c1926dcdb32de401881d45f8b  /tmp/asp.tar.xz' | sha256sum --check
-          mkdir -p /tmp/asp-src
-          tar -xJf /tmp/asp.tar.xz -C /tmp/asp-src
-          cp -a /tmp/asp-src/armorstandpet-fabric ./project
-          if [ -d ci/overrides ]; then
-            cp -a ci/overrides/. project/
-          fi
-          test -f project/build.gradle
+          git clone https://github.com/ochotonida/artifacts.git project
+          cd project
+          git checkout c9c3a3debb1054eb5535600e44dc0834201f0943
+          test "$(git rev-parse HEAD)" = "c9c3a3debb1054eb5535600e44dc0834201f0943"
+          grep -Fx 'minecraft_version=1.21.1' gradle.properties
+          grep -Fx 'mod_version=13.2.1' gradle.properties
 
-      - name: Build
-        working-directory: project
-        run: gradle build --stacktrace --no-daemon
-
-      - name: Collect production JAR
+      - name: Apply Chorus Totem changes
         shell: bash
         run: |
-          mkdir -p artifact
-          find project/build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*-sources.jar' ! -name '*-dev.jar' -exec cp {} artifact/ \;
-          test -n "$(find artifact -maxdepth 1 -type f -name '*.jar' -print -quit)"
-          ls -lah artifact
+          set -euo pipefail
+          cat > /tmp/chorus_totem.patch <<'PATCH'
+          diff --git a/common/src/generated/resources/assets/artifacts/lang/en_us.json b/common/src/generated/resources/assets/artifacts/lang/en_us.json
+          index ef185d5..8c22c91 100644
+          --- a/common/src/generated/resources/assets/artifacts/lang/en_us.json
+          +++ b/common/src/generated/resources/assets/artifacts/lang/en_us.json
+          @@ -93,7 +93,7 @@
+             "artifacts.config.items.charm_of_sinking.oxygenBonus.title": "Oxygen Bonus",
+             "artifacts.config.items.charm_of_sinking.underwaterFallDamage.description": "Whether it is possible to take fall damage underwater when wearing the Charm of Sinking",
+             "artifacts.config.items.charm_of_sinking.underwaterFallDamage.title": "Underwater Fall Damage",
+          -  "artifacts.config.items.chorus_totem.consumeOnUse.description": "Whether the Chorus Totem is consumed after activating",
+          +  "artifacts.config.items.chorus_totem.consumeOnUse.description": "Whether the Chorus Totem loses a use after activating",
+             "artifacts.config.items.chorus_totem.consumeOnUse.title": "Consume on Use",
+             "artifacts.config.items.chorus_totem.cooldown.description": "The duration in seconds the Chorus Totem goes on cooldown for after activating",
+             "artifacts.config.items.chorus_totem.healthRestored.description": "The amount of health points that are restored after the Chorus Totem activates",
+          @@ -384,6 +384,7 @@
+             "item.artifacts.charm_of_shrinking": "Charm of Shrinking",
+             "item.artifacts.charm_of_sinking": "Charm of Sinking",
+             "item.artifacts.chorus_totem": "Chorus Totem",
+          +  "artifacts.tooltip.chorus_totem_uses": "%s uses left",
+             "item.artifacts.cloud_in_a_bottle": "Cloud in a Bottle",
+             "item.artifacts.cowboy_hat": "Cowboy Hat",
+             "item.artifacts.cross_necklace": "Cross Necklace",
+          diff --git a/common/src/main/java/artifacts/item/WearableArtifactItem.java b/common/src/main/java/artifacts/item/WearableArtifactItem.java
+          index c7820c4..5419537 100644
+          --- a/common/src/main/java/artifacts/item/WearableArtifactItem.java
+          +++ b/common/src/main/java/artifacts/item/WearableArtifactItem.java
+          @@ -42,6 +42,12 @@ public class WearableArtifactItem extends Item {
+           
+               @Override
+               public void appendHoverText(ItemStack itemStack, TooltipContext tooltipContext, List<Component> list, TooltipFlag tooltipFlag) {
+          +        Integer chorusTotemUses = itemStack.get(ModDataComponents.CHORUS_TOTEM_USES.get());
+          +        if (chorusTotemUses != null) {
+          +            list.add(Component.translatable("artifacts.tooltip.chorus_totem_uses", chorusTotemUses)
+          +                    .withStyle(ChatFormatting.LIGHT_PURPLE));
+          +        }
+          +
+                   if (Artifacts.CONFIG.client.showTooltips.get()
+                           && !PlatformServices.getModList().isModLoaded(ModCompat.CURIOS)
+                           && !PlatformServices.getModList().isModLoaded(ModCompat.TRINKETS)
+          diff --git a/common/src/main/java/artifacts/mixin/ability/deathprotectionteleport/LivingEntityMixin.java b/common/src/main/java/artifacts/mixin/ability/deathprotectionteleport/LivingEntityMixin.java
+          index 9f78d68..526c4d0 100644
+          --- a/common/src/main/java/artifacts/mixin/ability/deathprotectionteleport/LivingEntityMixin.java
+          +++ b/common/src/main/java/artifacts/mixin/ability/deathprotectionteleport/LivingEntityMixin.java
+          @@ -8,7 +8,6 @@ import net.minecraft.server.level.ServerLevel;
+           import net.minecraft.server.level.ServerPlayer;
+           import net.minecraft.sounds.SoundEvents;
+           import net.minecraft.sounds.SoundSource;
+          -import net.minecraft.tags.DamageTypeTags;
+           import net.minecraft.world.damagesource.DamageSource;
+           import net.minecraft.world.entity.LivingEntity;
+           import net.minecraft.world.entity.player.Player;
+          @@ -28,13 +27,17 @@ public class LivingEntityMixin {
+                   ItemStack totem = DeathProtectionTeleport.findTotem(entity);
+                   if (!totem.isEmpty()
+                           && entity.level() instanceof ServerLevel level
+          -                && !damageSource.is(DamageTypeTags.BYPASSES_INVULNERABILITY)
+                   ) {
+                       if (totem.get(ModDataComponents.DEATH_PROTECTION_TELEPORT.get()) instanceof DeathProtectionTeleport ability) {
+                           if (ability.teleportationChance().get() > entity.getRandom().nextDouble()) {
+                               DeathProtectionTeleport.teleport(entity, level);
+                               if (ability.consumedOnUse().get()) {
+          -                        totem.shrink(1);
+          +                        int usesLeft = totem.getOrDefault(ModDataComponents.CHORUS_TOTEM_USES.get(), 3);
+          +                        if (usesLeft <= 1) {
+          +                            totem.shrink(1);
+          +                        } else {
+          +                            totem.set(ModDataComponents.CHORUS_TOTEM_USES.get(), usesLeft - 1);
+          +                        }
+                               } else if (entity instanceof Player player) {
+                                   player.getCooldowns().addCooldown(totem.getItem(), ability.cooldown().get() * 20);
+                               }
+          diff --git a/common/src/main/java/artifacts/registry/ModDataComponents.java b/common/src/main/java/artifacts/registry/ModDataComponents.java
+          index d364a1e..26ee885 100644
+          --- a/common/src/main/java/artifacts/registry/ModDataComponents.java
+          +++ b/common/src/main/java/artifacts/registry/ModDataComponents.java
+          @@ -14,6 +14,7 @@ import com.mojang.serialization.Codec;
+           import net.minecraft.core.component.DataComponentType;
+           import net.minecraft.core.registries.Registries;
+           import net.minecraft.network.RegistryFriendlyByteBuf;
+          +import net.minecraft.network.codec.ByteBufCodecs;
+           import net.minecraft.network.codec.StreamCodec;
+           import net.minecraft.resources.ResourceLocation;
+           import net.minecraft.sounds.SoundEvent;
+          @@ -50,6 +51,7 @@ public class ModDataComponents {
+               public static final Supplier<DataComponentType<HurtSound>> HURT_SOUND = registerSynced("hurt_sound", HurtSound.CODEC, HurtSound.STREAM_CODEC);
+               public static final Supplier<DataComponentType<Value<Double>>> REDUCED_NIGHT_VISION = registerSynced("reduced_night_vision", ValueTypes.FRACTION.codec(), ValueTypes.FRACTION.streamCodec());
+               public static final Supplier<DataComponentType<Value<Boolean>>> HIDE_WHEN_INVISIBLE = registerSynced("hide_when_invisible", ValueTypes.enabledField().codec(), ValueTypes.BOOLEAN.streamCodec());
+          +    public static final Supplier<DataComponentType<Integer>> CHORUS_TOTEM_USES = registerSynced("chorus_totem_uses", Codec.intRange(1, 3), ByteBufCodecs.INT);
+           
+               // abilities
+               public static final Supplier<DataComponentType<PostDamageCooldown>> POST_DAMAGE_COOLDOWN =
+          diff --git a/common/src/main/java/artifacts/registry/ModItems.java b/common/src/main/java/artifacts/registry/ModItems.java
+          index 948134e..fa7fd9a 100644
+          --- a/common/src/main/java/artifacts/registry/ModItems.java
+          +++ b/common/src/main/java/artifacts/registry/ModItems.java
+          @@ -225,6 +225,7 @@ public class ModItems {
+                       ))
+               );
+               public static final Holder<Item> CHORUS_TOTEM = wearableItem("chorus_totem", builder -> builder
+          +            .component(ModDataComponents.CHORUS_TOTEM_USES.get(), 3)
+                       .component(ModDataComponents.DEATH_PROTECTION_TELEPORT.get(), new DeathProtectionTeleport(
+                               Artifacts.CONFIG.items.chorusTotem.teleportationChance,
+                               Artifacts.CONFIG.items.chorusTotem.healthRestored,
+          PATCH
+          cd project
+          git apply --check /tmp/chorus_totem.patch
+          git apply /tmp/chorus_totem.patch
+          grep -F 'CHORUS_TOTEM_USES' common/src/main/java/artifacts/registry/ModItems.java
+          ! grep -F 'BYPASSES_INVULNERABILITY' common/src/main/java/artifacts/mixin/ability/deathprotectionteleport/LivingEntityMixin.java
 
-      - name: Upload mod JAR
+      - name: Build Fabric 1.21.1 JAR
+        working-directory: project
+        run: |
+          chmod +x gradlew
+          ./gradlew :fabric:build --stacktrace --no-daemon
+
+      - name: Validate and collect production JAR
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifact
+          JAR="$(find project/fabric/build/libs -maxdepth 1 -type f -name 'artifacts-fabric-*.jar' ! -name '*-sources.jar' ! -name '*-dev-shadow.jar' -print -quit)"
+          test -n "$JAR"
+          cp "$JAR" artifact/artifacts-fabric-13.2.1-chorus-totem-3uses.jar
+          unzip -p artifact/artifacts-fabric-13.2.1-chorus-totem-3uses.jar fabric.mod.json | grep -q '"id": "artifacts"'
+          jar tf artifact/artifacts-fabric-13.2.1-chorus-totem-3uses.jar | grep -q 'artifacts/mixin/ability/deathprotectionteleport/LivingEntityMixin.class'
+          sha256sum artifact/artifacts-fabric-13.2.1-chorus-totem-3uses.jar > artifact/SHA256SUMS.txt
+          ls -lah artifact
+          cat artifact/SHA256SUMS.txt
+
+      - name: Upload finished mod
         uses: actions/upload-artifact@v4
         with:
-          name: armorstandpet-fabric-26.2
-          path: artifact/*.jar
+          name: artifacts-fabric-1.21.1-chorus-totem-3uses
+          path: artifact/*
           if-no-files-found: error
