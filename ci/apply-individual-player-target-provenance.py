@@ -17,7 +17,6 @@ new_goal = '''\t\tthis.targetSelector.addGoal(1, new DefendVillageTargetGoal(thi
 count = s.count(old_goal)
 if count < 1:
     raise SystemExit('Natural target helper DefendVillageTargetGoal line missing')
-# Replace every exact natural-stack registration that survives the cumulative patches.
 s = s.replace(old_goal, new_goal)
 
 old_set = '''\t@Override\n\tpublic void setTarget(@Nullable LivingEntity pTarget) {\n\t\tfinal LivingEntity oldTarget = this.getTarget();\n\t\tsuper.setTarget(pTarget);\n'''
@@ -26,9 +25,10 @@ if s.count(old_set) != 1:
     raise SystemExit(f'Expected setTarget header once, found {s.count(old_set)}')
 s = s.replace(old_set, new_set, 1)
 
-# Static safeguards.
-if 'setAlertOthers' in s:
-    raise SystemExit('Unexpected setAlertOthers call exists in GolemBase')
+# Static safeguards. Search for an executable call form rather than merely the phrase
+# in the explanatory comment above.
+if '.setAlertOthers(' in s:
+    raise SystemExit('Unexpected executable setAlertOthers call exists in GolemBase')
 if 'assigningVillageDefensePlayerTarget' not in s:
     raise SystemExit('Village-defense provenance guard missing')
 if 'this.getLastHurtByMob() != player' not in s or '!this.isAngryAt(player)' not in s:
