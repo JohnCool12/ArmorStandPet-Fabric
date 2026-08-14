@@ -149,7 +149,9 @@ jobs:
           if end < 0: end=len(s)
           m=s[start:end]
           b=m.index('beginVillageSummonInitialization')
-          spawn=m.index('method_42122')
+          spawn=m.find('trySpawnMob')
+          if spawn < 0: spawn=m.find('method_42122')
+          if spawn < 0: raise SystemExit('Compiled SpawnUtil/LargeEntitySpawnHelper invocation not found')
           e=m.index('endVillageSummonInitialization')
           assert b < spawn < e, (b,spawn,e)
           assert 'setGolemId' not in m
