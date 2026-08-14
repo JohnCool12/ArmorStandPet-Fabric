@@ -19,7 +19,7 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.5.1'
-      - name: Reconstruct current cumulative source
+      - name: Reconstruct current cumulative source and apply fix
         shell: bash
         run: |
           set -euo pipefail
@@ -46,6 +46,8 @@ jobs:
           python3 ci/apply-bedrock-true-vanilla-natural-ai.py >/dev/null
           python3 ci/apply-all-constructed-natural-ai.py >/dev/null
           python3 ci/apply-village-runtime-parity-fix.py >/dev/null
+          python3 ci/apply-individual-player-target-provenance.py
+          python3 ci/apply-minimum-iron-golem-speed.py
           cp project/build.gradle /tmp/prod-build.gradle
           cp project/src/main/resources/fabric.mod.json /tmp/prod-mod.json
       - name: Install retaliation GameTests
@@ -66,7 +68,8 @@ jobs:
           }
           EOF
           python3 ci/inject-individual-retaliation-gametest.py
-      - name: Run current behavior comparison
+          python3 ci/patch-individual-retaliation-gametest-v2.py
+      - name: Require individual retaliation and village exception
         working-directory: project
         shell: bash
         run: |
@@ -77,5 +80,18 @@ jobs:
           gradle runGametest --no-daemon > ../individual-retaliation.log 2>&1
           status=$?
           set -e
-          if [ -f build/junit.xml ]; then cat build/junit.xml; fi
-          if [ "$status" -ne 0 ]; then tail -500 ../individual-retaliation.log; exit "$status"; fi
+          test -f build/junit.xml || { tail -500 ../individual-retaliation.log; exit 1; }
+          python3 - <<'PY'
+          import xml.etree.ElementTree as ET
+          cases=list(ET.parse('build/junit.xml').getroot().iter('testcase'))
+          wanted=('directpunchdoesnotalertbystanderextragolem','vanillanaturalirongolemdirectpunchisindividual','lowvillagerreputationcanmakemultipleextragolemshostile')
+          for token in wanted:
+              found=[c for c in cases if token in c.attrib.get('name','').lower()]
+              if len(found)!=1: raise SystemExit(f'Missing/duplicate test {token}: {[c.attrib.get("name") for c in cases]}')
+              node=found[0].find('failure')
+              if node is None: node=found[0].find('error')
+              if node is not None: raise SystemExit(f'{token} failed: {node.attrib.get("message")} {node.text}')
+          print('PASS: direct retaliation stayed individual; unprovenanced player target rejected; village reputation still allowed multi-golem hostility.')
+          PY
+          parse=$?
+          if [ "$status" -ne 0 ] || [ "$parse" -ne 0 ]; then tail -500 ../individual-retaliation.log; exit 1; fi
