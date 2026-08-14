@@ -109,9 +109,13 @@ public final class SculkCatalystBlindnessGameTest implements FabricGameTest {
         directPlayer.removeAllEffects();
         bystanderPlayer.removeAllEffects();
 
-        // Now the player is the actual melee victim. That exact player must receive
-        // blindness, but the other nearby player must remain exempt.
-        helper.assertTrue(golem.doHurtTarget(directPlayer), "Sculk Catalyst failed to land direct player attack");
+        // A headless ServerPlayer cannot be damaged normally by doHurtTarget because it
+        // has no real network connection. Dispatch the exact post-success onAttack hook
+        // that GolemBase.doHurtTarget invokes after a real melee hit, explicitly passing
+        // this player as the direct attack target. This tests the direct-target exception
+        // without conflating it with fake-player damage validity.
+        golem.getContainer().ifPresent(container -> container.getBehaviors().getActiveBehaviors(golem)
+                .forEach(b -> b.onAttack(golem, directPlayer)));
         helper.assertTrue(directPlayer.hasEffect(MobEffects.BLINDNESS), "Directly attacked player was incorrectly exempt from blindness");
         helper.assertTrue(!bystanderPlayer.hasEffect(MobEffects.BLINDNESS), "Nearby non-target player received blindness during player attack");
         helper.assertTrue(areaMob.hasEffect(MobEffects.BLINDNESS), "Nearby non-player mob should still receive area blindness during player attack");
