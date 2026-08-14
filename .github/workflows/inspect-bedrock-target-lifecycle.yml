@@ -1,4 +1,4 @@
-name: Inspect Bedrock Target Lifecycle
+name: Verify Village Golem Pretracking Initialization
 
 on:
   pull_request:
@@ -8,7 +8,7 @@ permissions:
   contents: read
 
 jobs:
-  inspect:
+  verify:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -50,17 +50,20 @@ jobs:
           python3 ci/apply-village-runtime-parity-fix.py >/dev/null
           python3 ci/apply-individual-player-target-provenance.py >/dev/null
           python3 ci/apply-minimum-iron-golem-speed.py >/dev/null
-          python3 ci/apply-sculk-catalyst-player-blindness-exemption.py
+          python3 ci/apply-sculk-catalyst-player-blindness-exemption.py >/dev/null
+          python3 ci/refine-sculk-catalyst-player-blindness-predicate.py >/dev/null
+          python3 ci/apply-village-golem-pretracking-initialization.py
 
+          grep -q 'PENDING_VILLAGE_SUMMON_GOLEM_ID' project/src/main/java/com/mcmoddev/golems/entity/GolemBase.java
+          grep -q 'beginVillageSummonInitialization' project/src/main/java/com/mcmoddev/golems/mixin/VillagerMixin.java
+          grep -q 'endVillageSummonInitialization' project/src/main/java/com/mcmoddev/golems/mixin/VillagerMixin.java
+          ! grep -A80 'golems\$replaceVillageGolem' project/src/main/java/com/mcmoddev/golems/mixin/VillagerMixin.java | grep -q '\.setGolemId('
           grep -q 'exclude_bystander_players' project/src/main/resources/data/golems/golems/golem/sculk_catalyst.json
-          grep -q 'excludeBystanderPlayers' project/src/main/java/com/mcmoddev/golems/data/behavior/util/TargetedMobEffects.java
-          grep -q 'target != directAttackTarget' project/src/main/java/com/mcmoddev/golems/data/behavior/util/TargetedMobEffects.java
-          grep -q 'targetedMobEffects.apply(entity.asMob(), target)' project/src/main/java/com/mcmoddev/golems/data/behavior/EffectBehavior.java
 
           cp project/build.gradle /tmp/eg-production-build.gradle
           cp project/src/main/resources/fabric.mod.json /tmp/eg-production-fabric.mod.json
 
-      - name: Install Sculk Catalyst blindness GameTest
+      - name: Install pretracking GameTest
         shell: bash
         run: |
           set -euo pipefail
@@ -70,7 +73,7 @@ jobs:
               runs {
                   gametest {
                       server()
-                      name "Sculk Catalyst Blindness Game Test"
+                      name "Village Replacement Pretracking Game Test"
                       vmArg "-Dfabric-api.gametest"
                       vmArg "-Dfabric-api.gametest.report-file=${project.buildDir}/junit.xml"
                       runDir "run/gametest"
@@ -78,9 +81,9 @@ jobs:
               }
           }
           EOF
-          python3 ci/inject-sculk-catalyst-blindness-gametest.py
+          python3 ci/inject-village-pretracking-gametest.py
 
-      - name: Require player bystander exemption and direct-player blindness
+      - name: Require material before world insertion
         working-directory: project
         shell: bash
         run: |
@@ -88,24 +91,24 @@ jobs:
           mkdir -p run/gametest
           printf 'eula=true\n' > run/gametest/eula.txt
           set +e
-          gradle runGametest --no-daemon > ../sculk-blindness-gametest.log 2>&1
+          gradle runGametest --no-daemon > ../village-pretracking-gametest.log 2>&1
           status=$?
           set -e
-          test -f build/junit.xml || { tail -500 ../sculk-blindness-gametest.log; exit 1; }
+          test -f build/junit.xml || { tail -500 ../village-pretracking-gametest.log; exit 1; }
           set +e
           python3 - <<'PY'
           import xml.etree.ElementTree as ET
           cases=list(ET.parse('build/junit.xml').getroot().iter('testcase'))
-          wanted=[c for c in cases if 'sculkcatalystareablindnessskipsplayerbystandersbuthitsdirectplayer' in c.attrib.get('name','').lower()]
-          if len(wanted)!=1: raise SystemExit('Sculk Catalyst blindness GameTest missing/duplicate')
+          wanted=[c for c in cases if 'villagereplacementmaterialexistsbeforeentityisadded' in c.attrib.get('name','').lower()]
+          if len(wanted)!=1: raise SystemExit('Village pretracking GameTest missing/duplicate')
           node=wanted[0].find('failure')
           if node is None: node=wanted[0].find('error')
-          if node is not None: raise SystemExit('Sculk Catalyst blindness GameTest failed: '+str(node.attrib.get('message')))
-          print('PASS: player bystanders exempt; direct player blinded; non-player AoE preserved.')
+          if node is not None: raise SystemExit('Village pretracking GameTest failed: '+str(node.attrib.get('message')))
+          print('PASS: village replacement material/container exists before finalizeSpawn/world insertion; scoped state does not leak.')
           PY
           parse=$?
           set -e
-          if [ "$status" -ne 0 ] || [ "$parse" -ne 0 ]; then tail -500 ../sculk-blindness-gametest.log; exit 1; fi
+          if [ "$status" -ne 0 ] || [ "$parse" -ne 0 ]; then tail -500 ../village-pretracking-gametest.log; exit 1; fi
 
       - name: Restore production source after GameTest
         shell: bash
@@ -113,39 +116,46 @@ jobs:
           set -euo pipefail
           cp /tmp/eg-production-build.gradle project/build.gradle
           cp /tmp/eg-production-fabric.mod.json project/src/main/resources/fabric.mod.json
-          rm -f project/src/main/java/com/mcmoddev/golems/test/SculkCatalystBlindnessGameTest.java
+          rm -f project/src/main/java/com/mcmoddev/golems/test/VillagePretrackingInitializationGameTest.java
           rm -rf project/run/gametest project/build/junit.xml
 
       - name: Build production JAR
         working-directory: project
         run: gradle clean build --stacktrace --no-daemon
 
-      - name: Verify compiled implementation and resources
+      - name: Verify compiled implementation and cumulative resources
         working-directory: project
         shell: bash
         run: |
           set -euo pipefail
-          javap -classpath build/classes/java/main -p -c com.mcmoddev.golems.data.behavior.util.TargetedMobEffects > ../targeted-effects-sculk-final.txt
-          javap -classpath build/classes/java/main -p -c com.mcmoddev.golems.data.behavior.EffectBehavior > ../effect-behavior-sculk-final.txt
-          grep -q 'excludeBystanderPlayers' ../targeted-effects-sculk-final.txt
-          grep -q 'Player' ../targeted-effects-sculk-final.txt
-          grep -q 'TargetedMobEffects.apply' ../effect-behavior-sculk-final.txt
+          javap -classpath build/classes/java/main -p -c com.mcmoddev.golems.entity.GolemBase > ../golembase-pretracking.txt
+          javap -classpath build/classes/java/main -p -c com.mcmoddev.golems.mixin.VillagerMixin > ../villager-pretracking.txt
+          javap -classpath build/classes/java/main -p -c com.mcmoddev.golems.data.behavior.util.TargetedMobEffects > ../targeted-effects-current.txt
+
+          grep -q 'PENDING_VILLAGE_SUMMON_GOLEM_ID' ../golembase-pretracking.txt
+          grep -q 'beginVillageSummonInitialization' ../golembase-pretracking.txt
+          grep -q 'endVillageSummonInitialization' ../golembase-pretracking.txt
+          grep -q 'ThreadLocal.get' ../golembase-pretracking.txt
+          grep -q 'setGolemId' ../golembase-pretracking.txt
+          grep -q 'beginVillageSummonInitialization' ../villager-pretracking.txt
+          grep -q 'endVillageSummonInitialization' ../villager-pretracking.txt
+          grep -q 'excludeBystanderPlayers' ../targeted-effects-current.txt
+
           python3 - <<'PY'
-          import json
-          p='src/main/resources/data/golems/golems/golem/sculk_catalyst.json'
-          d=json.load(open(p))
-          matches=[]
-          for b in d['brain']['behaviors']:
-              a=b.get('apply',{})
-              e=a.get('effect',{})
-              if b.get('type')=='golems:effect' and b.get('trigger')=='attack' and a.get('target')=='area' and e.get('id')=='minecraft:blindness':
-                  matches.append(a)
-          assert len(matches)==1
-          assert matches[0].get('radius')==6.0
-          assert matches[0].get('exclude_bystander_players') is True
-          assert matches[0]['effect'].get('duration')==260
-          print('PASS: Sculk Catalyst blindness radius/duration preserved with player-bystander exemption.')
+          from pathlib import Path
+          s=Path('../villager-pretracking.txt').read_text()
+          start=s.index('golems$replaceVillageGolem')
+          end=s.find('\n  private ', start+10)
+          if end < 0: end=len(s)
+          m=s[start:end]
+          b=m.index('beginVillageSummonInitialization')
+          spawn=m.index('method_42122')
+          e=m.index('endVillageSummonInitialization')
+          assert b < spawn < e, (b,spawn,e)
+          assert 'setGolemId' not in m
+          print('PASS: compiled VillagerMixin establishes material before SpawnUtil and clears it afterward; no post-spawn material assignment remains.')
           PY
+
           python3 - <<'PY'
           import json, pathlib
           root=pathlib.Path('src/main/resources/data/golems/golems/golem')
@@ -157,7 +167,14 @@ jobs:
               if isinstance(a,dict) and 'speed' in a and float(a['speed']) < 0.25:
                   slow.append((p.name,float(a['speed'])))
           if slow: raise SystemExit('Sub-vanilla speeds remain: '+repr(slow))
-          print('PASS: movement-speed floor preserved.')
+          sculk=json.loads((root/'sculk_catalyst.json').read_text())
+          matches=[]
+          for b in sculk['brain']['behaviors']:
+              a=b.get('apply',{}); e=a.get('effect',{})
+              if b.get('type')=='golems:effect' and b.get('trigger')=='attack' and a.get('target')=='area' and e.get('id')=='minecraft:blindness': matches.append(a)
+          assert len(matches)==1 and matches[0].get('exclude_bystander_players') is True
+          assert matches[0].get('radius')==6.0 and matches[0]['effect'].get('duration')==260
+          print('PASS: speed floor and Sculk player-bystander exemption preserved.')
           PY
           for f in diamond emerald sculk_catalyst ancient_debris obsidian crying_obsidian; do
             grep -q '"knockback_resistance": 1.0' "src/main/resources/data/golems/golems/golem/$f.json"
@@ -171,10 +188,10 @@ jobs:
           mkdir -p run/server
           printf 'eula=true\n' > run/server/eula.txt
           set +e
-          timeout --signal=TERM 90s gradle runServer --no-daemon > ../server-sculk-final.log 2>&1
+          timeout --signal=TERM 90s gradle runServer --no-daemon > ../server-pretracking.log 2>&1
           status=$?
           set -e
-          if [ "$status" -ne 0 ] && [ "$status" -ne 124 ]; then cat ../server-sculk-final.log; exit "$status"; fi
+          if [ "$status" -ne 0 ] && [ "$status" -ne 124 ]; then cat ../server-pretracking.log; exit "$status"; fi
           grep -q 'Done (' run/server/logs/latest.log
 
       - name: Client render/resource smoke test
@@ -182,7 +199,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          setsid env ALSOFT_DRIVERS=null LIBGL_ALWAYS_SOFTWARE=true xvfb-run -a gradle runClient --no-daemon > ../client-sculk-final.log 2>&1 &
+          setsid env ALSOFT_DRIVERS=null LIBGL_ALWAYS_SOFTWARE=true xvfb-run -a gradle runClient --no-daemon > ../client-pretracking.log 2>&1 &
           pid=$!
           ok=0
           for i in $(seq 1 90); do
@@ -205,5 +222,5 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: extra-golems-reborn-fabric-1.21.1-sculk-player-bystander-exemption
+          name: extra-golems-reborn-fabric-1.21.1-village-pretracking-init
           path: artifact/*.jar
