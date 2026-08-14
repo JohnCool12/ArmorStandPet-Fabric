@@ -1,9 +1,9 @@
-name: Build Fabric Mod
+name: Build Artifacts Spawn Teleport Helper
 
 on:
   push:
-    branches: [main]
-  pull_request:
+    branches:
+      - ci/artifacts-finaldeath-20260813
   workflow_dispatch:
 
 permissions:
@@ -13,49 +13,58 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Check out repository
+      - name: Check out CI files
         uses: actions/checkout@v4
 
-      - name: Set up Java 25
+      - name: Set up Java 21
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '25'
+          java-version: '21'
 
-      - name: Set up Gradle 9.5.1
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '9.5.1'
-
-      - name: Restore source project
+      - name: Check out exact Artifacts 13.2.1 source
         shell: bash
         run: |
           set -euo pipefail
-          cat ci/asp.tar.xz.b64.part-* | base64 --decode > /tmp/asp.tar.xz
-          echo '3c3a2a9c821ef83ba5871678a59617b54800fb9c1926dcdb32de401881d45f8b  /tmp/asp.tar.xz' | sha256sum --check
-          mkdir -p /tmp/asp-src
-          tar -xJf /tmp/asp.tar.xz -C /tmp/asp-src
-          cp -a /tmp/asp-src/armorstandpet-fabric ./project
-          if [ -d ci/overrides ]; then
-            cp -a ci/overrides/. project/
-          fi
-          test -f project/build.gradle
+          git clone https://github.com/ochotonida/artifacts.git project
+          cd project
+          git checkout c9c3a3debb1054eb5535600e44dc0834201f0943
+          test "$(git rev-parse HEAD)" = "c9c3a3debb1054eb5535600e44dc0834201f0943"
+          grep -Fx 'minecraft_version=1.21.1' gradle.properties
+          grep -Fx 'mod_version=13.2.1' gradle.properties
 
-      - name: Build
-        working-directory: project
-        run: gradle build --stacktrace --no-daemon
-
-      - name: Collect production JAR
+      - name: Apply personal spawn teleport patch
         shell: bash
         run: |
-          mkdir -p artifact
-          find project/build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*-sources.jar' ! -name '*-dev.jar' -exec cp {} artifact/ \;
-          test -n "$(find artifact -maxdepth 1 -type f -name '*.jar' -print -quit)"
-          ls -lah artifact
+          set -euo pipefail
+          cd project
+          python "$GITHUB_WORKSPACE/ci/artifacts-spawnpoint-patch.py"
+          grep -F 'findRespawnPositionAndUseSpawnBlock(false, DimensionTransition.DO_NOTHING)' common/src/main/java/artifacts/component/ability/DeathProtectionTeleport.java
+          grep -F '!respawn.missingRespawnBlock()' common/src/main/java/artifacts/component/ability/DeathProtectionTeleport.java
+          grep -F 'player.teleportTo(respawn.newLevel()' common/src/main/java/artifacts/component/ability/DeathProtectionTeleport.java
+          git diff --check
 
-      - name: Upload mod JAR
+      - name: Build Fabric 1.21.1
+        working-directory: project
+        run: |
+          chmod +x gradlew
+          ./gradlew :fabric:build --stacktrace --no-daemon
+
+      - name: Collect helper production JAR
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifact
+          JAR="$(find project/fabric/build/libs -maxdepth 1 -type f -name 'artifacts-fabric-*.jar' ! -name '*-sources.jar' ! -name '*-dev-shadow.jar' -print -quit)"
+          test -n "$JAR"
+          cp "$JAR" artifact/artifacts-spawn-teleport-helper.jar
+          jar tf artifact/artifacts-spawn-teleport-helper.jar | grep -q 'artifacts/component/ability/DeathProtectionTeleport.class'
+          unzip -p artifact/artifacts-spawn-teleport-helper.jar artifacts/component/ability/DeathProtectionTeleport.class | strings | grep -q 'method_60590'
+          sha256sum artifact/artifacts-spawn-teleport-helper.jar > artifact/SHA256SUMS.txt
+
+      - name: Upload helper
         uses: actions/upload-artifact@v4
         with:
-          name: armorstandpet-fabric-26.2
-          path: artifact/*.jar
+          name: artifacts-spawn-teleport-helper
+          path: artifact/*
           if-no-files-found: error
