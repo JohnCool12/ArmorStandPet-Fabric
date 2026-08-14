@@ -18,16 +18,18 @@ testjava.write_text(r'''package com.mcmoddev.golems.test;
 import com.mcmoddev.golems.EGRegistry;
 import com.mcmoddev.golems.entity.GolemBase;
 import net.fabricmc.fabric.api.gametest.v1.FabricGameTest;
+import net.minecraft.core.BlockPos;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.entity.MobSpawnType;
 
 public final class VillagePretrackingInitializationGameTest implements FabricGameTest {
     @GameTest(template = FabricGameTest.EMPTY_STRUCTURE, timeoutTicks = 40)
     public void villageReplacementMaterialExistsBeforeEntityIsAdded(final GameTestHelper helper) {
         final ResourceLocation obsidian = ResourceLocation.fromNamespaceAndPath("golems", "obsidian");
 
-        // This is the exact construction phase used by SpawnUtil: EntityType#create returns
+        // This is the construction phase used inside SpawnUtil: EntityType#create returns
         // a brand-new entity that has NOT yet been inserted into the ServerLevel. The scoped
         // village material must already be visible at that point.
         GolemBase.beginVillageSummonInitialization(obsidian);
@@ -47,6 +49,17 @@ public final class VillagePretrackingInitializationGameTest implements FabricGam
                 "Replacement material ID was not initialized before world insertion");
         helper.assertTrue(replacement.getContainer().isPresent(),
                 "Replacement container cannot resolve before world insertion");
+
+        // Mirror the rest of SpawnUtil's lifecycle: positioning/finalization must not erase
+        // the preinitialized material before the entity becomes visible to world tracking.
+        replacement.moveTo(helper.absolutePos(new BlockPos(2, 2, 2)), 0.0F, 0.0F);
+        replacement.finalizeSpawn(helper.getLevel(),
+                helper.getLevel().getCurrentDifficultyAt(replacement.blockPosition()),
+                MobSpawnType.MOB_SUMMONED, null);
+        helper.assertTrue(replacement.getGolemId().orElseThrow().equals(obsidian),
+                "Replacement material was lost during finalizeSpawn");
+        helper.assertTrue(helper.getLevel().getEntity(replacement.getId()) == null,
+                "Replacement entered world tracking before explicit addFreshEntity");
 
         helper.getLevel().addFreshEntity(replacement);
         helper.assertTrue(helper.getLevel().getEntity(replacement.getId()) == replacement,
