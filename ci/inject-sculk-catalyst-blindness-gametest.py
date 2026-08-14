@@ -92,13 +92,14 @@ public final class SculkCatalystBlindnessGameTest implements FabricGameTest {
         helper.assertTrue(directMob.hasEffect(MobEffects.BLINDNESS), "Directly attacked mob did not receive blindness");
         helper.assertTrue(areaMob.hasEffect(MobEffects.BLINDNESS), "Nearby non-player mob lost existing area blindness");
 
-        final EffectBehavior blindnessBehavior = golem.getContainer().orElseThrow()
-                .getBehaviors().getActiveBehaviors(golem).stream()
-                .filter(EffectBehavior.class::isInstance)
-                .map(EffectBehavior.class::cast)
-                .findFirst()
-                .orElseThrow(() -> new IllegalStateException("Sculk Catalyst blindness EffectBehavior missing"));
-        final TargetedMobEffects targeted = blindnessBehavior.getTargetedMobEffects();
+        TargetedMobEffects targeted = null;
+        for (var behavior : golem.getContainer().orElseThrow().getBehaviors().getActiveBehaviors(golem)) {
+            if (behavior instanceof EffectBehavior effectBehavior) {
+                targeted = effectBehavior.getTargetedMobEffects();
+                break;
+            }
+        }
+        helper.assertTrue(targeted != null, "Sculk Catalyst blindness EffectBehavior missing");
         helper.assertTrue(targeted.excludeBystanderPlayers(), "Sculk Catalyst did not opt into player-bystander exemption");
 
         final ServerPlayer directPlayer = detachedPlayer(helper, "SculkDirectPlayer");
