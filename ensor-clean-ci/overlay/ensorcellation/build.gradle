@@ -1,0 +1,27 @@
+version = rootProject.ensorcellation_version
+group = rootProject.maven_group
+base { archivesName = 'Ensorcellation-Fabric-1.21.1-clean' }
+
+loom {
+    splitEnvironmentSourceSets()
+    mods {
+        ensorcellation {
+            sourceSet sourceSets.main
+            sourceSet sourceSets.client
+        }
+    }
+}
+
+dependencies {
+    // Loom subprojects must be consumed through their unmapped namedElements output.
+    implementation project(path: ':cofh-core', configuration: 'namedElements')
+    clientImplementation project(':cofh-core').sourceSets.client.output
+}
+
+processResources {
+    inputs.property 'version', project.version
+    inputs.property 'cofh_core_version', rootProject.cofh_core_version
+    filesMatching('fabric.mod.json') {
+        expand version: project.version, cofh_core_version: rootProject.cofh_core_version
+    }
+}
