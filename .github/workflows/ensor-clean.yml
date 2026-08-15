@@ -45,6 +45,35 @@ jobs:
         with:
           cache-read-only: false
 
+      - name: Extract official Minecraft 1.21.1 mapping diagnostics
+        shell: bash
+        run: |
+          set -euxo pipefail
+          curl -fsSL 'https://piston-data.mojang.com/v1/objects/2244b6f072256667bcd9a73df124d6c58de77992/client.txt' -o /tmp/ensor/client-mappings.txt
+          python3 - <<'PY' > /tmp/ensor/mapping-diagnostic.txt
+          from pathlib import Path
+          lines = Path('/tmp/ensor/client-mappings.txt').read_text().splitlines()
+          wanted = {
+              'net.minecraft.world.level.block.state.BlockBehaviour$BlockStateBase',
+              'net.minecraft.world.item.RangedWeaponItem',
+              'net.minecraft.world.item.BowItem',
+              'net.minecraft.world.entity.projectile.FishingHook',
+              'net.minecraft.world.entity.LivingEntity',
+          }
+          current = None
+          keep = False
+          for line in lines:
+              if line and not line.startswith(' '):
+                  current = line.split(' -> ', 1)[0]
+                  keep = current in wanted
+                  if keep:
+                      print('\n###', current)
+                      print(line)
+              elif keep:
+                  print(line)
+          PY
+          cat /tmp/ensor/mapping-diagnostic.txt
+
       - name: Build against real Minecraft 1.21.1 and Fabric dependencies
         shell: bash
         working-directory: /tmp/ensor/Ensorcellation-Fabric-1.21.1-clean
@@ -52,7 +81,7 @@ jobs:
           set -o pipefail
           ./gradlew --no-daemon --stacktrace build 2>&1 | tee /tmp/ensor/build.log
 
-      - name: Upload build outputs and full log
+      - name: Upload build outputs, diagnostics and full log
         uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -60,5 +89,6 @@ jobs:
           if-no-files-found: warn
           path: |
             /tmp/ensor/build.log
+            /tmp/ensor/mapping-diagnostic.txt
             /tmp/ensor/Ensorcellation-Fabric-1.21.1-clean/cofh-core/build/libs/*.jar
             /tmp/ensor/Ensorcellation-Fabric-1.21.1-clean/ensorcellation/build/libs/*.jar
