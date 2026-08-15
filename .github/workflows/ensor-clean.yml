@@ -1,0 +1,48 @@
+name: Ensorcellation clean CI
+
+on:
+  push:
+    branches:
+      - chatgpt/ensorcellation-clean-ci-20260815
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Reconstruct and verify clean port snapshot
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p /tmp/ensor
+          cat ensor-clean-ci/part* | base64 -d > /tmp/ensor/project.tar.xz
+          echo "f3251ef65c7eb85e0beee8846a5e31f7f2bf42b890fff80e133f8b205073fc70  /tmp/ensor/project.tar.xz" | sha256sum -c -
+          tar -xJf /tmp/ensor/project.tar.xz -C /tmp/ensor
+          chmod +x /tmp/ensor/Ensorcellation-Fabric-1.21.1-clean/gradlew
+
+      - name: Build against real Minecraft 1.21.1 and Fabric dependencies
+        shell: bash
+        working-directory: /tmp/ensor/Ensorcellation-Fabric-1.21.1-clean
+        run: |
+          set -o pipefail
+          ./gradlew --no-daemon --stacktrace build 2>&1 | tee /tmp/ensor/build.log
+
+      - name: Upload build outputs and full log
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ensorcellation-clean-ci
+          if-no-files-found: warn
+          path: |
+            /tmp/ensor/build.log
+            /tmp/ensor/Ensorcellation-Fabric-1.21.1-clean/cofh-core/build/libs/*.jar
+            /tmp/ensor/Ensorcellation-Fabric-1.21.1-clean/ensorcellation/build/libs/*.jar
