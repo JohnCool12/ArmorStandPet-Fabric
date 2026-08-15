@@ -82,6 +82,7 @@ jobs:
           }
           EOF
           python3 ci/inject-village-fallback-gametest.py
+          python3 ci/fix-village-fallback-gametest-strategy.py
 
       - name: Require failed Extra replacement to spawn vanilla Iron Golem
         working-directory: project
