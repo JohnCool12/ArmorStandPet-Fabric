@@ -2,17 +2,14 @@ package cofh.ensorcellation.fabric.mixin;
 
 import cofh.ensorcellation.fabric.enchantment.EnsorEnchantments;
 import cofh.ensorcellation.fabric.runtime.CombatRuntime;
-import cofh.ensorcellation.fabric.runtime.EquipmentRuntime;
-import cofh.ensorcellation.fabric.runtime.FoodRuntime;
 import cofh.ensorcellation.fabric.runtime.RebukeRuntime;
 import cofh.ensorcellation.fabric.runtime.ShieldRuntime;
-import cofh.ensorcellation.fabric.runtime.SoulboundRuntime;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.item.BowItem;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.level.Level;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
@@ -26,37 +23,37 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 abstract class LivingEntityMixin {
     @Shadow private int useItemRemaining;
 
-    /** LivingHurtEvent-equivalent: after armor, before magic/enchantment mitigation. */
-    @ModifyVariable(method = "actuallyHurt", at = @At(value = "STORE", ordinal = 0), ordinal = 0, argsOnly = false)
-    private float ensor$hurtStage(float amount, DamageSource source) {
-        return CombatRuntime.modifyHurt((LivingEntity) (Object) this, source, amount);
+    @Inject(method = "hurt", at = @At("HEAD"), cancellable = true)
+    private void ensor$magicEdge(DamageSource source, float amount, CallbackInfoReturnable<Boolean> cir) {
+        LivingEntity self = (LivingEntity) (Object) this;
+        if (self.level() instanceof ServerLevel level && CombatRuntime.shouldRewriteMagicEdge(self, source)) {
+            cir.setReturnValue(CombatRuntime.hurtAsMagic(self, level, source, amount));
+        }
     }
 
-    @Inject(method = "actuallyHurt", at = @At("TAIL"))
-    private void ensor$postHurt(DamageSource source, float amount, CallbackInfo ci) {
-        Entity attacker = source.getEntity();
-        if (attacker != null) RebukeRuntime.onPostHurt((LivingEntity) (Object) this, attacker);
+    /** NeoForge LivingHurtEvent position: start of actuallyHurt, before armor/magic mitigation. */
+    @ModifyVariable(method = "actuallyHurt", at = @At("HEAD"), argsOnly = true, ordinal = 0)
+    private float ensor$modifyHurtAmount(float amount, DamageSource source) {
+        return CombatRuntime.modifyHurtAmount((LivingEntity) (Object) this, source, amount);
     }
 
-    /** LivingDamageEvent-equivalent: immediately before the final health write. */
+    /** NeoForge LivingDamageEvent position: after armor/magic/absorption, immediately before health is written. */
     @ModifyArg(method = "actuallyHurt", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/LivingEntity;setHealth(F)V"), index = 0)
-    private float ensor$mercyHealth(float newHealth, DamageSource source, float incomingAmount) {
-        LivingEntity self = (LivingEntity) (Object) this;
-        return CombatRuntime.mercyHealth(self, source, newHealth);
+    private float ensor$mercy(float proposedHealth, DamageSource source, float amount) {
+        return CombatRuntime.mercyHealth((LivingEntity) (Object) this, source, proposedHealth);
     }
 
-    @Inject(method = "die", at = @At("HEAD"))
-    private void ensor$death(DamageSource source, CallbackInfo ci) {
+    @Inject(method = "actuallyHurt", at = @At("RETURN"))
+    private void ensor$postHurt(DamageSource source, float amount, CallbackInfo ci) {
         LivingEntity self = (LivingEntity) (Object) this;
-        SoulboundRuntime.captureIfPlayer(self);
-        CombatRuntime.recordKiller(self, source);
+        CombatRuntime.afterSuccessfulDamage(self, source);
+        Entity attacker = source.getEntity();
+        if (attacker != null) RebukeRuntime.onPostHurt(self, attacker);
     }
 
     @Inject(method = "tick", at = @At("TAIL"))
     private void ensor$tick(CallbackInfo ci) {
-        LivingEntity self = (LivingEntity) (Object) this;
-        EquipmentRuntime.tick(self);
-        ShieldRuntime.tick(self);
+        ShieldRuntime.tick((LivingEntity) (Object) this);
     }
 
     /** Original Quick Draw: subtract level * 10% * BowItem.MAX_DRAW_DURATION every use tick. */
@@ -69,15 +66,5 @@ abstract class LivingEntityMixin {
         if (level > 0) {
             useItemRemaining -= (int) (level * 0.1F * BowItem.MAX_DRAW_DURATION);
         }
-    }
-
-    @Inject(method = "eat", at = @At("RETURN"))
-    private void ensor$gourmand(Level level, ItemStack stack, net.minecraft.world.food.FoodProperties food, CallbackInfo ci) {
-        FoodRuntime.afterEat((LivingEntity) (Object) this, food);
-    }
-
-    @Inject(method = "teleport", at = @At("HEAD"), cancellable = true)
-    private void ensor$enderference(double x, double y, double z, boolean particles, CallbackInfoReturnable<Boolean> cir) {
-        if (CombatRuntime.blocksTeleport((LivingEntity) (Object) this)) cir.setReturnValue(false);
     }
 }
