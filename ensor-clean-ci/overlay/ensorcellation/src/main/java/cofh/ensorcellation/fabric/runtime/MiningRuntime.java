@@ -62,7 +62,9 @@ public final class MiningRuntime {
     public static float modifyDestroyProgress(float original, Player player, BlockGetter getter, BlockPos pos) {
         float result = original;
         ItemStack tool = player.getMainHandItem();
-        int airAffinity = EnsorEnchantments.level(tool, player.level(), "air_affinity");
+        // Air Affinity is a head-armor enchantment in the original mod, so use the
+        // equipped enchantment level rather than looking at the mining tool.
+        int airAffinity = EnsorEnchantments.equipped(player, "air_affinity");
         if (airAffinity > 0 && !player.onGround()) result *= 5.0F;
 
         int excavating = EnsorEnchantments.level(tool, player.level(), "excavating");
