@@ -60,11 +60,13 @@ jobs:
               'net.minecraft.world.entity.projectile.FishingHook',
               'net.minecraft.world.entity.LivingEntity',
           }
-          current = None
           keep = False
+          current = None
           for line in lines:
-              if line and not line.startswith(' '):
-                  current = line.split(' -> ', 1)[0]
+              stripped = line.strip()
+              is_class = bool(stripped) and stripped.endswith(':') and ' -> ' in stripped
+              if is_class:
+                  current = stripped.split(' -> ', 1)[0]
                   keep = current in wanted
                   if keep:
                       print('\n###', current)
