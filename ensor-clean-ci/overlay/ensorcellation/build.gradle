@@ -13,9 +13,8 @@ loom {
 }
 
 dependencies {
-    // Loom subprojects must be consumed through their unmapped namedElements output.
+    // Loom multi-project dependency on the mapped development output.
     implementation project(path: ':cofh-core', configuration: 'namedElements')
-    clientImplementation project(':cofh-core').sourceSets.client.output
 }
 
 processResources {
