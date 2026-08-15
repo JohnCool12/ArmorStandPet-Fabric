@@ -33,12 +33,19 @@ jobs:
           tar -xJf /tmp/ensor/project.tar.xz -C /tmp/ensor
           chmod +x /tmp/ensor/Ensorcellation-Fabric-1.21.1-clean/gradlew
 
-      - name: Apply clean-port CI overlays
+      - name: Apply clean-port CI overlays and deletions
         shell: bash
         run: |
           set -euxo pipefail
+          root=/tmp/ensor/Ensorcellation-Fabric-1.21.1-clean
           if [ -d ensor-clean-ci/overlay ]; then
-            cp -a ensor-clean-ci/overlay/. /tmp/ensor/Ensorcellation-Fabric-1.21.1-clean/
+            cp -a ensor-clean-ci/overlay/. "$root/"
+          fi
+          if [ -f ensor-clean-ci/delete.txt ]; then
+            while IFS= read -r rel; do
+              [ -z "$rel" ] && continue
+              rm -f "$root/$rel"
+            done < ensor-clean-ci/delete.txt
           fi
 
       - uses: gradle/actions/setup-gradle@v4
@@ -55,13 +62,14 @@ jobs:
           lines = Path('/tmp/ensor/client-mappings.txt').read_text().splitlines()
           wanted = {
               'net.minecraft.world.level.block.state.BlockBehaviour$BlockStateBase',
+              'net.minecraft.world.item.ProjectileWeaponItem',
               'net.minecraft.world.item.RangedWeaponItem',
               'net.minecraft.world.item.BowItem',
               'net.minecraft.world.entity.projectile.FishingHook',
               'net.minecraft.world.entity.LivingEntity',
+              'net.minecraft.world.entity.player.Player',
           }
           keep = False
-          current = None
           for line in lines:
               stripped = line.strip()
               is_class = bool(stripped) and stripped.endswith(':') and ' -> ' in stripped
