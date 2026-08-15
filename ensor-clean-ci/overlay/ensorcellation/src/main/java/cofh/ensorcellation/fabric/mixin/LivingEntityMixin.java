@@ -56,15 +56,18 @@ abstract class LivingEntityMixin {
         ShieldRuntime.tick((LivingEntity) (Object) this);
     }
 
-    /** Original Quick Draw: subtract level * 10% * BowItem.MAX_DRAW_DURATION every use tick. */
+    /**
+     * CoFH Core ArcheryEvents parity: during the bow's normal 20-tick draw window,
+     * each Quick Draw level removes one additional remaining-use tick per game tick.
+     */
     @Inject(method = "updatingUsingItem", at = @At("HEAD"))
     private void ensor$quickDraw(CallbackInfo ci) {
         LivingEntity self = (LivingEntity) (Object) this;
         ItemStack stack = self.getUseItem();
         if (!(stack.getItem() instanceof BowItem)) return;
         int level = EnsorEnchantments.level(stack, self.level(), "quick_draw");
-        if (level > 0) {
-            useItemRemaining -= (int) (level * 0.1F * BowItem.MAX_DRAW_DURATION);
+        if (level > 0 && useItemRemaining > stack.getUseDuration(self) - BowItem.MAX_DRAW_DURATION) {
+            useItemRemaining -= level;
         }
     }
 }
