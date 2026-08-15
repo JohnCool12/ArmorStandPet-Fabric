@@ -29,6 +29,14 @@ jobs:
           tar -xJf /tmp/ensor/project.tar.xz -C /tmp/ensor
           chmod +x /tmp/ensor/Ensorcellation-Fabric-1.21.1-clean/gradlew
 
+      - name: Apply clean-port CI overlays
+        shell: bash
+        run: |
+          set -euxo pipefail
+          if [ -d ensor-clean-ci/overlay ]; then
+            cp -a ensor-clean-ci/overlay/. /tmp/ensor/Ensorcellation-Fabric-1.21.1-clean/
+          fi
+
       - name: Build against real Minecraft 1.21.1 and Fabric dependencies
         shell: bash
         working-directory: /tmp/ensor/Ensorcellation-Fabric-1.21.1-clean
