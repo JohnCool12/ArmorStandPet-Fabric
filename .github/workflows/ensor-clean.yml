@@ -8,6 +8,10 @@ on:
     branches:
       - main
 
+concurrency:
+  group: ensorcellation-clean-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -36,6 +40,10 @@ jobs:
           if [ -d ensor-clean-ci/overlay ]; then
             cp -a ensor-clean-ci/overlay/. /tmp/ensor/Ensorcellation-Fabric-1.21.1-clean/
           fi
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: false
 
       - name: Build against real Minecraft 1.21.1 and Fabric dependencies
         shell: bash
