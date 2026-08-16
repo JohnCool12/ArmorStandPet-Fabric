@@ -54,6 +54,7 @@ jobs:
               maven { url 'https://maven.blamejared.com/' }
               maven { url 'https://maven.shedaniel.me/' }
               maven { url 'https://maven.parchmentmc.org/' }
+              maven { url 'https://maven.ladysnake.org/releases' }
               mavenCentral()
           }
           dependencies {
@@ -64,34 +65,27 @@ jobs:
               modImplementation "teamreborn:energy:${energy_version}"
               implementation "com.electronwill.night-config:core:${nightconfig_version}"
               implementation "com.electronwill.night-config:toml:${nightconfig_version}"
-              modCompileOnly "mezz.jei:jei-${minecraft_version}-fabric-api:${jei_version}"
+              modCompileOnly "mezz.jei:jei-1.21-fabric-api:${jei_version}"
               modCompileOnly "dev.emi:trinkets:${trinkets_version}"
               modCompileOnly "com.terraformersmc:modmenu:${modmenu_version}"
           }
           java {
               toolchain { languageVersion = JavaLanguageVersion.of(21) }
           }
-          tasks.register('resolveEverything') {
-              doLast {
-                  configurations.findAll { it.canBeResolved }.each { cfg ->
-                      println "RESOLVING ${cfg.name}"
-                      try { cfg.resolve() } catch (Exception e) { println "RESOLVE_FAIL ${cfg.name}: ${e.message}"; throw e }
-                  }
-              }
-          }
           EOF
           cat > "$root/src/main/java/bootstrap/Dummy.java" <<'EOF'
           package bootstrap;
           public final class Dummy { private Dummy() {} }
           EOF
-      - name: Download Gradle 8.8 and resolve all exact dependencies
+      - name: Download Gradle 8.8 and resolve exact compile toolchain
         shell: bash
         run: |
           set -euxo pipefail
           curl -fL --retry 3 https://services.gradle.org/distributions/gradle-8.8-bin.zip -o /tmp/gradle-8.8-bin.zip
           unzip -q /tmp/gradle-8.8-bin.zip -d /tmp
           cd /tmp/cofh-bootstrap
-          /tmp/gradle-8.8/bin/gradle --no-daemon --stacktrace --refresh-dependencies resolveEverything compileJava
+          /tmp/gradle-8.8/bin/gradle --no-daemon --stacktrace --refresh-dependencies compileJava
+          /tmp/gradle-8.8/bin/gradle --no-daemon --stacktrace dependencies --configuration compileClasspath > /tmp/compile-classpath.txt
           echo '--- Gradle cache sizes ---'
           du -sh "$HOME/.gradle/caches" .gradle /tmp/gradle-8.8 || true
           find "$HOME/.gradle/caches" -maxdepth 3 -type d | sort | head -200
@@ -101,12 +95,13 @@ jobs:
           set -euxo pipefail
           mkdir -p "$GITHUB_WORKSPACE/offline-bundle"
           cp /tmp/gradle-8.8-bin.zip "$GITHUB_WORKSPACE/offline-bundle/"
-          tar -C "$HOME" -cf "$GITHUB_WORKSPACE/offline-bundle/gradle-user-cache.tar" .gradle/caches
-          tar -C /tmp/cofh-bootstrap -cf "$GITHUB_WORKSPACE/offline-bundle/project-gradle-cache.tar" .gradle
+          cp /tmp/compile-classpath.txt "$GITHUB_WORKSPACE/offline-bundle/"
+          tar -C "$HOME" -cJf "$GITHUB_WORKSPACE/offline-bundle/gradle-user-cache.tar.xz" .gradle/caches
+          tar -C /tmp/cofh-bootstrap -cJf "$GITHUB_WORKSPACE/offline-bundle/project-gradle-cache.tar.xz" .gradle
           sha256sum "$GITHUB_WORKSPACE"/offline-bundle/* | tee "$GITHUB_WORKSPACE/offline-bundle/SHA256SUMS.txt"
       - uses: actions/upload-artifact@v4
         with:
           name: cofhcore-offline-build-cache
           path: offline-bundle
-          compression-level: 1
+          compression-level: 0
           if-no-files-found: error
