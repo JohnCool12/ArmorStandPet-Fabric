@@ -1,0 +1,112 @@
+name: Ensorcellation clean CI
+
+on:
+  push:
+    branches:
+      - chatgpt/ensorcellation-clean-ci-20260815
+  pull_request:
+    branches:
+      - main
+
+concurrency:
+  group: ensorcellation-clean-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Reconstruct and verify clean port snapshot
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p /tmp/ensor
+          cat ensor-clean-ci/part* | base64 -d > /tmp/ensor/project.tar.xz
+          echo "f3251ef65c7eb85e0beee8846a5e31f7f2bf42b890fff80e133f8b205073fc70  /tmp/ensor/project.tar.xz" | sha256sum -c -
+          tar -xJf /tmp/ensor/project.tar.xz -C /tmp/ensor
+          chmod +x /tmp/ensor/Ensorcellation-Fabric-1.21.1-clean/gradlew
+
+      - name: Apply clean-port CI overlays and deletions
+        shell: bash
+        run: |
+          set -euxo pipefail
+          root=/tmp/ensor/Ensorcellation-Fabric-1.21.1-clean
+          if [ -d ensor-clean-ci/overlay ]; then
+            cp -a ensor-clean-ci/overlay/. "$root/"
+          fi
+          if [ -f ensor-clean-ci/delete.txt ]; then
+            while IFS= read -r rel; do
+              [ -z "$rel" ] && continue
+              rm -f "$root/$rel"
+            done < ensor-clean-ci/delete.txt
+          fi
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: false
+
+      - name: Extract official Minecraft 1.21.1 mapping diagnostics
+        shell: bash
+        run: |
+          set -euxo pipefail
+          curl -fsSL 'https://piston-data.mojang.com/v1/objects/2244b6f072256667bcd9a73df124d6c58de77992/client.txt' -o /tmp/ensor/client-mappings.txt
+          python3 - <<'PY' > /tmp/ensor/mapping-diagnostic.txt
+          from pathlib import Path
+          lines = Path('/tmp/ensor/client-mappings.txt').read_text().splitlines()
+          wanted = {
+              'net.minecraft.world.level.block.state.BlockBehaviour$BlockStateBase',
+              'net.minecraft.world.item.ProjectileWeaponItem',
+              'net.minecraft.world.item.RangedWeaponItem',
+              'net.minecraft.world.item.BowItem',
+              'net.minecraft.world.entity.projectile.FishingHook',
+              'net.minecraft.world.entity.LivingEntity',
+              'net.minecraft.world.entity.player.Player',
+          }
+          keep = False
+          for line in lines:
+              stripped = line.strip()
+              is_class = bool(stripped) and stripped.endswith(':') and ' -> ' in stripped
+              if is_class:
+                  current = stripped.split(' -> ', 1)[0]
+                  keep = current in wanted
+                  if keep:
+                      print('\n###', current)
+                      print(line)
+              elif keep:
+                  print(line)
+          PY
+          cat /tmp/ensor/mapping-diagnostic.txt
+
+      - name: Build against real Minecraft 1.21.1 and Fabric dependencies
+        shell: bash
+        working-directory: /tmp/ensor/Ensorcellation-Fabric-1.21.1-clean
+        run: |
+          set -o pipefail
+          ./gradlew --no-daemon --stacktrace build 2>&1 | tee /tmp/ensor/build.log
+
+      - name: Collect JARs into workspace
+        shell: bash
+        if: always()
+        run: |
+          set -euxo pipefail
+          mkdir -p "$GITHUB_WORKSPACE/ci-artifact"
+          cp -v /tmp/ensor/build.log "$GITHUB_WORKSPACE/ci-artifact/" || true
+          cp -v /tmp/ensor/mapping-diagnostic.txt "$GITHUB_WORKSPACE/ci-artifact/" || true
+          find /tmp/ensor/Ensorcellation-Fabric-1.21.1-clean/cofh-core/build/libs -maxdepth 1 -type f -name '*.jar' -exec cp -v {} "$GITHUB_WORKSPACE/ci-artifact/" \; || true
+          find /tmp/ensor/Ensorcellation-Fabric-1.21.1-clean/ensorcellation/build/libs -maxdepth 1 -type f -name '*.jar' -exec cp -v {} "$GITHUB_WORKSPACE/ci-artifact/" \; || true
+          ls -lah "$GITHUB_WORKSPACE/ci-artifact"
+
+      - name: Upload build outputs, diagnostics and full log
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ensorcellation-clean-ci
+          if-no-files-found: error
+          path: ci-artifact/*
