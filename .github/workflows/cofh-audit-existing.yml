@@ -1,4 +1,4 @@
-name: Fetch upstream CoFH source
+name: Bootstrap CoFH offline build cache
 
 on:
   push:
@@ -6,21 +6,107 @@ on:
       - chatgpt/cofh-payload-audit-20260816
 
 jobs:
-  fetch-upstream:
+  bootstrap:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Clone exact CoFH Core 11.0.2 upstream
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Create exact dependency bootstrap project
         shell: bash
         run: |
           set -euxo pipefail
-          git clone --depth 1 --branch 1.20.x https://github.com/CoFH/CoFHCore.git /tmp/CoFHCore-upstream
-          grep '^mod_version=' /tmp/CoFHCore-upstream/gradle.properties
-          grep '^mc_version=' /tmp/CoFHCore-upstream/gradle.properties
-          tar -C /tmp -cJf "$GITHUB_WORKSPACE/CoFHCore-upstream-11.0.2.tar.xz" CoFHCore-upstream
-          sha256sum "$GITHUB_WORKSPACE/CoFHCore-upstream-11.0.2.tar.xz"
+          root=/tmp/cofh-bootstrap
+          mkdir -p "$root/src/main/java/bootstrap"
+          cat > "$root/settings.gradle" <<'EOF'
+          pluginManagement {
+              repositories {
+                  maven { url = 'https://maven.fabricmc.net/' }
+                  mavenCentral()
+                  gradlePluginPortal()
+              }
+          }
+          rootProject.name = 'CoFHOfflineBootstrap'
+          EOF
+          cat > "$root/gradle.properties" <<'EOF'
+          org.gradle.jvmargs=-Xmx3G
+          org.gradle.parallel=true
+          java_version=21
+          minecraft_version=1.21.1
+          loader_version=0.16.5
+          loom_version=1.7-SNAPSHOT
+          fabric_version=0.102.0+1.21.1
+          energy_version=4.1.0
+          nightconfig_version=3.6.7
+          jei_version=19.8.2.99
+          trinkets_version=3.10.0
+          modmenu_version=11.0.3
+          EOF
+          cat > "$root/build.gradle" <<'EOF'
+          plugins {
+              id 'fabric-loom' version "${loom_version}"
+              id 'maven-publish'
+          }
+          repositories {
+              maven { url 'https://maven.terraformersmc.com/releases/' }
+              maven { url 'https://maven.blamejared.com/' }
+              maven { url 'https://maven.shedaniel.me/' }
+              maven { url 'https://maven.parchmentmc.org/' }
+              mavenCentral()
+          }
+          dependencies {
+              minecraft "com.mojang:minecraft:${minecraft_version}"
+              mappings loom.officialMojangMappings()
+              modImplementation "net.fabricmc:fabric-loader:${loader_version}"
+              modImplementation "net.fabricmc.fabric-api:fabric-api:${fabric_version}"
+              modImplementation "teamreborn:energy:${energy_version}"
+              implementation "com.electronwill.night-config:core:${nightconfig_version}"
+              implementation "com.electronwill.night-config:toml:${nightconfig_version}"
+              modCompileOnly "mezz.jei:jei-${minecraft_version}-fabric-api:${jei_version}"
+              modCompileOnly "dev.emi:trinkets:${trinkets_version}"
+              modCompileOnly "com.terraformersmc:modmenu:${modmenu_version}"
+          }
+          java {
+              toolchain { languageVersion = JavaLanguageVersion.of(21) }
+          }
+          tasks.register('resolveEverything') {
+              doLast {
+                  configurations.findAll { it.canBeResolved }.each { cfg ->
+                      println "RESOLVING ${cfg.name}"
+                      try { cfg.resolve() } catch (Exception e) { println "RESOLVE_FAIL ${cfg.name}: ${e.message}"; throw e }
+                  }
+              }
+          }
+          EOF
+          cat > "$root/src/main/java/bootstrap/Dummy.java" <<'EOF'
+          package bootstrap;
+          public final class Dummy { private Dummy() {} }
+          EOF
+      - name: Download Gradle 8.8 and resolve all exact dependencies
+        shell: bash
+        run: |
+          set -euxo pipefail
+          curl -fL --retry 3 https://services.gradle.org/distributions/gradle-8.8-bin.zip -o /tmp/gradle-8.8-bin.zip
+          unzip -q /tmp/gradle-8.8-bin.zip -d /tmp
+          cd /tmp/cofh-bootstrap
+          /tmp/gradle-8.8/bin/gradle --no-daemon --stacktrace --refresh-dependencies resolveEverything compileJava
+          echo '--- Gradle cache sizes ---'
+          du -sh "$HOME/.gradle/caches" .gradle /tmp/gradle-8.8 || true
+          find "$HOME/.gradle/caches" -maxdepth 3 -type d | sort | head -200
+      - name: Package offline cache
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p "$GITHUB_WORKSPACE/offline-bundle"
+          cp /tmp/gradle-8.8-bin.zip "$GITHUB_WORKSPACE/offline-bundle/"
+          tar -C "$HOME" -cf "$GITHUB_WORKSPACE/offline-bundle/gradle-user-cache.tar" .gradle/caches
+          tar -C /tmp/cofh-bootstrap -cf "$GITHUB_WORKSPACE/offline-bundle/project-gradle-cache.tar" .gradle
+          sha256sum "$GITHUB_WORKSPACE"/offline-bundle/* | tee "$GITHUB_WORKSPACE/offline-bundle/SHA256SUMS.txt"
       - uses: actions/upload-artifact@v4
         with:
-          name: cofhcore-upstream-11.0.2-source
-          path: CoFHCore-upstream-11.0.2.tar.xz
+          name: cofhcore-offline-build-cache
+          path: offline-bundle
+          compression-level: 1
           if-no-files-found: error
