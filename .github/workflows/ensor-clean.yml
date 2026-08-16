@@ -91,14 +91,22 @@ jobs:
           set -o pipefail
           ./gradlew --no-daemon --stacktrace build 2>&1 | tee /tmp/ensor/build.log
 
+      - name: Collect JARs into workspace
+        shell: bash
+        if: always()
+        run: |
+          set -euxo pipefail
+          mkdir -p "$GITHUB_WORKSPACE/ci-artifact"
+          cp -v /tmp/ensor/build.log "$GITHUB_WORKSPACE/ci-artifact/" || true
+          cp -v /tmp/ensor/mapping-diagnostic.txt "$GITHUB_WORKSPACE/ci-artifact/" || true
+          find /tmp/ensor/Ensorcellation-Fabric-1.21.1-clean/cofh-core/build/libs -maxdepth 1 -type f -name '*.jar' -exec cp -v {} "$GITHUB_WORKSPACE/ci-artifact/" \; || true
+          find /tmp/ensor/Ensorcellation-Fabric-1.21.1-clean/ensorcellation/build/libs -maxdepth 1 -type f -name '*.jar' -exec cp -v {} "$GITHUB_WORKSPACE/ci-artifact/" \; || true
+          ls -lah "$GITHUB_WORKSPACE/ci-artifact"
+
       - name: Upload build outputs, diagnostics and full log
         uses: actions/upload-artifact@v4
         if: always()
         with:
           name: ensorcellation-clean-ci
-          if-no-files-found: warn
-          path: |
-            /tmp/ensor/build.log
-            /tmp/ensor/mapping-diagnostic.txt
-            /tmp/ensor/Ensorcellation-Fabric-1.21.1-clean/cofh-core/build/libs/*.jar
-            /tmp/ensor/Ensorcellation-Fabric-1.21.1-clean/ensorcellation/build/libs/*.jar
+          if-no-files-found: error
+          path: ci-artifact/*
