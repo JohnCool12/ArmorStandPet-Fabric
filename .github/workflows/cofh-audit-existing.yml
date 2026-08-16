@@ -1,4 +1,4 @@
-name: Audit existing CoFH payload
+name: Fetch upstream CoFH source
 
 on:
   push:
@@ -6,31 +6,21 @@ on:
       - chatgpt/cofh-payload-audit-20260816
 
 jobs:
-  audit:
+  fetch-upstream:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Audit projectsrc payload
+      - name: Clone exact CoFH Core 11.0.2 upstream
         shell: bash
         run: |
           set -euxo pipefail
-          mkdir -p /tmp/cofh-audit/src
-          base64 -d projectsrc.b64 > /tmp/cofh-audit/source.bin
-          sha256sum /tmp/cofh-audit/source.bin
-          file /tmp/cofh-audit/source.bin
-          if tar -tf /tmp/cofh-audit/source.bin > /tmp/cofh-audit/list.txt 2>/dev/null; then
-            tar -xf /tmp/cofh-audit/source.bin -C /tmp/cofh-audit/src
-          elif unzip -t /tmp/cofh-audit/source.bin >/dev/null 2>&1; then
-            unzip -q /tmp/cofh-audit/source.bin -d /tmp/cofh-audit/src
-            find /tmp/cofh-audit/src -type f | sort > /tmp/cofh-audit/list.txt
-          else
-            echo UNKNOWN_ARCHIVE_FORMAT
-            exit 2
-          fi
-          echo JAVA_COUNT=$(find /tmp/cofh-audit/src -type f -name '*.java' | wc -l)
-          echo RESOURCE_COUNT=$(find /tmp/cofh-audit/src -path '*/src/main/resources/*' -type f | wc -l)
-          echo TOTAL_FILES=$(find /tmp/cofh-audit/src -type f | wc -l)
-          grep -R '^mod_version=' /tmp/cofh-audit/src --include='gradle.properties' || true
-          grep -R '^minecraft_version=' /tmp/cofh-audit/src --include='gradle.properties' || true
-          grep -R '^loom_version=' /tmp/cofh-audit/src --include='gradle.properties' || true
-          head -100 /tmp/cofh-audit/list.txt
+          git clone --depth 1 --branch 1.20.x https://github.com/CoFH/CoFHCore.git /tmp/CoFHCore-upstream
+          grep '^mod_version=' /tmp/CoFHCore-upstream/gradle.properties
+          grep '^mc_version=' /tmp/CoFHCore-upstream/gradle.properties
+          tar -C /tmp -cJf "$GITHUB_WORKSPACE/CoFHCore-upstream-11.0.2.tar.xz" CoFHCore-upstream
+          sha256sum "$GITHUB_WORKSPACE/CoFHCore-upstream-11.0.2.tar.xz"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cofhcore-upstream-11.0.2-source
+          path: CoFHCore-upstream-11.0.2.tar.xz
+          if-no-files-found: error
