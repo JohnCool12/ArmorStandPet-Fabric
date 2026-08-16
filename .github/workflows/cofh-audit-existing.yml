@@ -1,0 +1,38 @@
+name: Audit existing CoFH payload
+
+on:
+  push:
+    branches:
+      - chatgpt/cofh-payload-audit-20260816
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reconstruct and audit
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p /tmp/cofh-audit
+          cat ci/cofh/part-*.b64 > /tmp/cofh-audit/source.b64
+          base64 -d /tmp/cofh-audit/source.b64 > /tmp/cofh-audit/source.bin
+          sha256sum /tmp/cofh-audit/source.bin
+          file /tmp/cofh-audit/source.bin
+          mkdir /tmp/cofh-audit/src
+          if tar -tf /tmp/cofh-audit/source.bin > /tmp/cofh-audit/list.txt 2>/dev/null; then
+            tar -xf /tmp/cofh-audit/source.bin -C /tmp/cofh-audit/src
+          elif unzip -t /tmp/cofh-audit/source.bin >/dev/null 2>&1; then
+            unzip -q /tmp/cofh-audit/source.bin -d /tmp/cofh-audit/src
+            find /tmp/cofh-audit/src -type f | sort > /tmp/cofh-audit/list.txt
+          else
+            echo UNKNOWN_ARCHIVE_FORMAT
+            exit 2
+          fi
+          echo JAVA_COUNT=$(find /tmp/cofh-audit/src -type f -name '*.java' | wc -l)
+          echo RESOURCE_COUNT=$(find /tmp/cofh-audit/src -path '*/src/main/resources/*' -type f | wc -l)
+          echo TOTAL_FILES=$(find /tmp/cofh-audit/src -type f | wc -l)
+          grep -R '^mod_version=' /tmp/cofh-audit/src --include='gradle.properties' || true
+          grep -R '^minecraft_version=' /tmp/cofh-audit/src --include='gradle.properties' || true
+          grep -R '^loom_version=' /tmp/cofh-audit/src --include='gradle.properties' || true
+          head -100 /tmp/cofh-audit/list.txt
