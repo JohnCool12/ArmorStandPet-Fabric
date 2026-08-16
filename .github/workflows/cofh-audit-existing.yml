@@ -10,15 +10,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Reconstruct and audit
+      - name: Audit projectsrc payload
         shell: bash
         run: |
           set -euxo pipefail
           mkdir -p /tmp/cofh-audit/src
-          : > /tmp/cofh-audit/source.bin
-          for f in ci/cofh/part-*.b64; do
-            base64 -d "$f" >> /tmp/cofh-audit/source.bin
-          done
+          base64 -d projectsrc.b64 > /tmp/cofh-audit/source.bin
           sha256sum /tmp/cofh-audit/source.bin
           file /tmp/cofh-audit/source.bin
           if tar -tf /tmp/cofh-audit/source.bin > /tmp/cofh-audit/list.txt 2>/dev/null; then
