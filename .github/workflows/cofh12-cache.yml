@@ -52,6 +52,7 @@ jobs:
               maven { url 'https://maven.terraformersmc.com/releases/' }
               maven { url 'https://maven.blamejared.com/' }
               maven { url 'https://maven.shedaniel.me/' }
+              maven { url 'https://maven.ladysnake.org/releases/' }
               maven { url 'https://maven.parchmentmc.org/' }
               mavenCentral()
           }
@@ -70,7 +71,7 @@ jobs:
               implementation 'com.electronwill.night-config:toml:3.6.7'
               include 'com.electronwill.night-config:core:3.6.7'
               include 'com.electronwill.night-config:toml:3.6.7'
-              modCompileOnly 'mezz.jei:jei-1.21.1-fabric-api:19.8.2.99'
+              modCompileOnly 'mezz.jei:jei-1.21.1-fabric-api:19.10.0.126'
               modCompileOnly 'dev.emi:trinkets:3.10.0'
               modCompileOnly 'com.terraformersmc:modmenu:11.0.3'
           }
@@ -104,6 +105,7 @@ jobs:
           ./gradlew --no-daemon --version
 
       - name: Package offline Gradle home
+        if: always()
         shell: bash
         run: |
           set -euxo pipefail
@@ -113,6 +115,7 @@ jobs:
           sha256sum "$GITHUB_WORKSPACE/cofh12-gradle-home.tar.gz" > "$GITHUB_WORKSPACE/cofh12-gradle-home.sha256"
 
       - name: Upload offline cache
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: cofh12-gradle-offline-cache
