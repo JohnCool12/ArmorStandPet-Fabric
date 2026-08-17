@@ -1,0 +1,123 @@
+name: CoFH Core 12 dependency cache
+
+on:
+  push:
+    branches:
+      - chatgpt/cofhcore-exact-12-build-20260816
+  workflow_dispatch:
+
+jobs:
+  hydrate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.8'
+          cache-read-only: false
+
+      - name: Create exact dependency probe
+        shell: bash
+        run: |
+          set -euxo pipefail
+          ROOT=/tmp/cofh12-probe
+          mkdir -p "$ROOT/src/main/java/probe" "$ROOT/src/main/resources"
+          cat > "$ROOT/settings.gradle" <<'EOF'
+          pluginManagement {
+              repositories {
+                  maven { url 'https://maven.fabricmc.net/' }
+                  mavenCentral()
+                  gradlePluginPortal()
+              }
+          }
+          rootProject.name = 'cofh12-cache-probe'
+          EOF
+          cat > "$ROOT/gradle.properties" <<'EOF'
+          org.gradle.jvmargs=-Xmx3G
+          org.gradle.parallel=true
+          EOF
+          cat > "$ROOT/build.gradle" <<'EOF'
+          plugins {
+              id 'fabric-loom' version '1.7-SNAPSHOT'
+              id 'java'
+          }
+
+          repositories {
+              maven { url 'https://maven.terraformersmc.com/releases/' }
+              maven { url 'https://maven.blamejared.com/' }
+              maven { url 'https://maven.shedaniel.me/' }
+              maven { url 'https://maven.parchmentmc.org/' }
+              mavenCentral()
+          }
+
+          version = '1.21.1-12.0.0'
+          group = 'com.teamcofh'
+
+          dependencies {
+              minecraft 'com.mojang:minecraft:1.21.1'
+              mappings loom.officialMojangMappings()
+              modImplementation 'net.fabricmc:fabric-loader:0.16.5'
+              modImplementation 'net.fabricmc.fabric-api:fabric-api:0.102.0+1.21.1'
+              modImplementation 'teamreborn:energy:4.1.0'
+              include 'teamreborn:energy:4.1.0'
+              implementation 'com.electronwill.night-config:core:3.6.7'
+              implementation 'com.electronwill.night-config:toml:3.6.7'
+              include 'com.electronwill.night-config:core:3.6.7'
+              include 'com.electronwill.night-config:toml:3.6.7'
+              modCompileOnly 'mezz.jei:jei-1.21.1-fabric-api:19.8.2.99'
+              modCompileOnly 'dev.emi:trinkets:3.10.0'
+              modCompileOnly 'com.terraformersmc:modmenu:11.0.3'
+          }
+
+          java {
+              toolchain { languageVersion = JavaLanguageVersion.of(21) }
+          }
+          EOF
+          cat > "$ROOT/src/main/resources/fabric.mod.json" <<'EOF'
+          {
+            "schemaVersion": 1,
+            "id": "cofh12_cache_probe",
+            "version": "1.0.0",
+            "name": "CoFH 12 Cache Probe",
+            "environment": "*"
+          }
+          EOF
+          cat > "$ROOT/src/main/java/probe/Dummy.java" <<'EOF'
+          package probe;
+          public final class Dummy {}
+          EOF
+
+      - name: Resolve exact Fabric 1.21.1 dependency graph
+        shell: bash
+        working-directory: /tmp/cofh12-probe
+        run: |
+          set -euxo pipefail
+          gradle --no-daemon --stacktrace --refresh-dependencies build
+          gradle --no-daemon --stacktrace dependencies --configuration compileClasspath
+          gradle wrapper --gradle-version 8.8
+          ./gradlew --no-daemon --version
+
+      - name: Package offline Gradle home
+        shell: bash
+        run: |
+          set -euxo pipefail
+          du -sh "$HOME/.gradle" || true
+          tar -C "$HOME" -czf "$GITHUB_WORKSPACE/cofh12-gradle-home.tar.gz" .gradle
+          ls -lh "$GITHUB_WORKSPACE/cofh12-gradle-home.tar.gz"
+          sha256sum "$GITHUB_WORKSPACE/cofh12-gradle-home.tar.gz" > "$GITHUB_WORKSPACE/cofh12-gradle-home.sha256"
+
+      - name: Upload offline cache
+        uses: actions/upload-artifact@v4
+        with:
+          name: cofh12-gradle-offline-cache
+          if-no-files-found: error
+          compression-level: 0
+          path: |
+            cofh12-gradle-home.tar.gz
+            cofh12-gradle-home.sha256
