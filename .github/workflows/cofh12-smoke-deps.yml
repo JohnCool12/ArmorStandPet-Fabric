@@ -1,0 +1,29 @@
+name: CoFH Core 12 smoke deps
+
+on:
+  push:
+    branches:
+      - chatgpt/cofhcore-exact-12-build-20260816
+  workflow_dispatch:
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch launcher-only dependencies
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p out/net/fabricmc/dev-launch-injector/0.2.1+build.8
+          mkdir -p out/net/minecrell/terminalconsoleappender/1.3.0
+          curl -fL 'https://maven.fabricmc.net/net/fabricmc/dev-launch-injector/0.2.1%2Bbuild.8/dev-launch-injector-0.2.1%2Bbuild.8.jar' -o 'out/net/fabricmc/dev-launch-injector/0.2.1+build.8/dev-launch-injector-0.2.1+build.8.jar'
+          curl -fL 'https://maven.fabricmc.net/net/fabricmc/dev-launch-injector/0.2.1%2Bbuild.8/dev-launch-injector-0.2.1%2Bbuild.8.pom' -o 'out/net/fabricmc/dev-launch-injector/0.2.1+build.8/dev-launch-injector-0.2.1+build.8.pom'
+          curl -fL 'https://repo.maven.apache.org/maven2/net/minecrell/terminalconsoleappender/1.3.0/terminalconsoleappender-1.3.0.jar' -o 'out/net/minecrell/terminalconsoleappender/1.3.0/terminalconsoleappender-1.3.0.jar'
+          curl -fL 'https://repo.maven.apache.org/maven2/net/minecrell/terminalconsoleappender/1.3.0/terminalconsoleappender-1.3.0.pom' -o 'out/net/minecrell/terminalconsoleappender/1.3.0/terminalconsoleappender-1.3.0.pom'
+          find out -type f -maxdepth 10 -print -exec sha256sum {} \;
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cofh12-smoke-deps
+          if-no-files-found: error
+          path: out
