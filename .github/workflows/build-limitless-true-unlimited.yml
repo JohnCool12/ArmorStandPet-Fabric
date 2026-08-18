@@ -1,0 +1,177 @@
+name: Build Limitless True Unlimited Anvil
+
+on:
+  push:
+    branches: [ci/limitless-true-unlimited-anvil-20260817]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out build host
+        uses: actions/checkout@v4
+
+      - name: Check out exact Limitless Enchantments 1.21.1 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone https://github.com/ThomasDarkson/limitlessenchantments.git project
+          cd project
+          git checkout d372fac9103613fefdbffb0fcd70f99223f9726f
+          chmod +x gradlew
+
+      - name: Apply complete custom patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          base64 -d ci/limitless-true-unlimited.patch.gz.b64 | gzip -dc > /tmp/limitless-true-unlimited.patch
+          cd project
+          git apply --check /tmp/limitless-true-unlimited.patch
+          git apply /tmp/limitless-true-unlimited.patch
+          grep -Fq 'IntegerArgumentType.integer(-1, Integer.MAX_VALUE)' common/src/main/java/limitless/enchantments/LimitlessCommand.java
+          grep -Fq 'isAnvilExperienceCostLimitDisabled' common/src/main/java/limitless/enchantments/LimitlessEnchantments.java
+          grep -Fq 'limitless$disableTooExpensiveRefusal' common/src/main/java/limitless/enchantments/mixin/AnvilMenuMixin.java
+          grep -Fq 'ordinal = 1' common/src/main/java/limitless/enchantments/mixin/AnvilMenuMixin.java
+          grep -Fq 'MAX_ANVIL_COST = -1' common/src/main/java/limitless/enchantments/LimitlessEnchantments.java
+          grep -Fq 'PRIOR_WORK_PENALTY = false' common/src/main/java/limitless/enchantments/LimitlessEnchantments.java
+          grep -Fq 'MobMixin' common/src/main/resources/limitlessenchantments.mixins.json
+          ! grep -q '@Shadow' common/src/main/java/limitless/enchantments/mixin/EnchantBookForEmeraldsMixin.java
+          grep -Fq "shadowBundle 'io.github.thomasdarkson:semantic-ver-lib:1.0.0-beta.1'" fabric/build.gradle
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Build Fabric remapped JAR
+        shell: bash
+        working-directory: project
+        run: |
+          set -o pipefail
+          ./gradlew :fabric:remapJar --stacktrace --no-daemon 2>&1 | tee "$GITHUB_WORKSPACE/build.log"
+
+      - name: Inspect actual Minecraft 1.21.1 AnvilMenu target
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p verify
+          cp build.log verify/build.log
+          FOUND=''
+          while IFS= read -r jar; do
+            if jar tf "$jar" 2>/dev/null | grep -q '^net/minecraft/world/inventory/AnvilMenu.class$'; then
+              if javap -classpath "$jar" -p net.minecraft.world.inventory.AnvilMenu >/tmp/anvil-header.txt 2>/dev/null && grep -q 'createResult' /tmp/anvil-header.txt; then
+                FOUND="$jar"
+                break
+              fi
+            fi
+          done < <(find ~/.gradle -type f -name '*.jar' 2>/dev/null)
+          test -n "$FOUND"
+          echo "$FOUND" > verify/minecraft-jar.txt
+          javap -classpath "$FOUND" -p -c net.minecraft.world.inventory.AnvilMenu > verify/AnvilMenu.target.javap.txt
+          grep -n -A280 -B20 'createResult' verify/AnvilMenu.target.javap.txt > verify/AnvilMenu.createResult.txt || true
+          # 1.21.1 createResult has two Abilities.instabuild reads: the second is the Too Expensive refusal.
+          COUNT=$(grep -c 'Abilities.instabuild:Z' verify/AnvilMenu.createResult.txt || true)
+          echo "instabuild reads in createResult: $COUNT" | tee verify/instabuild-count.txt
+          test "$COUNT" -ge 2
+
+      - name: Reject unresolved mixin targets
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -E 'AnvilMenuMixin.*Cannot find target|Cannot find target.*AnvilMenuMixin|AnvilMenuMixin.*Unable to locate obfuscation mapping' build.log; then
+            echo 'AnvilMenuMixin target validation failed.' >&2
+            exit 1
+          fi
+
+      - name: Collect production JAR and diagnostics
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifact verify
+          find project/fabric/build/libs -maxdepth 1 -type f -printf '%f\n' | sort | tee verify/build-libs.txt
+          JAR=$(find project/fabric/build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*-sources.jar' ! -name '*-dev.jar' ! -name '*-shadow.jar' ! -name '*-dev-shadow.jar' -print -quit)
+          test -n "$JAR"
+          cp "$JAR" artifact/limitless-fabric-2.0.0-1.21.1-generation-neutral-mob-neutral-anvil-controls-true-unlimited.jar
+          JAR=artifact/limitless-fabric-2.0.0-1.21.1-generation-neutral-mob-neutral-anvil-controls-true-unlimited.jar
+          unzip -t "$JAR" | tee verify/unzip-test.txt
+          jar tf "$JAR" > verify/jar-list.txt
+          unzip -p "$JAR" fabric.mod.json > verify/fabric.mod.json
+          unzip -p "$JAR" assets/limitlessenchantments/lang/en_us.json > verify/en_us.json
+          javap -classpath "$JAR" -p -c limitless.enchantments.mixin.AnvilMenuMixin > verify/AnvilMenuMixin.javap.txt
+          javap -classpath "$JAR" -p -c limitless.enchantments.LimitlessCommand > verify/LimitlessCommand.javap.txt
+          javap -classpath "$JAR" -p -c limitless.enchantments.LimitlessEnchantments > verify/LimitlessEnchantments.javap.txt
+          javap -classpath "$JAR" -p limitless.enchantments.mixin.EnchantBookForEmeraldsMixin > verify/EnchantBookForEmeraldsMixin.javap.txt
+          javap -classpath "$JAR" -p limitless.enchantments.mixin.MobMixin > verify/MobMixin.javap.txt
+          sha256sum "$JAR" | tee verify/sha256.txt
+
+      - name: Verify finished JAR behavior and retained fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          # True unlimited setting is present in production bytecode.
+          grep -Fq 'isAnvilExperienceCostLimitDisabled' verify/LimitlessEnchantments.javap.txt
+          grep -Fq 'limitless$disableTooExpensiveRefusal' verify/AnvilMenuMixin.javap.txt
+          grep -Fq 'command.anvilExperienceCostLimit.disabled' verify/en_us.json
+          grep -Fq 'command.anvilExperienceCostLimit.error' verify/en_us.json
+          grep -Fq 'priorpenalty' verify/LimitlessCommand.javap.txt
+          grep -Fq 'maxanvilcost' verify/LimitlessCommand.javap.txt
+          grep -Fq 'limitless$ignoreStoredPriorWorkPenalty' verify/AnvilMenuMixin.javap.txt
+          grep -Fq 'limitless$capCalculatedAnvilCost' verify/AnvilMenuMixin.javap.txt
+
+          # Previous crash and generation-neutral fixes remain.
+          grep -Fqx 'semantic/ver/lib/SemanticVersion.class' verify/jar-list.txt
+          ! grep -Fq 'field_45131' verify/EnchantBookForEmeraldsMixin.javap.txt
+          grep -Fq 'limitless$tradeableEnchantments' verify/EnchantBookForEmeraldsMixin.javap.txt
+          grep -Fq 'limitless/enchantments/mixin/MobMixin.class' verify/jar-list.txt
+          grep -Fq 'limitless/enchantments/mixin/LootTableMixin.class' verify/jar-list.txt
+          grep -Fq 'limitless/enchantments/mixin/EnchantmentMenuMixin.class' verify/jar-list.txt
+
+          python3 - <<'PY'
+          import json
+          with open('verify/fabric.mod.json', encoding='utf-8') as f:
+              data = json.load(f)
+          assert data['id'] == 'limitlessenchantments', data
+          assert data['version'] == '2.0.0', data
+          assert data.get('depends', {}).get('minecraft') == '1.21.1', data
+          assert data.get('depends', {}).get('java') == '>=21', data
+          PY
+
+      - name: Runtime smoke-test mixin application
+        shell: bash
+        run: |
+          set +e
+          mkdir -p project/fabric/run
+          echo 'eula=true' > project/fabric/run/eula.txt
+          timeout 50s bash -lc 'cd project && ./gradlew :fabric:runServer --no-daemon' > verify/runserver.log 2>&1
+          CODE=$?
+          set -e
+          cat verify/runserver.log | tail -120
+          if grep -Eiq 'Critical injection failure|InjectionError|InvalidMixinException|Mixin apply failed|MixinApplyError|NoSuchMethodError.*AnvilMenuMixin' verify/runserver.log; then
+            echo 'Runtime mixin smoke test found a fatal mixin error.' >&2
+            exit 1
+          fi
+          # timeout=124 is acceptable after successful startup; any immediate non-timeout failure is not.
+          if [ "$CODE" -ne 0 ] && [ "$CODE" -ne 124 ]; then
+            echo "runServer exited unexpectedly with code $CODE" >&2
+            exit "$CODE"
+          fi
+
+      - name: Upload finished Fabric JAR
+        uses: actions/upload-artifact@v4
+        with:
+          name: limitless-fabric-2.0.0-1.21.1-true-unlimited-anvil
+          path: artifact/*.jar
+          if-no-files-found: error
+
+      - name: Upload verification diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: limitless-true-unlimited-anvil-verification
+          path: verify/
+          if-no-files-found: warn
