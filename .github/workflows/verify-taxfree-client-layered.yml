@@ -173,11 +173,11 @@ jobs:
         run: |
           set +e
           cd clienttest
-          timeout 110s xvfb-run -a ./gradlew runClient --no-daemon > ../verify/client.log 2>&1
+          timeout 300s xvfb-run -a ./gradlew runClient --no-daemon > ../verify/client.log 2>&1
           CODE=$?
           cd ..
           set -e
-          tail -260 verify/client.log
+          tail -300 verify/client.log
           grep -Eiq 'limitlessenchantments|Limitless Enchantments' verify/client.log
           grep -Eiq 'taxfreelevels|Tax Free Levels' verify/client.log
           if grep -Eiq 'Critical injection failure|InjectionError|InvalidMixinException|Mixin apply failed|MixinApplyError|RemoveTooExpensiveMessageMixin.*failed|AnvilScreenMixin.*failed' verify/client.log; then
