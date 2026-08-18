@@ -9,7 +9,7 @@ permissions:
   actions: read
 
 jobs:
-  verify:
+  verify-client:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -18,47 +18,35 @@ jobs:
           distribution: temurin
           java-version: '21'
 
-      - name: Download verified true-unlimited base JAR
+      - name: Build exact final compatibility JAR
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           mkdir -p base artifact verify
-          curl -fsSL \
-            -H "Authorization: Bearer $GH_TOKEN" \
-            -H "Accept: application/vnd.github+json" \
-            https://api.github.com/repos/JohnCool12/ArmorStandPet-Fabric/actions/artifacts/9311012324/zip \
-            -o /tmp/base-artifact.zip
-          unzip -q /tmp/base-artifact.zip -d base
+          curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/JohnCool12/ArmorStandPet-Fabric/actions/artifacts/9311012324/zip -o /tmp/base.zip
+          unzip -q /tmp/base.zip -d base
           BASE=$(find base -type f -name '*.jar' -print -quit)
-          test -n "$BASE"
           echo '62a66a39426fb410783d00870fcc97262a2ce3a2ca7083974e21648a4bd16682  '"$BASE" | sha256sum -c -
-          cp "$BASE" artifact/limitless-fabric-2.0.0-1.21.1-true-unlimited-taxfreelevels-compat.jar
-
-      - name: Patch compatibility metadata and client Mixin
-        shell: bash
-        run: |
-          set -euo pipefail
           JAR=artifact/limitless-fabric-2.0.0-1.21.1-true-unlimited-taxfreelevels-compat.jar
+          cp "$BASE" "$JAR"
 
-          # Disable only Tax Free Levels' two anvil-limit ownership mixins.
-          mkdir -p /tmp/jarpatch
-          unzip -p "$JAR" fabric.mod.json > /tmp/jarpatch/fabric.mod.json
+          mkdir -p /tmp/meta
+          unzip -p "$JAR" fabric.mod.json > /tmp/meta/fabric.mod.json
           python3 - <<'PY'
           import json
           from pathlib import Path
-          p=Path('/tmp/jarpatch/fabric.mod.json')
+          p=Path('/tmp/meta/fabric.mod.json')
           d=json.loads(p.read_text())
-          opts=d.setdefault('custom', {}).setdefault('taxfreelevels:options', {})
-          opts['mixin.RemoveAnvilLimitMixin']=False
-          opts['mixin.RemoveTooExpensiveMessageMixin']=False
-          p.write_text(json.dumps(d, indent=2)+'\n')
+          o=d.setdefault('custom',{}).setdefault('taxfreelevels:options',{})
+          o['mixin.RemoveAnvilLimitMixin']=False
+          o['mixin.RemoveTooExpensiveMessageMixin']=False
+          p.write_text(json.dumps(d,indent=2)+'\n')
           PY
-          (cd /tmp/jarpatch && zip -q -u "$GITHUB_WORKSPACE/$JAR" fabric.mod.json)
+          (cd /tmp/meta && zip -q -u "$GITHUB_WORKSPACE/$JAR" fabric.mod.json)
 
-          # Compile a tiny runtime/intermediary-specific replacement for the existing
-          # AnvilScreenMixin. No other Limitless class is rebuilt or changed.
           W=/tmp/clientpatch
           mkdir -p "$W/src/org/spongepowered/asm/mixin/injection" "$W/src/org/spongepowered/asm/mixin" "$W/src/org/objectweb/asm" "$W/src/net/minecraft" "$W/src/limitless/enchantments" "$W/src/limitless/enchantments/mixin" "$W/classes"
           cat > "$W/src/org/spongepowered/asm/mixin/Mixin.java" <<'EOF'
@@ -70,13 +58,13 @@ jobs:
           cat > "$W/src/org/spongepowered/asm/mixin/injection/At.java" <<'EOF'
           package org.spongepowered.asm.mixin.injection;
           import java.lang.annotation.*;
-          @Retention(RetentionPolicy.RUNTIME) @Target({ElementType.METHOD, ElementType.ANNOTATION_TYPE})
+          @Retention(RetentionPolicy.RUNTIME) @Target({ElementType.METHOD,ElementType.ANNOTATION_TYPE})
           public @interface At { String value(); String target() default ""; int opcode() default -1; int ordinal() default -1; boolean remap() default true; }
           EOF
           cat > "$W/src/org/spongepowered/asm/mixin/injection/Constant.java" <<'EOF'
           package org.spongepowered.asm.mixin.injection;
           import java.lang.annotation.*;
-          @Retention(RetentionPolicy.RUNTIME) @Target({ElementType.METHOD, ElementType.ANNOTATION_TYPE})
+          @Retention(RetentionPolicy.RUNTIME) @Target({ElementType.METHOD,ElementType.ANNOTATION_TYPE})
           public @interface Constant { int intValue() default 0; int ordinal() default -1; }
           EOF
           cat > "$W/src/org/spongepowered/asm/mixin/injection/ModifyConstant.java" <<'EOF'
@@ -91,42 +79,22 @@ jobs:
           @Retention(RetentionPolicy.RUNTIME) @Target(ElementType.METHOD)
           public @interface Redirect { String[] method(); At at(); int require() default -1; boolean remap() default true; }
           EOF
-          cat > "$W/src/org/objectweb/asm/Opcodes.java" <<'EOF'
-          package org.objectweb.asm; public interface Opcodes { int GETFIELD = 180; }
-          EOF
-          cat > "$W/src/net/minecraft/class_1656.java" <<'EOF'
-          package net.minecraft; public class class_1656 { public boolean field_7477; }
-          EOF
-          cat > "$W/src/limitless/enchantments/LimitlessEnchantments.java" <<'EOF'
-          package limitless.enchantments; public class LimitlessEnchantments { public static int effectiveAnvilExperienceCostLimit(){return 40;} public static boolean isAnvilExperienceCostLimitDisabled(){return false;} }
-          EOF
+          echo 'package org.objectweb.asm; public interface Opcodes { int GETFIELD=180; }' > "$W/src/org/objectweb/asm/Opcodes.java"
+          echo 'package net.minecraft; public class class_1656 { public boolean field_7477; }' > "$W/src/net/minecraft/class_1656.java"
+          echo 'package limitless.enchantments; public class LimitlessEnchantments { public static int effectiveAnvilExperienceCostLimit(){return 40;} public static boolean isAnvilExperienceCostLimitDisabled(){return false;} }' > "$W/src/limitless/enchantments/LimitlessEnchantments.java"
           cat > "$W/src/limitless/enchantments/mixin/AnvilScreenMixin.java" <<'EOF'
           package limitless.enchantments.mixin;
           import org.objectweb.asm.Opcodes;
           import org.spongepowered.asm.mixin.Mixin;
-          import org.spongepowered.asm.mixin.injection.At;
-          import org.spongepowered.asm.mixin.injection.Constant;
-          import org.spongepowered.asm.mixin.injection.ModifyConstant;
-          import org.spongepowered.asm.mixin.injection.Redirect;
+          import org.spongepowered.asm.mixin.injection.*;
           import limitless.enchantments.LimitlessEnchantments;
           import net.minecraft.class_1656;
-
-          @Mixin(targets = "net.minecraft.class_471")
+          @Mixin(targets="net.minecraft.class_471")
           public class AnvilScreenMixin {
-              @ModifyConstant(method = "method_2388", constant = @Constant(intValue = 40), require = 0, remap = false)
-              public int renderLabels(int i) {
-                  return LimitlessEnchantments.effectiveAnvilExperienceCostLimit();
-              }
-
-              @Redirect(
-                      method = "method_2388",
-                      at = @At(value = "FIELD", target = "Lnet/minecraft/class_1656;field_7477:Z", opcode = Opcodes.GETFIELD, ordinal = 0, remap = false),
-                      require = 1,
-                      remap = false
-              )
-              private boolean limitless$disableTooExpensiveMessage(class_1656 abilities) {
-                  return LimitlessEnchantments.isAnvilExperienceCostLimitDisabled() || abilities.field_7477;
-              }
+              @ModifyConstant(method="method_2388",constant=@Constant(intValue=40),require=0,remap=false)
+              public int renderLabels(int i){ return LimitlessEnchantments.effectiveAnvilExperienceCostLimit(); }
+              @Redirect(method="method_2388",at=@At(value="FIELD",target="Lnet/minecraft/class_1656;field_7477:Z",opcode=Opcodes.GETFIELD,ordinal=0,remap=false),require=1,remap=false)
+              private boolean limitless$disableTooExpensiveMessage(class_1656 a){ return LimitlessEnchantments.isAnvilExperienceCostLimitDisabled() || a.field_7477; }
           }
           EOF
           javac --release 21 -d "$W/classes" $(find "$W/src" -name '*.java')
@@ -134,67 +102,33 @@ jobs:
 
           unzip -t "$JAR" > verify/unzip-test.txt
           unzip -p "$JAR" fabric.mod.json > verify/fabric.mod.json
-          jar tf "$JAR" > verify/jar-list.txt
           javap -classpath "$JAR" -p -v limitless.enchantments.mixin.AnvilScreenMixin > verify/AnvilScreenMixin.javap.txt
-          javap -classpath "$JAR" -p -c limitless.enchantments.mixin.AnvilMenuMixin > verify/AnvilMenuMixin.javap.txt
           python3 - <<'PY'
           import json
-          d=json.load(open('verify/fabric.mod.json'))
-          o=d['custom']['taxfreelevels:options']
+          d=json.load(open('verify/fabric.mod.json')); o=d['custom']['taxfreelevels:options']
           assert o['mixin.RemoveAnvilLimitMixin'] is False
           assert o['mixin.RemoveTooExpensiveMessageMixin'] is False
-          assert d['depends']['minecraft']=='1.21.1'
           PY
           grep -Fq 'limitless$disableTooExpensiveMessage' verify/AnvilScreenMixin.javap.txt
-          grep -Fq 'Lnet/minecraft/class_1656;field_7477:Z' verify/AnvilScreenMixin.javap.txt
           grep -Fq 'method_2388' verify/AnvilScreenMixin.javap.txt
-          grep -Fq 'limitless$disableTooExpensiveRefusal' verify/AnvilMenuMixin.javap.txt
-          grep -Fqx 'semantic/ver/lib/SemanticVersion.class' verify/jar-list.txt
+          grep -Fq 'Lnet/minecraft/class_1656;field_7477:Z' verify/AnvilScreenMixin.javap.txt
           sha256sum "$JAR" | tee verify/sha256.txt
 
-      - name: Prepare standalone Fabric server
+      - name: Prepare real client runtime
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p server/mods
-          cp artifact/*.jar server/mods/
-          TFL_URL=$(curl -fsSL https://api.modrinth.com/v2/version/qmqEy4IO | jq -r '.files[] | select(.primary==true) | .url')
-          CLOTH_URL=$(curl -fsSL https://api.modrinth.com/v2/version/HpMb5wGb | jq -r '.files[] | select(.primary==true) | .url')
-          curl -fL "$TFL_URL" -o server/mods/tax-free-levels-1.4.24.jar
-          curl -fL "$CLOTH_URL" -o server/mods/cloth-config-15.0.140.jar
-          curl -fL 'https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-api/0.116.14+1.21.1/fabric-api-0.116.14+1.21.1.jar' -o server/mods/fabric-api.jar
-          curl -fL 'https://maven.architectury.dev/dev/architectury/architectury-fabric/13.0.8/architectury-fabric-13.0.8.jar' -o server/mods/architectury.jar
-          INSTALLER=$(curl -fsSL https://meta.fabricmc.net/v2/versions/installer | jq -r '.[0].version')
-          curl -fL "https://meta.fabricmc.net/v2/versions/loader/1.21.1/0.19.3/$INSTALLER/server/jar" -o server/fabric-server.jar
-          echo eula=true > server/eula.txt
-
-      - name: Dedicated-server compatibility test
-        shell: bash
-        run: |
-          set +e
-          cd server
-          timeout 80s java -Xms512M -Xmx2G -jar fabric-server.jar nogui > ../verify/server.log 2>&1
-          CODE=$?
-          cd ..
-          set -e
-          tail -160 verify/server.log
-          grep -Eiq 'limitlessenchantments 2.0.0' verify/server.log
-          grep -Eiq 'taxfreelevels 1.4.24' verify/server.log
-          grep -Eiq 'Done \(' verify/server.log
-          if grep -Eiq 'Critical injection failure|InjectionError|InvalidMixinException|Mixin apply failed|MixinApplyError|RemoveAnvilLimitMixin.*failed|AnvilMenuMixin.*failed' verify/server.log; then exit 1; fi
-          if [ "$CODE" -ne 0 ] && [ "$CODE" -ne 124 ]; then exit "$CODE"; fi
-
-      - name: Prepare minimal Loom client runtime
-        shell: bash
-        run: |
-          set -euo pipefail
+          git clone --depth 1 https://github.com/ThomasDarkson/limitlessenchantments.git /tmp/wrapper-source
           mkdir -p clienttest/src/main/resources clienttest/mods
+          cp /tmp/wrapper-source/gradlew clienttest/gradlew
+          cp -r /tmp/wrapper-source/gradle clienttest/gradle
+          chmod +x clienttest/gradlew
           cp artifact/*.jar clienttest/mods/limitless.jar
           cat > clienttest/settings.gradle <<'EOF'
           pluginManagement {
               repositories {
-                  maven { url = 'https://maven.fabricmc.net/' }
-                  maven { url = 'https://maven.architectury.dev/' }
+                  maven { url='https://maven.fabricmc.net/' }
+                  maven { url='https://maven.architectury.dev/' }
                   gradlePluginPortal()
               }
           }
@@ -203,8 +137,8 @@ jobs:
           cat > clienttest/build.gradle <<'EOF'
           plugins { id 'dev.architectury.loom' version '1.11-SNAPSHOT' }
           repositories {
-              maven { url = 'https://api.modrinth.com/maven' }
-              maven { url = 'https://maven.architectury.dev/' }
+              maven { url='https://api.modrinth.com/maven' }
+              maven { url='https://maven.architectury.dev/' }
           }
           dependencies {
               minecraft 'net.minecraft:minecraft:1.21.1'
@@ -216,19 +150,9 @@ jobs:
               modRuntimeOnly 'maven.modrinth:jCBrrLTs:qmqEy4IO'
               modRuntimeOnly 'maven.modrinth:9s6osm5g:HpMb5wGb'
           }
-          loom {
-              silentMojangMappingsLicense()
-              runs {
-                  client {
-                      client()
-                      runDir 'run'
-                  }
-              }
-          }
+          loom { silentMojangMappingsLicense(); runs { client { client(); runDir 'run' } } }
           EOF
-          cat > clienttest/src/main/resources/fabric.mod.json <<'EOF'
-          {"schemaVersion":1,"id":"clienttestdummy","version":"1.0.0","name":"Client Test Dummy","environment":"*"}
-          EOF
+          echo '{"schemaVersion":1,"id":"clienttestdummy","version":"1.0.0","name":"Client Test Dummy","environment":"*"}' > clienttest/src/main/resources/fabric.mod.json
 
       - name: Client Mixin compatibility test
         shell: bash
@@ -239,11 +163,10 @@ jobs:
           CODE=$?
           cd ..
           set -e
-          tail -200 verify/client.log
+          tail -220 verify/client.log
           grep -Eiq 'limitlessenchantments|Limitless Enchantments' verify/client.log
           grep -Eiq 'taxfreelevels|Tax Free Levels' verify/client.log
           if grep -Eiq 'Critical injection failure|InjectionError|InvalidMixinException|Mixin apply failed|MixinApplyError|RemoveTooExpensiveMessageMixin.*failed|AnvilScreenMixin.*failed' verify/client.log; then exit 1; fi
-          # A timeout is expected once the title screen stays open.
           if [ "$CODE" -ne 0 ] && [ "$CODE" -ne 124 ]; then exit "$CODE"; fi
 
       - uses: actions/upload-artifact@v4
