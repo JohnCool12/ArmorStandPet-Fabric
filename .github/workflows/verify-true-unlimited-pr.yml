@@ -1,0 +1,89 @@
+name: Verify Limitless True Unlimited PR
+
+on:
+  pull_request:
+    branches: [ci/limitless-true-unlimited-base-20260817]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Clone and patch exact 1.21.1 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone https://github.com/ThomasDarkson/limitlessenchantments.git project
+          cd project
+          git checkout d372fac9103613fefdbffb0fcd70f99223f9726f
+          chmod +x gradlew
+          cd ..
+          base64 -d ci/limitless-true-unlimited.patch.gz.b64 | gzip -dc > /tmp/patch.diff
+          cd project
+          git apply --check /tmp/patch.diff
+          git apply /tmp/patch.diff
+          grep -Fq 'IntegerArgumentType.integer(-1, Integer.MAX_VALUE)' common/src/main/java/limitless/enchantments/LimitlessCommand.java
+          grep -Fq 'limitless$disableTooExpensiveRefusal' common/src/main/java/limitless/enchantments/mixin/AnvilMenuMixin.java
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Build remapped Fabric JAR
+        working-directory: project
+        shell: bash
+        run: |
+          set -o pipefail
+          ./gradlew :fabric:remapJar --stacktrace --no-daemon 2>&1 | tee "$GITHUB_WORKSPACE/build.log"
+      - name: Verify mixin targets and production JAR
+        shell: bash
+        run: |
+          set -euo pipefail
+          ! grep -E 'AnvilMenuMixin.*Cannot find target|Cannot find target.*AnvilMenuMixin|AnvilMenuMixin.*Unable to locate obfuscation mapping' build.log
+          mkdir -p artifact verify
+          JAR=$(find project/fabric/build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*-sources.jar' ! -name '*-dev.jar' ! -name '*-shadow.jar' ! -name '*-dev-shadow.jar' -print -quit)
+          test -n "$JAR"
+          cp "$JAR" artifact/limitless-fabric-2.0.0-1.21.1-generation-neutral-mob-neutral-anvil-controls-true-unlimited.jar
+          JAR=artifact/limitless-fabric-2.0.0-1.21.1-generation-neutral-mob-neutral-anvil-controls-true-unlimited.jar
+          unzip -t "$JAR" | tee verify/unzip-test.txt
+          jar tf "$JAR" > verify/jar-list.txt
+          javap -classpath "$JAR" -p -c limitless.enchantments.mixin.AnvilMenuMixin > verify/AnvilMenuMixin.javap.txt
+          javap -classpath "$JAR" -p -c limitless.enchantments.LimitlessCommand > verify/LimitlessCommand.javap.txt
+          javap -classpath "$JAR" -p -c limitless.enchantments.LimitlessEnchantments > verify/LimitlessEnchantments.javap.txt
+          grep -Fq 'limitless$disableTooExpensiveRefusal' verify/AnvilMenuMixin.javap.txt
+          grep -Fq 'isAnvilExperienceCostLimitDisabled' verify/LimitlessEnchantments.javap.txt
+          grep -Fq 'priorpenalty' verify/LimitlessCommand.javap.txt
+          grep -Fq 'maxanvilcost' verify/LimitlessCommand.javap.txt
+          grep -Fqx 'semantic/ver/lib/SemanticVersion.class' verify/jar-list.txt
+          grep -Fq 'limitless/enchantments/mixin/MobMixin.class' verify/jar-list.txt
+          grep -Fq 'limitless/enchantments/mixin/LootTableMixin.class' verify/jar-list.txt
+          sha256sum "$JAR" | tee verify/sha256.txt
+      - name: Runtime mixin smoke test
+        shell: bash
+        run: |
+          set +e
+          mkdir -p project/fabric/run
+          echo 'eula=true' > project/fabric/run/eula.txt
+          timeout 50s bash -lc 'cd project && ./gradlew :fabric:runServer --no-daemon' > verify/runserver.log 2>&1
+          CODE=$?
+          set -e
+          tail -120 verify/runserver.log
+          if grep -Eiq 'Critical injection failure|InjectionError|InvalidMixinException|Mixin apply failed|MixinApplyError|NoSuchMethodError.*AnvilMenuMixin' verify/runserver.log; then
+            exit 1
+          fi
+          if [ "$CODE" -ne 0 ] && [ "$CODE" -ne 124 ]; then
+            exit "$CODE"
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: limitless-true-unlimited-anvil-jar
+          path: artifact/*.jar
+          if-no-files-found: error
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: limitless-true-unlimited-anvil-verify
+          path: verify/
+          if-no-files-found: warn
