@@ -1,0 +1,202 @@
+name: Verify Tax Free Client Layered
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  client:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Construct exact final compatibility JAR
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p base artifact verify
+          curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/JohnCool12/ArmorStandPet-Fabric/actions/artifacts/9311012324/zip -o /tmp/base.zip
+          unzip -q /tmp/base.zip -d base
+          BASE=$(find base -type f -name '*.jar' -print -quit)
+          echo '62a66a39426fb410783d00870fcc97262a2ce3a2ca7083974e21648a4bd16682  '"$BASE" | sha256sum -c -
+          JAR=artifact/limitless-fabric-2.0.0-1.21.1-true-unlimited-taxfreelevels-compat.jar
+          cp "$BASE" "$JAR"
+
+          mkdir -p /tmp/meta
+          unzip -p "$JAR" fabric.mod.json > /tmp/meta/fabric.mod.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('/tmp/meta/fabric.mod.json')
+          d=json.loads(p.read_text())
+          o=d.setdefault('custom',{}).setdefault('taxfreelevels:options',{})
+          o['mixin.RemoveAnvilLimitMixin']=False
+          o['mixin.RemoveTooExpensiveMessageMixin']=False
+          p.write_text(json.dumps(d,indent=2)+'\n')
+          PY
+          (cd /tmp/meta && zip -q -u "$GITHUB_WORKSPACE/$JAR" fabric.mod.json)
+
+          W=/tmp/clientpatch
+          mkdir -p "$W/src/org/spongepowered/asm/mixin/injection" "$W/src/org/spongepowered/asm/mixin" "$W/src/org/objectweb/asm" "$W/src/net/minecraft" "$W/src/limitless/enchantments" "$W/src/limitless/enchantments/mixin" "$W/classes"
+          cat > "$W/src/org/spongepowered/asm/mixin/Mixin.java" <<'EOF'
+          package org.spongepowered.asm.mixin;
+          import java.lang.annotation.*;
+          @Retention(RetentionPolicy.CLASS) @Target(ElementType.TYPE)
+          public @interface Mixin { Class<?>[] value() default {}; String[] targets() default {}; int priority() default 1000; boolean remap() default true; }
+          EOF
+          cat > "$W/src/org/spongepowered/asm/mixin/injection/At.java" <<'EOF'
+          package org.spongepowered.asm.mixin.injection;
+          import java.lang.annotation.*;
+          @Retention(RetentionPolicy.RUNTIME) @Target({ElementType.METHOD,ElementType.ANNOTATION_TYPE})
+          public @interface At { String value(); String target() default ""; int opcode() default -1; int ordinal() default -1; boolean remap() default true; }
+          EOF
+          cat > "$W/src/org/spongepowered/asm/mixin/injection/Constant.java" <<'EOF'
+          package org.spongepowered.asm.mixin.injection;
+          import java.lang.annotation.*;
+          @Retention(RetentionPolicy.RUNTIME) @Target({ElementType.METHOD,ElementType.ANNOTATION_TYPE})
+          public @interface Constant { int intValue() default 0; int ordinal() default -1; }
+          EOF
+          cat > "$W/src/org/spongepowered/asm/mixin/injection/ModifyConstant.java" <<'EOF'
+          package org.spongepowered.asm.mixin.injection;
+          import java.lang.annotation.*;
+          @Retention(RetentionPolicy.RUNTIME) @Target(ElementType.METHOD)
+          public @interface ModifyConstant { String[] method(); Constant[] constant(); int require() default -1; boolean remap() default true; }
+          EOF
+          cat > "$W/src/org/spongepowered/asm/mixin/injection/Redirect.java" <<'EOF'
+          package org.spongepowered.asm.mixin.injection;
+          import java.lang.annotation.*;
+          @Retention(RetentionPolicy.RUNTIME) @Target(ElementType.METHOD)
+          public @interface Redirect { String[] method(); At at(); int require() default -1; boolean remap() default true; }
+          EOF
+          echo 'package org.objectweb.asm; public interface Opcodes { int GETFIELD=180; }' > "$W/src/org/objectweb/asm/Opcodes.java"
+          echo 'package net.minecraft; public class class_1656 { public boolean field_7477; }' > "$W/src/net/minecraft/class_1656.java"
+          echo 'package limitless.enchantments; public class LimitlessEnchantments { public static int effectiveAnvilExperienceCostLimit(){return 40;} public static boolean isAnvilExperienceCostLimitDisabled(){return false;} }' > "$W/src/limitless/enchantments/LimitlessEnchantments.java"
+          cat > "$W/src/limitless/enchantments/mixin/AnvilScreenMixin.java" <<'EOF'
+          package limitless.enchantments.mixin;
+          import org.objectweb.asm.Opcodes;
+          import org.spongepowered.asm.mixin.Mixin;
+          import org.spongepowered.asm.mixin.injection.*;
+          import limitless.enchantments.LimitlessEnchantments;
+          import net.minecraft.class_1656;
+          @Mixin(targets="net.minecraft.class_471")
+          public class AnvilScreenMixin {
+              @ModifyConstant(method="method_2388",constant=@Constant(intValue=40),require=0,remap=false)
+              public int renderLabels(int i){ return LimitlessEnchantments.effectiveAnvilExperienceCostLimit(); }
+              @Redirect(method="method_2388",at=@At(value="FIELD",target="Lnet/minecraft/class_1656;field_7477:Z",opcode=Opcodes.GETFIELD,ordinal=0,remap=false),require=1,remap=false)
+              private boolean limitless$disableTooExpensiveMessage(class_1656 a){ return LimitlessEnchantments.isAnvilExperienceCostLimitDisabled() || a.field_7477; }
+          }
+          EOF
+          javac --release 21 -d "$W/classes" $(find "$W/src" -name '*.java')
+          (cd "$W/classes" && zip -q -u "$GITHUB_WORKSPACE/$JAR" limitless/enchantments/mixin/AnvilScreenMixin.class)
+
+          unzip -t "$JAR" > verify/unzip-test.txt
+          unzip -p "$JAR" fabric.mod.json > verify/fabric.mod.json
+          javap -classpath "$JAR" -p -v limitless.enchantments.mixin.AnvilScreenMixin > verify/AnvilScreenMixin.javap.txt
+          python3 - <<'PY'
+          import json
+          d=json.load(open('verify/fabric.mod.json')); o=d['custom']['taxfreelevels:options']
+          assert o['mixin.RemoveAnvilLimitMixin'] is False
+          assert o['mixin.RemoveTooExpensiveMessageMixin'] is False
+          PY
+          sha256sum "$JAR" | tee verify/sha256.txt
+
+      - name: Prepare layered-mappings client runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --depth 1 https://github.com/ThomasDarkson/limitlessenchantments.git /tmp/wrapper-source
+          mkdir -p clienttest/src/main/resources clienttest/mods
+          cp /tmp/wrapper-source/gradlew clienttest/gradlew
+          cp -r /tmp/wrapper-source/gradle clienttest/gradle
+          chmod +x clienttest/gradlew
+          cp artifact/*.jar clienttest/mods/limitless.jar
+          cat > clienttest/settings.gradle <<'EOF'
+          pluginManagement {
+              repositories {
+                  maven { url='https://maven.fabricmc.net/' }
+                  maven { url='https://maven.architectury.dev/' }
+                  maven { url='https://maven.minecraftforge.net/' }
+                  gradlePluginPortal()
+              }
+          }
+          rootProject.name='clienttest'
+          EOF
+          cat > clienttest/build.gradle <<'EOF'
+          plugins { id 'dev.architectury.loom' version '1.11-SNAPSHOT' }
+
+          loom {
+              silentMojangMappingsLicense()
+          }
+
+          repositories {
+              maven { url='https://api.modrinth.com/maven' }
+              maven { url='https://maven.architectury.dev/' }
+          }
+
+          dependencies {
+              minecraft 'net.minecraft:minecraft:1.21.1'
+              mappings loom.layered() {
+                  officialMojangMappings()
+              }
+              modImplementation 'net.fabricmc:fabric-loader:0.19.3'
+              modRuntimeOnly files('mods/limitless.jar')
+              modRuntimeOnly 'net.fabricmc.fabric-api:fabric-api:0.116.14+1.21.1'
+              modRuntimeOnly 'dev.architectury:architectury-fabric:13.0.8'
+              modRuntimeOnly 'maven.modrinth:jCBrrLTs:qmqEy4IO'
+              modRuntimeOnly 'maven.modrinth:9s6osm5g:HpMb5wGb'
+          }
+
+          loom {
+              runs {
+                  client {
+                      client()
+                      runDir 'run'
+                  }
+              }
+          }
+          EOF
+          echo '{"schemaVersion":1,"id":"clienttestdummy","version":"1.0.0","name":"Client Test Dummy","environment":"*"}' > clienttest/src/main/resources/fabric.mod.json
+
+      - name: Launch client with both mods
+        shell: bash
+        run: |
+          set +e
+          cd clienttest
+          timeout 110s xvfb-run -a ./gradlew runClient --no-daemon > ../verify/client.log 2>&1
+          CODE=$?
+          cd ..
+          set -e
+          tail -260 verify/client.log
+          grep -Eiq 'limitlessenchantments|Limitless Enchantments' verify/client.log
+          grep -Eiq 'taxfreelevels|Tax Free Levels' verify/client.log
+          if grep -Eiq 'Critical injection failure|InjectionError|InvalidMixinException|Mixin apply failed|MixinApplyError|RemoveTooExpensiveMessageMixin.*failed|AnvilScreenMixin.*failed' verify/client.log; then
+            echo 'Fatal client Mixin compatibility failure.' >&2
+            exit 1
+          fi
+          if [ "$CODE" -ne 0 ] && [ "$CODE" -ne 124 ]; then
+            echo "Client exited unexpectedly with code $CODE" >&2
+            exit "$CODE"
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: limitless-taxfreelevels-final-compatible-jar
+          path: artifact/*.jar
+          if-no-files-found: error
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: limitless-taxfreelevels-layered-client-verification
+          path: verify/
+          if-no-files-found: warn
