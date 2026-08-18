@@ -1,0 +1,52 @@
+name: Inspect Minecraft 1.21.1 AnvilMenu
+
+on:
+  push:
+    branches: [ci/limitless-true-unlimited-anvil-20260817]
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Clone exact Limitless source and initialize Loom
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone https://github.com/ThomasDarkson/limitlessenchantments.git project
+          cd project
+          git checkout d372fac9103613fefdbffb0fcd70f99223f9726f
+          chmod +x gradlew
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Resolve Minecraft and inspect AnvilMenu bytecode
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd project
+          ./gradlew :common:compileJava --no-daemon >/tmp/gradle.log 2>&1 || { cat /tmp/gradle.log; exit 1; }
+          mkdir -p "$GITHUB_WORKSPACE/inspect"
+          FOUND=''
+          while IFS= read -r jar; do
+            if jar tf "$jar" 2>/dev/null | grep -q '^net/minecraft/world/inventory/AnvilMenu.class$'; then
+              if javap -classpath "$jar" -p net.minecraft.world.inventory.AnvilMenu >/tmp/header.txt 2>/dev/null && grep -q 'createResult' /tmp/header.txt; then
+                FOUND="$jar"
+                break
+              fi
+            fi
+          done < <(find ~/.gradle -type f -name '*.jar' 2>/dev/null)
+          test -n "$FOUND"
+          echo "$FOUND" > "$GITHUB_WORKSPACE/inspect/minecraft-jar.txt"
+          javap -classpath "$FOUND" -p -c net.minecraft.world.inventory.AnvilMenu > "$GITHUB_WORKSPACE/inspect/AnvilMenu.javap.txt"
+          grep -n -A240 -B20 'createResult' "$GITHUB_WORKSPACE/inspect/AnvilMenu.javap.txt" > "$GITHUB_WORKSPACE/inspect/createResult.txt" || true
+          cat "$GITHUB_WORKSPACE/inspect/createResult.txt"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: anvilmenu-inspect
+          path: inspect/
+          if-no-files-found: error
