@@ -133,7 +133,7 @@ jobs:
           rootProject.name='clienttest'
           EOF
           cat > clienttest/build.gradle <<'EOF'
-          plugins { id 'dev.architectury.loom' version '1.11-SNAPSHOT' }
+          plugins { id 'dev.architectury.loom' version '1.13-SNAPSHOT' }
 
           loom {
               silentMojangMappingsLicense()
