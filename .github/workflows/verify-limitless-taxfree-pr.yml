@@ -1,0 +1,98 @@
+name: Verify Limitless Tax Free Compat PR
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Rebuild exact custom Limitless source
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat ci/limitless-true-unlimited.part-*.b64 | base64 -d | gzip -dc > /tmp/base.patch
+          echo '64d10efb1dd000f109e4eb63aa72f8ecd069a19f4e5bd7df389e2098877f54a3  /tmp/base.patch' | sha256sum -c -
+          base64 -d ci/limitless-taxfree-compat-incremental.b64 > /tmp/compat.patch
+          echo 'c1e141ac60b2cc9b75120d26ca5733eb47312f94d5872c6095947fe86c6c41f8  /tmp/compat.patch' | sha256sum -c -
+          git clone https://github.com/ThomasDarkson/limitlessenchantments.git project
+          cd project
+          git checkout d372fac9103613fefdbffb0fcd70f99223f9726f
+          chmod +x gradlew
+          git apply --check /tmp/base.patch && git apply /tmp/base.patch
+          git apply --check /tmp/compat.patch && git apply /tmp/compat.patch
+          python3 - <<'PY'
+          import json
+          d=json.load(open('fabric/src/main/resources/fabric.mod.json'))
+          assert d['custom']['taxfreelevels:options']['mixin.RemoveAnvilLimitMixin'] is False
+          PY
+          cat >> fabric/build.gradle <<'GRADLE'
+
+          repositories { maven { url = 'https://api.modrinth.com/maven' } }
+          dependencies {
+              modRuntimeOnly 'maven.modrinth:jCBrrLTs:qmqEy4IO'
+              modRuntimeOnly 'maven.modrinth:9s6osm5g:HpMb5wGb'
+          }
+          GRADLE
+
+      - name: Build and verify production JAR
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd project
+          ./gradlew :fabric:remapJar --stacktrace --no-daemon 2>&1 | tee ../build.log
+          cd ..
+          mkdir -p artifact verify
+          JAR=$(find project/fabric/build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*-sources.jar' ! -name '*-dev.jar' ! -name '*-shadow.jar' ! -name '*-dev-shadow.jar' -print -quit)
+          test -n "$JAR"
+          cp "$JAR" artifact/limitless-fabric-2.0.0-1.21.1-true-unlimited-taxfreelevels-compat.jar
+          JAR=artifact/limitless-fabric-2.0.0-1.21.1-true-unlimited-taxfreelevels-compat.jar
+          unzip -t "$JAR" > verify/unzip-test.txt
+          unzip -p "$JAR" fabric.mod.json > verify/fabric.mod.json
+          jar tf "$JAR" > verify/jar-list.txt
+          javap -classpath "$JAR" -p -c limitless.enchantments.mixin.AnvilMenuMixin > verify/AnvilMenuMixin.javap.txt
+          python3 - <<'PY'
+          import json
+          d=json.load(open('verify/fabric.mod.json'))
+          assert d['custom']['taxfreelevels:options']['mixin.RemoveAnvilLimitMixin'] is False
+          assert d['depends']['minecraft']=='1.21.1'
+          PY
+          grep -Fq 'limitless$disableTooExpensiveRefusal' verify/AnvilMenuMixin.javap.txt
+          grep -Fqx 'semantic/ver/lib/SemanticVersion.class' verify/jar-list.txt
+          sha256sum "$JAR" | tee verify/sha256.txt
+
+      - name: Start server with Tax Free Levels 1.4.24
+        shell: bash
+        run: |
+          set +e
+          mkdir -p project/fabric/run
+          echo eula=true > project/fabric/run/eula.txt
+          timeout 70s bash -lc 'cd project && ./gradlew :fabric:runServer --no-daemon' > verify/runserver.log 2>&1
+          CODE=$?
+          set -e
+          tail -180 verify/runserver.log
+          grep -Eiq 'tax.?free.?levels|taxfreelevels' verify/runserver.log
+          grep -Eiq 'limitless.?enchantments|limitlessenchantments' verify/runserver.log
+          if grep -Eiq 'Critical injection failure|InjectionError|InvalidMixinException|Mixin apply failed|MixinApplyError|RemoveAnvilLimitMixin.*failed|AnvilMenuMixin.*failed' verify/runserver.log; then exit 1; fi
+          if [ "$CODE" -ne 0 ] && [ "$CODE" -ne 124 ]; then exit "$CODE"; fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: limitless-taxfreelevels-compatible-jar
+          path: artifact/*.jar
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: limitless-taxfreelevels-compat-verification
+          path: verify/
+          if-no-files-found: warn
