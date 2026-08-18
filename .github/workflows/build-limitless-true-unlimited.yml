@@ -3,6 +3,8 @@ name: Build Limitless True Unlimited Anvil
 on:
   push:
     branches: [ci/limitless-true-unlimited-anvil-20260817]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -74,7 +76,6 @@ jobs:
           echo "$FOUND" > verify/minecraft-jar.txt
           javap -classpath "$FOUND" -p -c net.minecraft.world.inventory.AnvilMenu > verify/AnvilMenu.target.javap.txt
           grep -n -A280 -B20 'createResult' verify/AnvilMenu.target.javap.txt > verify/AnvilMenu.createResult.txt || true
-          # 1.21.1 createResult has two Abilities.instabuild reads: the second is the Too Expensive refusal.
           COUNT=$(grep -c 'Abilities.instabuild:Z' verify/AnvilMenu.createResult.txt || true)
           echo "instabuild reads in createResult: $COUNT" | tee verify/instabuild-count.txt
           test "$COUNT" -ge 2
@@ -113,7 +114,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # True unlimited setting is present in production bytecode.
           grep -Fq 'isAnvilExperienceCostLimitDisabled' verify/LimitlessEnchantments.javap.txt
           grep -Fq 'limitless$disableTooExpensiveRefusal' verify/AnvilMenuMixin.javap.txt
           grep -Fq 'command.anvilExperienceCostLimit.disabled' verify/en_us.json
@@ -122,15 +122,12 @@ jobs:
           grep -Fq 'maxanvilcost' verify/LimitlessCommand.javap.txt
           grep -Fq 'limitless$ignoreStoredPriorWorkPenalty' verify/AnvilMenuMixin.javap.txt
           grep -Fq 'limitless$capCalculatedAnvilCost' verify/AnvilMenuMixin.javap.txt
-
-          # Previous crash and generation-neutral fixes remain.
           grep -Fqx 'semantic/ver/lib/SemanticVersion.class' verify/jar-list.txt
           ! grep -Fq 'field_45131' verify/EnchantBookForEmeraldsMixin.javap.txt
           grep -Fq 'limitless$tradeableEnchantments' verify/EnchantBookForEmeraldsMixin.javap.txt
           grep -Fq 'limitless/enchantments/mixin/MobMixin.class' verify/jar-list.txt
           grep -Fq 'limitless/enchantments/mixin/LootTableMixin.class' verify/jar-list.txt
           grep -Fq 'limitless/enchantments/mixin/EnchantmentMenuMixin.class' verify/jar-list.txt
-
           python3 - <<'PY'
           import json
           with open('verify/fabric.mod.json', encoding='utf-8') as f:
@@ -155,7 +152,6 @@ jobs:
             echo 'Runtime mixin smoke test found a fatal mixin error.' >&2
             exit 1
           fi
-          # timeout=124 is acceptable after successful startup; any immediate non-timeout failure is not.
           if [ "$CODE" -ne 0 ] && [ "$CODE" -ne 124 ]; then
             echo "runServer exited unexpectedly with code $CODE" >&2
             exit "$CODE"
