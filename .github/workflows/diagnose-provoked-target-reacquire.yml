@@ -35,35 +35,19 @@ jobs:
           patch -p1 --batch --forward < ../ci/eg-all-eyes-neutral.patch >/dev/null
           cp ../ci/GolemFinalEyesLayer.java src/main/java/com/mcmoddev/golems/client/entity/layer/GolemFinalEyesLayer.java
           cd ..
-          python3 ci/apply-strict-neutral.py >/dev/null
-          python3 ci/apply-legacy-neutral-migration.py >/dev/null
-          python3 ci/apply-hybrid-village-neutral.py >/dev/null
-          python3 ci/apply-bedrock-natural-hostility.py >/dev/null
-          python3 ci/apply-stable-village-targeting.py >/dev/null
-          python3 ci/apply-bedrock-true-vanilla-natural-ai.py >/dev/null
-          python3 ci/apply-all-constructed-natural-ai.py >/dev/null
-          python3 ci/apply-village-runtime-parity-fix.py >/dev/null
-          python3 ci/apply-individual-player-target-provenance.py >/dev/null
-          python3 ci/apply-minimum-iron-golem-speed.py >/dev/null
-          python3 ci/apply-sculk-catalyst-player-blindness-exemption.py >/dev/null
-          python3 ci/refine-sculk-catalyst-player-blindness-predicate.py >/dev/null
-          python3 ci/apply-village-golem-pretracking-initialization.py >/dev/null
-          python3 ci/apply-village-golem-failed-replacement-fallback.py >/dev/null
-          python3 ci/apply-village-golem-spawn-helper.py >/dev/null
-      - name: Print relevant GolemBase code
-        shell: bash
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          s=Path('project/src/main/java/com/mcmoddev/golems/entity/GolemBase.java').read_text()
-          for sig in ['configureBedrockNaturalIronGolemTargeting','customServerAiStep','maintainConstructedNeutralRetaliation','migrateLegacyPlayerCreatedConstructedGolem','setTarget(@Nullable LivingEntity','hurt(final DamageSource']:
-              i=s.find(sig)
-              print('\n===== '+sig+' =====')
-              print(s[max(0,i-400):i+3500] if i>=0 else 'NOT FOUND')
-          PY
-      - name: Compile and locate Minecraft jar
+          for s in apply-strict-neutral.py apply-legacy-neutral-migration.py apply-hybrid-village-neutral.py apply-bedrock-natural-hostility.py apply-stable-village-targeting.py apply-bedrock-true-vanilla-natural-ai.py apply-all-constructed-natural-ai.py apply-village-runtime-parity-fix.py apply-individual-player-target-provenance.py apply-minimum-iron-golem-speed.py apply-sculk-catalyst-player-blindness-exemption.py refine-sculk-catalyst-player-blindness-predicate.py apply-village-golem-pretracking-initialization.py apply-village-golem-failed-replacement-fallback.py apply-village-golem-spawn-helper.py; do python3 ci/$s >/dev/null; done
+      - name: Compile and inspect vanilla anger lifecycle
         working-directory: project
         shell: bash
         run: |
+          set -euo pipefail
           gradle compileJava --no-daemon
-          find ~/.gradle -type f -name '*1.21.1*.jar' | head -50
+          JAR="$HOME/.gradle/caches/fabric-loom/minecraftMaven/net/minecraft/minecraft-merged/1.21.1-loom.mappings.1_21_1.layered+hash.2198-v2/minecraft-merged-1.21.1-loom.mappings.1_21_1.layered+hash.2198-v2.jar"
+          javap -classpath "$JAR" -p -c net.minecraft.world.entity.NeutralMob > ../neutral.txt
+          javap -classpath "$JAR" -p -c net.minecraft.world.entity.animal.IronGolem > ../iron.txt
+          javap -classpath "$JAR" -p -c net.minecraft.world.entity.ai.goal.target.HurtByTargetGoal > ../hurtgoal.txt
+          javap -classpath "$JAR" -p -c net.minecraft.world.entity.ai.goal.target.NearestAttackableTargetGoal > ../nearest.txt
+          echo '===== NeutralMob ====='; cat ../neutral.txt
+          echo '===== IronGolem ====='; cat ../iron.txt
+          echo '===== HurtByTargetGoal ====='; cat ../hurtgoal.txt
+          echo '===== NearestAttackableTargetGoal ====='; cat ../nearest.txt
