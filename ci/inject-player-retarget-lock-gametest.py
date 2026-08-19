@@ -22,6 +22,7 @@ import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.server.level.ClientInformation;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.animal.IronGolem;
@@ -30,6 +31,7 @@ import net.minecraft.world.level.GameType;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.phys.AABB;
 
+import java.lang.reflect.Method;
 import java.util.List;
 import java.util.UUID;
 
@@ -76,8 +78,14 @@ public final class PlayerRetargetLockGameTest implements FabricGameTest {
     }
 
     private static void forceDoPushSwitch(GameTestHelper helper, IronGolem g, Zombie hostile) {
-        for (int i=0; i<1000 && g.getTarget()!=hostile; i++) {
-            g.doPush(hostile);
+        try {
+            Method doPush=IronGolem.class.getDeclaredMethod("doPush", Entity.class);
+            doPush.setAccessible(true);
+            for (int i=0; i<1000 && g.getTarget()!=hostile; i++) {
+                doPush.invoke(g,hostile);
+            }
+        } catch (ReflectiveOperationException e) {
+            throw new RuntimeException("Failed to invoke IronGolem.doPush",e);
         }
         helper.assertTrue(g.getTarget()==hostile,"Iron Golem doPush never selected hostile after 1000 attempts");
     }
@@ -139,8 +147,7 @@ public final class PlayerRetargetLockGameTest implements FabricGameTest {
         g.setLastHurtByMob(p); g.setTarget(p); for(int i=0;i<4;i++) g.tick();
         forceDoPushSwitch(helper,g,temporary);
         helper.assertTrue(g.getLastHurtByMob()==p,"doPush unexpectedly overwrote vanilla lastHurtByMob");
-        temporary.discard();
-        for(int i=0;i<40;i++) g.tick();
+        temporary.discard(); for(int i=0;i<40;i++) g.tick();
         LivingEntity after=g.getTarget(); String s=state(g);
         helper.getLevel().players().remove(p); g.discard();
         helper.assertTrue(after==p,"Vanilla natural Iron Golem did not resume the provoking player after doPush hostile died: "+s);
@@ -156,8 +163,7 @@ public final class PlayerRetargetLockGameTest implements FabricGameTest {
         g.setLastHurtByMob(p); g.setTarget(p); for(int i=0;i<4;i++) g.tick();
         forceDoPushSwitch(helper,g,temporary);
         helper.assertTrue(g.getLastHurtByMob()==p,"doPush unexpectedly overwrote Extra Golem lastHurtByMob");
-        temporary.discard();
-        for(int i=0;i<60;i++) g.tick();
+        temporary.discard(); for(int i=0;i<60;i++) g.tick();
         LivingEntity after=g.getTarget(); String s=state(g);
         helper.getLevel().players().remove(p); remaining.discard(); g.discard();
         helper.assertTrue(after==p || after==remaining,"Extra Golem entered dead target state after real doPush switch: "+s);
@@ -165,4 +171,4 @@ public final class PlayerRetargetLockGameTest implements FabricGameTest {
     }
 }
 ''')
-print('Injected actual doPush vanilla parity and Extra Golem dead-target regression tests.')
+print('Injected reflective actual-doPush vanilla parity and Extra Golem dead-target tests.')
