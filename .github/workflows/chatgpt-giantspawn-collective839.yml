@@ -1,0 +1,101 @@
+name: ChatGPT Giant Spawn Collective 8.39 Validation
+
+on:
+  push:
+    branches:
+      - chatgpt-giantspawn-collective839-fix
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout validation inputs
+        uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Clone pristine Giant Spawn 1.21.1
+        run: git clone --depth 1 --branch 1.21.1 https://github.com/Serilum/Giant-Spawn.git Giant-Spawn-1.21.1
+
+      - name: Restore clean compatibility overrides
+        shell: bash
+        run: |
+          set -euo pipefail
+          base64 --decode .giantspawn839/overrides.tar.xz.b64 > /tmp/overrides.tar.xz
+          echo '26fe78ea52c74e9593caf584710c917fa2939b3c4b02616e5793595bde86ce0c  /tmp/overrides.tar.xz' | sha256sum --check
+          mkdir -p /tmp/giant-overrides
+          tar -xJf /tmp/overrides.tar.xz -C /tmp/giant-overrides
+          cp -a /tmp/giant-overrides/Common/. Giant-Spawn-1.21.1/Common/
+          cp -a /tmp/giant-overrides/Fabric/. Giant-Spawn-1.21.1/Fabric/
+
+      - name: Target Collective 8.39 exactly
+        shell: bash
+        run: |
+          sed -i 's/^collective_version=.*/collective_version=8.39/' Giant-Spawn-1.21.1/gradle.properties
+          sed -i 's/"version": "5.3"/"version": "5.3-collective839-fix"/' Giant-Spawn-1.21.1/Fabric/src/main/resources/fabric.mod.json
+          grep '^collective_version=' Giant-Spawn-1.21.1/gradle.properties
+
+      - name: Build Fabric 1.21.1
+        working-directory: Giant-Spawn-1.21.1
+        run: |
+          chmod +x gradlew
+          ./gradlew :Fabric:clean :Fabric:build --stacktrace
+
+      - name: Verify no old Collective implementation linkage
+        shell: bash
+        run: |
+          set -euo pipefail
+          JAR=$(find Giant-Spawn-1.21.1/Fabric/build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*-sources.jar' | head -1)
+          rm -rf /tmp/giant-classes && mkdir /tmp/giant-classes
+          cd /tmp/giant-classes
+          jar xf "$GITHUB_WORKSPACE/$JAR"
+          if grep -R -a -n -E 'com/natamus/collective/(check|config|objects|functions|data)' com/natamus/giantspawn; then
+            echo 'Found forbidden direct Collective implementation linkage.'
+            exit 1
+          fi
+          echo 'No fragile Collective implementation linkage remains.'
+
+      - name: Smoke-test dedicated server with Collective 8.39
+        working-directory: Giant-Spawn-1.21.1
+        shell: bash
+        run: |
+          mkdir -p Fabric/run
+          echo 'eula=true' > Fabric/run/eula.txt
+          set +e
+          timeout 120s ./gradlew :Fabric:runServer --stacktrace > /tmp/giantspawn-server.log 2>&1
+          rc=$?
+          set -e
+          cat /tmp/giantspawn-server.log
+          if grep -q 'Done (' /tmp/giantspawn-server.log; then
+            echo 'Server reached successful startup with Collective 8.39.'
+            exit 0
+          fi
+          if [ "$rc" -eq 0 ]; then
+            echo 'runServer exited cleanly.'
+            exit 0
+          fi
+          echo "Server smoke test failed (exit $rc)."
+          exit "$rc"
+
+      - name: Collect production jar
+        shell: bash
+        run: |
+          mkdir -p out
+          find Giant-Spawn-1.21.1/Fabric/build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*-sources.jar' ! -name '*-dev.jar' -exec cp {} out/ \;
+          test -n "$(find out -maxdepth 1 -type f -name '*.jar' -print -quit)"
+          sha256sum out/*.jar | tee out/SHA256SUMS.txt
+
+      - name: Upload fixed mod
+        uses: actions/upload-artifact@v4
+        with:
+          name: Giant-Spawn-Fabric-1.21.1-Collective-8.39-Fix
+          path: out/*
+          if-no-files-found: error
