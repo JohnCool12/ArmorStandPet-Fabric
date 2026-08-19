@@ -9,4 +9,4 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - run: echo relocation-validation-trigger
+      - run: echo temporary
