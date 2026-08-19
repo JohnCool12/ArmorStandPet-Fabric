@@ -39,7 +39,7 @@ jobs:
           python3 ci/fix-provoked-recovery-compile.py >/dev/null
           python3 ci/apply-no-silent-aggravation-invariant.py
           grep -q 'sanitizeSilentAggravationState' project/src/main/java/com/mcmoddev/golems/entity/GolemBase.java
-          grep -q 'sourceEntity instanceof Player player' project/src/main/java/com/mcmoddev/golems/entity/GolemBase.java
+          grep -q 'directProvocationSource instanceof Player player' project/src/main/java/com/mcmoddev/golems/entity/GolemBase.java
           grep -q 'this.stopBeingAngry();' project/src/main/java/com/mcmoddev/golems/entity/GolemBase.java
       - name: Build production JAR
         working-directory: project
