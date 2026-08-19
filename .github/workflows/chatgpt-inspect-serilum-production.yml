@@ -1,0 +1,29 @@
+name: Inspect Serilum Production Relocation
+
+on:
+  push:
+    branches:
+      - chatgpt-giantspawn-original-collective839
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download official production jars
+        run: |
+          curl -fL 'https://cdn.modrinth.com/data/iWwn7s9U/versions/zgSwmV99/giantspawn-1.21.1-5.3.jar' -o giantspawn-original.jar
+          curl -fL 'https://cdn.modrinth.com/data/e0M1UDsY/versions/4XRlrKGN/collective-1.21.1-8.39.jar' -o collective-8.39.jar
+          sha256sum giantspawn-original.jar collective-8.39.jar
+      - name: Inspect Collective package layout
+        run: |
+          jar tf collective-8.39.jar | grep -E 'ShouldLoadCheck|RegisterMod|DuskConfig.class|SAMObject.class|BlockPosFunctions.class|HashMapFunctions.class|GlobalVariables.class' | sort
+      - name: Inspect original Giant Spawn Collective references
+        run: |
+          rm -rf /tmp/g && mkdir /tmp/g && cd /tmp/g
+          jar xf "$GITHUB_WORKSPACE/giantspawn-original.jar"
+          grep -R -a -o -E 'com/natamus/(collective|collective_common_fabric)/[A-Za-z0-9_/$]+' com/natamus/giantspawn | sort -u
+          echo '--- class files with old package ---'
+          grep -R -a -l 'com/natamus/collective/' com/natamus/giantspawn || true
+          echo '--- class files with relocated package ---'
+          grep -R -a -l 'com/natamus/collective_common_fabric/' com/natamus/giantspawn || true
