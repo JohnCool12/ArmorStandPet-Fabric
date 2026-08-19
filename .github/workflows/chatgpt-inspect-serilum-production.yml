@@ -21,3 +21,4 @@ jobs:
           rm -rf /tmp/g && mkdir /tmp/g && cd /tmp/g
           jar xf "$GITHUB_WORKSPACE/giantspawn-original.jar"
           grep -R -a -o -E 'com/natamus/(collective|collective_common_fabric)/[A-Za-z0-9_/$]+' com/natamus/giantspawn | sort -u
+          echo production-inspection-complete
