@@ -19,7 +19,7 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.5.1'
-      - name: Reconstruct and inspect Iron Golem anger and retarget lifecycle
+      - name: Reconstruct current source and inspect vanilla anger lifecycle
         shell: bash
         run: |
           set -euo pipefail
@@ -30,8 +30,29 @@ jobs:
           xz -dc /tmp/fabric-port.patch.xz | patch -p4 --batch --forward >/dev/null
           patch -p1 --batch --forward < ../ci/eg-fix1.patch >/dev/null
           patch -p1 --batch --forward < ../ci/eg-fix2.patch >/dev/null
+          patch -p1 --batch --forward < ../ci/eg-bedrock-targetable.patch >/dev/null
+          patch -p1 --batch --forward < ../ci/eg-fix4.patch >/dev/null
+          patch -p1 --batch --forward < ../ci/eg-advanced-swim.patch >/dev/null
+          patch -p1 --batch --forward < ../ci/eg-surface-swim.patch >/dev/null
+          patch -p1 --batch --forward < ../ci/eg-bedrock-provocation.patch >/dev/null
+          patch -p1 --batch --forward < ../ci/eg-all-eyes-neutral.patch >/dev/null
+          cp ../ci/GolemFinalEyesLayer.java src/main/java/com/mcmoddev/golems/client/entity/layer/GolemFinalEyesLayer.java
           cd ..
           python3 ci/apply-strict-neutral.py >/dev/null
+          python3 ci/apply-legacy-neutral-migration.py >/dev/null
+          python3 ci/apply-hybrid-village-neutral.py >/dev/null
+          python3 ci/apply-bedrock-natural-hostility.py >/dev/null
+          python3 ci/apply-stable-village-targeting.py >/dev/null
+          python3 ci/apply-bedrock-true-vanilla-natural-ai.py >/dev/null
+          python3 ci/apply-all-constructed-natural-ai.py >/dev/null
+          python3 ci/apply-village-runtime-parity-fix.py >/dev/null
+          python3 ci/apply-individual-player-target-provenance.py >/dev/null
+          python3 ci/apply-minimum-iron-golem-speed.py >/dev/null
+          python3 ci/apply-sculk-catalyst-player-blindness-exemption.py >/dev/null
+          python3 ci/refine-sculk-catalyst-player-blindness-predicate.py >/dev/null
+          python3 ci/apply-village-golem-pretracking-initialization.py >/dev/null
+          python3 ci/apply-village-golem-failed-replacement-fallback.py >/dev/null
+          python3 ci/apply-village-golem-spawn-helper.py >/dev/null
           cd project
           gradle compileJava --no-daemon >/dev/null
           JAR=$(find .gradle/loom-cache/minecraftMaven/net/minecraft -type f -name '*.jar' | grep -v sources | head -1)
@@ -41,9 +62,7 @@ jobs:
             net.minecraft.world.entity.NeutralMob \
             net.minecraft.world.entity.ai.goal.target.HurtByTargetGoal \
             net.minecraft.world.entity.ai.goal.target.NearestAttackableTargetGoal \
-            net.minecraft.world.entity.ai.goal.target.TargetGoal \
-            net.minecraft.world.entity.Mob \
-            net.minecraft.world.entity.LivingEntity; do
+            net.minecraft.world.entity.ai.goal.target.TargetGoal; do
             echo "===== $C ====="
-            javap -classpath "$JAR" -p -c "$C" || true
+            javap -classpath "$JAR" -p -c "$C"
           done
