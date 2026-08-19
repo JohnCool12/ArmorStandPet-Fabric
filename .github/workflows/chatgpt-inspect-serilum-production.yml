@@ -1,9 +1,6 @@
 name: Inspect Serilum Production Relocation
 
 on:
-  push:
-    branches:
-      - chatgpt-giantspawn-original-collective839
   pull_request:
     branches:
       - main
