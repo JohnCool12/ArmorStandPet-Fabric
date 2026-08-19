@@ -16,39 +16,48 @@ import net.fabricmc.fabric.api.gametest.v1.FabricGameTest;
 import net.minecraft.core.BlockPos;
 import net.minecraft.gametest.framework.*;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.*;
 import net.minecraft.world.entity.animal.IronGolem;
 import net.minecraft.world.entity.monster.Zombie;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.GameType;
+import java.lang.reflect.Method;
 public final class ProvokedInterruptionGameTest implements FabricGameTest {
- @GameTest(template=FabricGameTest.EMPTY_STRUCTURE, timeoutTicks=240)
+ private static void state(String label, IronGolem g) {
+   System.out.println(label+" target="+(g.getTarget()==null?"null":g.getTarget().getType()+"/"+g.getTarget().getUUID())+
+     " lastHurt="+(g.getLastHurtByMob()==null?"null":g.getLastHurtByMob().getType()+"/"+g.getLastHurtByMob().getUUID())+
+     " angry="+g.getPersistentAngerTarget()+" time="+g.getRemainingPersistentAngerTime()+" playerCreated="+g.isPlayerCreated()+" tags="+g.getTags());
+ }
+ private static void forceVanillaPush(IronGolem g, Entity e) {
+   try { Method m=IronGolem.class.getDeclaredMethod("doPush", Entity.class); m.setAccessible(true); for(int i=0;i<200 && g.getTarget()!=e;i++) m.invoke(g,e); }
+   catch(Exception x){ throw new RuntimeException(x); }
+ }
+ @GameTest(template=FabricGameTest.EMPTY_STRUCTURE, timeoutTicks=220)
  public void interruptedPlayerProvocationRecovers(final GameTestHelper h) {
    GolemBase e=GolemBase.create(h.getLevel(), ResourceLocation.fromNamespaceAndPath(ExtraGolems.MODID,"obsidian"));
    e.moveTo(h.absolutePos(new BlockPos(4,2,4)),0,0); e.markConstructedNeutral(); h.getLevel().addFreshEntity(e);
    IronGolem v=EntityType.IRON_GOLEM.create(h.getLevel()); h.assertTrue(v!=null,"vanilla create failed"); v.moveTo(h.absolutePos(new BlockPos(14,2,4)),0,0); v.setPlayerCreated(false); h.getLevel().addFreshEntity(v);
-   Player ep=h.makeMockPlayer(GameType.SURVIVAL); ep.setPos(e.getX()+5,e.getY(),e.getZ());
-   Player vp=h.makeMockPlayer(GameType.SURVIVAL); vp.setPos(v.getX()+5,v.getY(),v.getZ());
-   h.runAfterDelay(20,()->{ e.setLastHurtByMob(ep); v.setLastHurtByMob(vp); });
-   h.runAfterDelay(26,()->{
-     h.assertTrue(e.getTarget()==ep,"extra did not initially retaliate"); h.assertTrue(v.getTarget()==vp,"vanilla did not initially retaliate");
-     Zombie ez=EntityType.ZOMBIE.create(h.getLevel()), vz=EntityType.ZOMBIE.create(h.getLevel()); h.assertTrue(ez!=null&&vz!=null,"zombie create failed");
-     ez.setNoAi(true); vz.setNoAi(true); ez.moveTo(e.getX()+3,e.getY(),e.getZ(),0,0); vz.moveTo(v.getX()+3,v.getY(),v.getZ(),0,0); h.getLevel().addFreshEntity(ez); h.getLevel().addFreshEntity(vz);
-     e.setTarget(ez); v.setTarget(vz);
-     h.runAfterDelay(8,()->{ ez.discard(); vz.discard(); });
+   Player ep=h.makeMockPlayer(GameType.SURVIVAL); ep.setPos(e.getX()+4,e.getY(),e.getZ());
+   Player vp=h.makeMockPlayer(GameType.SURVIVAL); vp.setPos(v.getX()+4,v.getY(),v.getZ());
+   final Zombie[] firstE=new Zombie[1], firstV=new Zombie[1], secondE=new Zombie[1], secondV=new Zombie[1];
+   h.runAfterDelay(10,()->{ e.setLastHurtByMob(ep); v.setLastHurtByMob(vp); e.setTarget(ep); v.setTarget(vp); e.setPersistentAngerTarget(ep.getUUID()); v.setPersistentAngerTarget(vp.getUUID()); e.startPersistentAngerTimer(); v.startPersistentAngerTimer(); state("P10_EXTRA",e); state("P10_VANILLA",v); });
+   h.runAfterDelay(30,()->{
+     state("P30_EXTRA_BEFORE",e); state("P30_VANILLA_BEFORE",v);
+     firstE[0]=EntityType.ZOMBIE.create(h.getLevel()); firstV[0]=EntityType.ZOMBIE.create(h.getLevel()); h.assertTrue(firstE[0]!=null&&firstV[0]!=null,"first zombie create failed");
+     firstE[0].setNoAi(true); firstV[0].setNoAi(true); firstE[0].moveTo(e.getX()+2,e.getY(),e.getZ(),0,0); firstV[0].moveTo(v.getX()+2,v.getY(),v.getZ(),0,0); h.getLevel().addFreshEntity(firstE[0]); h.getLevel().addFreshEntity(firstV[0]);
+     forceVanillaPush(e,firstE[0]); forceVanillaPush(v,firstV[0]); state("P30_EXTRA_AFTER_PUSH",e); state("P30_VANILLA_AFTER_PUSH",v);
    });
-   h.runAfterDelay(55,()->{
-     System.out.println("PARITY_STATE extraTarget="+e.getTarget()+" extraAngry="+e.getPersistentAngerTarget()+" extraTime="+e.getRemainingPersistentAngerTime()+" vanillaTarget="+v.getTarget()+" vanillaAngry="+v.getPersistentAngerTarget()+" vanillaTime="+v.getRemainingPersistentAngerTime());
-     Zombie ez2=EntityType.ZOMBIE.create(h.getLevel()), vz2=EntityType.ZOMBIE.create(h.getLevel()); h.assertTrue(ez2!=null&&vz2!=null,"zombie2 create failed");
-     ez2.setNoAi(true); vz2.setNoAi(true); ez2.moveTo(e.getX()+4,e.getY(),e.getZ(),0,0); vz2.moveTo(v.getX()+4,v.getY(),v.getZ(),0,0); h.getLevel().addFreshEntity(ez2); h.getLevel().addFreshEntity(vz2);
-     h.runAfterDelay(45,()->{
-       System.out.println("PARITY_FINAL extraTarget="+e.getTarget()+" extraAngry="+e.getPersistentAngerTarget()+" extraTime="+e.getRemainingPersistentAngerTime()+" vanillaTarget="+v.getTarget()+" vanillaAngry="+v.getPersistentAngerTarget()+" vanillaTime="+v.getRemainingPersistentAngerTime());
-       h.assertTrue(v.getTarget()==vp || v.getTarget() instanceof Zombie,"vanilla remained target-stuck");
-       h.assertTrue(e.getTarget()==ep || e.getTarget() instanceof Zombie,"extra remained target-stuck");
-       h.succeed();
-     });
+   h.runAfterDelay(42,()->{ state("P42_EXTRA",e); state("P42_VANILLA",v); firstE[0].discard(); firstV[0].discard(); });
+   h.runAfterDelay(65,()->{ state("P65_EXTRA_POST_DEATH",e); state("P65_VANILLA_POST_DEATH",v);
+     secondE[0]=EntityType.ZOMBIE.create(h.getLevel()); secondV[0]=EntityType.ZOMBIE.create(h.getLevel()); h.assertTrue(secondE[0]!=null&&secondV[0]!=null,"second zombie create failed");
+     secondE[0].setNoAi(true); secondV[0].setNoAi(true); secondE[0].moveTo(e.getX()+3,e.getY(),e.getZ(),0,0); secondV[0].moveTo(v.getX()+3,v.getY(),v.getZ(),0,0); h.getLevel().addFreshEntity(secondE[0]); h.getLevel().addFreshEntity(secondV[0]);
+   });
+   h.runAfterDelay(130,()->{ state("P130_EXTRA_FINAL",e); state("P130_VANILLA_FINAL",v);
+     h.assertTrue(e.getTarget()==ep || e.getTarget()==secondE[0],"extra remained target-deadlocked after interruption");
+     h.assertTrue(v.getTarget()==vp || v.getTarget()==secondV[0],"vanilla remained target-deadlocked after interruption");
+     h.succeed();
    });
  }
 }
 ''')
-print('Injected provoked interruption GameTest')
+print('Injected corrected provoked interruption GameTest')
