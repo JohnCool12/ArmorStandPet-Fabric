@@ -40,8 +40,7 @@ jobs:
           cp project/src/main/java/com/mcmoddev/golems/entity/GolemBase.java /tmp/prod-GolemBase.java
           cp project/build.gradle /tmp/prod-build.gradle
           cp project/src/main/resources/fabric.mod.json /tmp/prod-fabric.mod.json
-          grep -q 'import java.util.UUID;' /tmp/prod-GolemBase.java
-          grep -q 'interruptedDirectPlayerProvoker' /tmp/prod-GolemBase.java
+          grep -q 'private Player interruptedDirectPlayerProvoker;' /tmp/prod-GolemBase.java
           grep -q 'recoverInterruptedDirectPlayerProvocation' /tmp/prod-GolemBase.java
           ! grep -q 'T-built Extra Golems use one retaliation episode only' /tmp/prod-GolemBase.java
           ! grep -q '!isConstructedNeutral() && !this.isPlayerCreated() && this.getPersistentAngerTarget() != null' /tmp/prod-GolemBase.java
@@ -68,7 +67,7 @@ jobs:
               n=c.find('failure'); n=n if n is not None else c.find('error')
               if n is not None: bad.append((c.attrib.get('name'),n.attrib.get('message')))
           if bad: raise SystemExit('Recovery failures: '+repr(bad))
-          print('PASS: survival-player reacquisition and creative-cancellation hostile recovery both passed.')
+          print('PASS: player reacquisition and invalid-player hostile recovery both passed.')
           PY
           if [ "$status" -ne 0 ]; then tail -500 ../provoked-recovery-gametest.log; exit 1; fi
       - name: Restore production-only sources
