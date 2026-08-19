@@ -8,6 +8,25 @@ build.write_text(build.read_text()+r'''
 loom { runs { gametest { server(); name "Provoked Target Recovery"; vmArg "-Dfabric-api.gametest"; vmArg "-Dfabric-api.gametest.report-file=${project.buildDir}/junit.xml"; runDir "run/gametest" } } }
 ''')
 data=json.loads(modjson.read_text()); data.setdefault('entrypoints',{})['fabric-gametest']=['com.mcmoddev.golems.test.ProvokedTargetRecoveryGameTest']; modjson.write_text(json.dumps(data,indent=2)+'\n')
+
+# Test-only introspection. Production GolemBase was backed up before this injector and is
+# restored before the production build, so this method never ships in the final JAR.
+golem_path=root/'src/main/java/com/mcmoddev/golems/entity/GolemBase.java'
+gs=golem_path.read_text()
+if 'debugProvokedRecoveryTargetGoals' not in gs:
+    idx=gs.rfind('\n}')
+    if idx < 0: raise SystemExit('GolemBase final brace not found')
+    debug=r'''
+
+	public String debugProvokedRecoveryTargetGoals() {
+		return this.targetSelector.getAvailableGoals().stream()
+				.map(w -> w.getGoal().getClass().getSimpleName() + ":" + w.isRunning())
+				.collect(java.util.stream.Collectors.joining(","));
+	}
+'''
+    gs=gs[:idx]+debug+gs[idx:]
+    golem_path.write_text(gs)
+
 p=root/'src/main/java/com/mcmoddev/golems/test/ProvokedTargetRecoveryGameTest.java'; p.parent.mkdir(parents=True,exist_ok=True)
 p.write_text(r'''package com.mcmoddev.golems.test;
 
@@ -19,6 +38,7 @@ import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.monster.Zombie;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.GameType;
@@ -46,6 +66,22 @@ public final class ProvokedTargetRecoveryGameTest implements FabricGameTest {
     private static boolean acquiredOrKilled(GolemBase g, Zombie z) {
         return g.getTarget()==z || z.isRemoved() || !z.isAlive();
     }
+    private static String ent(LivingEntity e) {
+        return e==null ? "null" : e.getType().toString()+"/"+e.getUUID()+" alive="+e.isAlive()+" removed="+e.isRemoved();
+    }
+    private static void trace(String label, GolemBase g, Player p, Zombie z) {
+        System.out.println(label
+            +" target="+ent(g.getTarget())
+            +" lastHurt="+ent(g.getLastHurtByMob())
+            +" anger="+g.getPersistentAngerTarget()
+            +" angerTime="+g.getRemainingPersistentAngerTime()
+            +" playerDist2="+g.distanceToSqr(p)
+            +" z="+ent(z)
+            +" zCanAttack="+(z!=null && g.canAttack(z))
+            +" zCanAttackType="+(z!=null && g.canAttackType(z.getType()))
+            +" zAllied="+(z!=null && g.isAlliedTo(z))
+            +" goals=["+g.debugProvokedRecoveryTargetGoals()+"]");
+    }
 
     @GameTest(template=FabricGameTest.EMPTY_STRUCTURE, timeoutTicks=160)
     public void directPlayerIsReacquiredAfterTemporaryHostileDies(GameTestHelper h) {
@@ -66,21 +102,22 @@ public final class ProvokedTargetRecoveryGameTest implements FabricGameTest {
         final Zombie[] first=new Zombie[1]; final Zombie[] second=new Zombie[1]; final Zombie[] third=new Zombie[1];
         h.runAfterDelay(10,()->provoke(g,p));
         h.runAfterDelay(25,()->{ first[0]=zombie(h,g,2); g.setTarget(first[0]); g.setLastHurtByMob(first[0]); h.assertTrue(g.getTarget()==first[0],"temporary hostile did not interrupt player"); });
-        // GameTest's mock Player cannot model Creative; leaving FOLLOW_RANGE exercises the
-        // same production cancellation branch. Real production code also checks Creative,
-        // spectator, death, removal and dimension change.
-        h.runAfterDelay(40,()->{ p.setPos(g.getX()+100.0,g.getY(),g.getZ()); first[0].discard(); });
-        h.runAfterDelay(60,()->{ h.assertTrue(g.getTarget()!=p,"invalid player was incorrectly reacquired"); second[0]=zombie(h,g,5); });
+        h.runAfterDelay(40,()->{ p.setPos(g.getX()+100.0,g.getY(),g.getZ()); first[0].discard(); trace("REC40_AFTER_CANCEL",g,p,first[0]); });
+        h.runAfterDelay(60,()->{ h.assertTrue(g.getTarget()!=p,"invalid player was incorrectly reacquired"); second[0]=zombie(h,g,5); trace("REC60_SPAWN_SECOND",g,p,second[0]); });
+        h.runAfterDelay(64,()->trace("REC64",g,p,second[0]));
+        h.runAfterDelay(68,()->trace("REC68",g,p,second[0]));
         h.runAfterDelay(72,()->{
+            trace("REC72_ASSERT",g,p,second[0]);
             h.assertTrue(acquiredOrKilled(g,second[0]),"Extra Golem did not acquire the first hostile after player provocation was cancelled");
             if (!second[0].isRemoved()) second[0].discard();
         });
-        h.runAfterDelay(82,()->third[0]=zombie(h,g,5));
+        h.runAfterDelay(82,()->{ third[0]=zombie(h,g,5); trace("REC82_SPAWN_THIRD",g,p,third[0]); });
         h.runAfterDelay(100,()->{
+            trace("REC100_ASSERT",g,p,third[0]);
             h.assertTrue(acquiredOrKilled(g,third[0]),"Extra Golem became stuck again instead of acquiring the next hostile after the first post-cancel hostile");
             h.succeed();
         });
     }
 }
 ''')
-print('Injected consecutive provoked-target recovery GameTests')
+print('Injected instrumented consecutive provoked-target recovery GameTests')
