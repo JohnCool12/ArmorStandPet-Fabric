@@ -97,10 +97,12 @@ jobs:
           import xml.etree.ElementTree as ET
           root=ET.parse('build/junit.xml').getroot()
           cases=list(root.iter('testcase'))
-          wanted=('staleRejectedPlayerGoalCannotKeepTargetControl'.lower(),
+          wanted=('unprovokedPlayerSetterStillRejected'.lower(),
                   'directProvocationStillAllowsPlayerAndAngerSurvivesLastHurtOverwrite'.lower(),
-                  'hostileTargetingRecoversAfterInterruptedPlayerFight'.lower(),
+                  'hostileTargetingRecoversWhenHostileOverwritesProvocation'.lower(),
+                  'validPlayerProvocationIsResumedAfterTemporaryHostileSwitch'.lower(),
                   'directPunchDoesNotAlertBystanderExtraGolem'.lower(),
+                  'vanillaNaturalIronGolemDirectPunchIsIndividual'.lower(),
                   'lowVillagerReputationCanMakeMultipleExtraGolemsHostile'.lower())
           for name in wanted:
               matches=[c for c in cases if name in c.attrib.get('name','').lower()]
@@ -108,7 +110,7 @@ jobs:
               node=matches[0].find('failure')
               if node is None: node=matches[0].find('error')
               if node is not None: raise SystemExit('GameTest failed '+name+': '+str(node.attrib.get('message')))
-          print('PASS: stale target lock, direct retaliation, interrupted recovery and village exception all verified.')
+          print('PASS: direct retaliation, stale HurtBy release, hostile recovery, valid player retarget and village exception all verified.')
           PY
           if [ "$status" -ne 0 ]; then tail -500 ../player-retarget-gametest.log; exit 1; fi
 
@@ -134,9 +136,18 @@ jobs:
           set -euo pipefail
           javap -classpath build/classes/java/main -p -c com.mcmoddev.golems.entity.GolemBase > ../golembase-retarget.txt
           grep -q 'hasLocalPlayerTargetReason' ../golembase-retarget.txt
-          grep -q 'evaluatingVillageReputationPlayerReason' ../golembase-retarget.txt
-          grep -q 'public boolean canAttack(net.minecraft.world.entity.LivingEntity)' ../golembase-retarget.txt
-          grep -q 'getPersistentAngerTarget' ../golembase-retarget.txt
+          if grep -q 'public boolean canAttack(net.minecraft.world.entity.LivingEntity)' ../golembase-retarget.txt; then
+            echo 'Unexpected GolemBase canAttack override remains'; exit 1
+          fi
+          inner=$(find build/classes/java/main/com/mcmoddev/golems/entity -name 'GolemBase\$*.class' -print)
+          test -n "$inner"
+          found=0
+          for c in $inner; do
+            name=${c#build/classes/java/main/}; name=${name%.class}; name=${name//\//.}
+            javap -classpath build/classes/java/main -p -c "$name" > ../inner.txt || continue
+            if grep -q 'HurtByTargetGoal.canContinueToUse' ../inner.txt && grep -q 'hasLocalPlayerTargetReason' ../inner.txt; then found=1; break; fi
+          done
+          test "$found" -eq 1
           python3 - <<'PY'
           import json, pathlib
           root=pathlib.Path('src/main/resources/data/golems/golems/golem')
