@@ -1,0 +1,134 @@
+name: Giant Spawn Original Collective 8.39 Validation
+
+on:
+  push:
+    branches:
+      - chatgpt-giantspawn-original-collective839
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout validation inputs
+        uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Clone Giant Spawn 1.21.1 baseline
+        run: git clone --depth 1 --branch 1.21.1 https://github.com/Serilum/Giant-Spawn.git Giant-Spawn-1.21.1
+
+      - name: Verify baseline matches uploaded source
+        working-directory: Giant-Spawn-1.21.1
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo '9fda8b7ada159033a28804a63e5b60cc38d0b2c56b63f14175d240651c0e7b32  Common/src/main/java/com/natamus/giantspawn/ai/GiantAttackGoal.java' | sha256sum -c -
+          echo '10464fdd93d308812ad34e35289c6e704e79eaf9229f5df844e2b71e00afd368  Common/src/main/java/com/natamus/giantspawn/events/GiantEvent.java' | sha256sum -c -
+          echo '06b9ae4e765bcde9d4fb2160bbd07d7f4d8efa92ca6f2cde7d5c4fd3b3ebf64a  Common/src/main/java/com/natamus/giantspawn/mixin/GiantMixin.java' | sha256sum -c -
+          echo 'b9424a35b660419edd95fed8860eaa39fd56917158227fe3de672412c3ecb9eb  Fabric/src/main/java/com/natamus/giantspawn/ModFabric.java' | sha256sum -c -
+          echo '56a465d03a3cec3721084ae06d996bce29bb4d88783bc6bc65258d66752befd1  Common/src/main/java/com/natamus/giantspawn/ModCommon.java' | sha256sum -c -
+          echo 'a94ac6d41879146e6a0ff909f0e6a08020d5f9422f17d8dd01252d024129bbc6  Common/src/main/java/com/natamus/giantspawn/config/ConfigHandler.java' | sha256sum -c -
+          echo 'c2ade44389ff7de6901629cee585ee6e54fde008daf052dfe9dd04eb8c425fe0  Fabric/src/main/java/com/natamus/giantspawn/fabric/config/IntegrateModMenu.java' | sha256sum -c -
+          echo '60026e259129c9b876cacfddde25f18f11f1cf82518366339d9eb784affb534e  Fabric/build.gradle' | sha256sum -c -
+          echo '86e9b1698ab74a599d32ae2de54ca69672a0f6e71f54e9a1a947687919434ffb  gradle.properties' | sha256sum -c -
+
+      - name: Apply only agreed Giant AI changes
+        run: |
+          cp .giant-original-build/GiantAttackGoal.java Giant-Spawn-1.21.1/Common/src/main/java/com/natamus/giantspawn/ai/GiantAttackGoal.java
+          cp .giant-original-build/GiantEvent.java Giant-Spawn-1.21.1/Common/src/main/java/com/natamus/giantspawn/events/GiantEvent.java
+          cp .giant-original-build/GiantMixin.java Giant-Spawn-1.21.1/Common/src/main/java/com/natamus/giantspawn/mixin/GiantMixin.java
+
+      - name: Prove only three source files changed
+        working-directory: Giant-Spawn-1.21.1
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --name-only | sort | tee /tmp/changed-files.txt
+          printf '%s\n' \
+            Common/src/main/java/com/natamus/giantspawn/ai/GiantAttackGoal.java \
+            Common/src/main/java/com/natamus/giantspawn/events/GiantEvent.java \
+            Common/src/main/java/com/natamus/giantspawn/mixin/GiantMixin.java | sort > /tmp/expected-files.txt
+          diff -u /tmp/expected-files.txt /tmp/changed-files.txt
+
+      - name: Build against Collective 8.39
+        working-directory: Giant-Spawn-1.21.1
+        shell: bash
+        run: |
+          set -euo pipefail
+          sed -i 's/^collective_version=.*/collective_version=8.39/' gradle.properties
+          chmod +x gradlew
+          ./gradlew :Fabric:clean :Fabric:build --stacktrace
+
+      - name: Verify Collective 8.39 exposes original Giant Spawn API
+        shell: bash
+        run: |
+          set -euo pipefail
+          COLLECTIVE_JAR=$(find ~/.gradle/caches -type f -name '*collective-fabric*1.21.1*8.39*.jar' | head -1)
+          test -n "$COLLECTIVE_JAR"
+          echo "Collective jar: $COLLECTIVE_JAR"
+          jar tf "$COLLECTIVE_JAR" > /tmp/collective-classes.txt
+          grep -Fx 'com/natamus/collective/check/ShouldLoadCheck.class' /tmp/collective-classes.txt
+          grep -Fx 'com/natamus/collective/check/RegisterMod.class' /tmp/collective-classes.txt
+          grep -Fx 'com/natamus/collective/config/DuskConfig.class' /tmp/collective-classes.txt
+          grep -Fx 'com/natamus/collective/objects/SAMObject.class' /tmp/collective-classes.txt
+          grep -Fx 'com/natamus/collective/functions/BlockPosFunctions.class' /tmp/collective-classes.txt
+          grep -Fx 'com/natamus/collective/functions/HashMapFunctions.class' /tmp/collective-classes.txt
+          grep -Fx 'com/natamus/collective/data/GlobalVariables.class' /tmp/collective-classes.txt
+
+      - name: Verify original Collective linkage remains in Giant Spawn
+        shell: bash
+        run: |
+          set -euo pipefail
+          JAR=$(find Giant-Spawn-1.21.1/Fabric/build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*-sources.jar' ! -name '*-dev.jar' | head -1)
+          mkdir -p /tmp/giant-classes && cd /tmp/giant-classes
+          jar xf "$GITHUB_WORKSPACE/$JAR"
+          grep -a -q 'com/natamus/collective/check/ShouldLoadCheck' com/natamus/giantspawn/ModFabric.class
+          grep -a -q 'com/natamus/collective/check/RegisterMod' com/natamus/giantspawn/ModFabric.class
+          grep -a -q 'com/natamus/collective/config/DuskConfig' com/natamus/giantspawn/config/ConfigHandler.class
+          grep -a -q 'com/natamus/collective/objects/SAMObject' com/natamus/giantspawn/ModCommon.class
+          echo 'Original Giant Spawn -> Collective integration preserved.'
+
+      - name: Smoke-test dedicated server with original Collective integration
+        working-directory: Giant-Spawn-1.21.1
+        shell: bash
+        run: |
+          mkdir -p Fabric/run
+          echo 'eula=true' > Fabric/run/eula.txt
+          set +e
+          timeout 120s ./gradlew :Fabric:runServer --stacktrace > /tmp/giantspawn-server.log 2>&1
+          rc=$?
+          set -e
+          cat /tmp/giantspawn-server.log
+          if grep -q 'Done (' /tmp/giantspawn-server.log; then
+            echo 'Server reached successful startup using Giant Spawn original Collective integration.'
+            exit 0
+          fi
+          if [ "$rc" -eq 0 ]; then
+            echo 'runServer exited cleanly.'
+            exit 0
+          fi
+          echo "Server smoke test failed (exit $rc)."
+          exit "$rc"
+
+      - name: Collect production jar
+        shell: bash
+        run: |
+          mkdir -p out
+          find Giant-Spawn-1.21.1/Fabric/build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*-sources.jar' ! -name '*-dev.jar' -exec cp {} out/ \;
+          test -n "$(find out -maxdepth 1 -type f -name '*.jar' -print -quit)"
+          sha256sum out/*.jar | tee out/SHA256SUMS.txt
+
+      - name: Upload fixed mod
+        uses: actions/upload-artifact@v4
+        with:
+          name: Giant-Spawn-Fabric-1.21.1-Original-Collective-8.39
+          path: out/*
+          if-no-files-found: error
