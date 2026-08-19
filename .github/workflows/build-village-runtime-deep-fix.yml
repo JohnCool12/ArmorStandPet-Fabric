@@ -1,0 +1,240 @@
+name: Build Extra Golems Deep Village Runtime Fix
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Real construction/finalizeSpawn/runtime-AI parity verification.
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.5.1'
+
+      - name: Reconstruct cumulative production source
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat ci/egpatch.part-* | base64 --decode > /tmp/fabric-port.patch.xz
+          echo '8b5eb02294d41d7ef3af71ce280dcded9920b2ae097f73043cf60c751f94c7ba  /tmp/fabric-port.patch.xz' | sha256sum --check
+          git clone -q https://github.com/bigenergy/extra-golems-reborn.git project
+          cd project
+          git checkout -q 6b21ec4a59ca16e8362b26e38fc63b2807042bdf
+          xz -dc /tmp/fabric-port.patch.xz | patch -p4 --batch --forward >/dev/null
+          patch -p1 --batch --forward < ../ci/eg-fix1.patch >/dev/null
+          patch -p1 --batch --forward < ../ci/eg-fix2.patch >/dev/null
+          patch -p1 --batch --forward < ../ci/eg-bedrock-targetable.patch >/dev/null
+          patch -p1 --batch --forward < ../ci/eg-fix4.patch >/dev/null
+          patch -p1 --batch --forward < ../ci/eg-advanced-swim.patch >/dev/null
+          patch -p1 --batch --forward < ../ci/eg-surface-swim.patch >/dev/null
+          patch -p1 --batch --forward < ../ci/eg-bedrock-provocation.patch >/dev/null
+          patch -p1 --batch --forward < ../ci/eg-all-eyes-neutral.patch >/dev/null
+          cp ../ci/GolemFinalEyesLayer.java src/main/java/com/mcmoddev/golems/client/entity/layer/GolemFinalEyesLayer.java
+          cd ..
+          python3 ci/apply-strict-neutral.py >/dev/null
+          python3 ci/apply-legacy-neutral-migration.py >/dev/null
+          python3 ci/apply-hybrid-village-neutral.py >/dev/null
+          python3 ci/apply-bedrock-natural-hostility.py >/dev/null
+          python3 ci/apply-stable-village-targeting.py >/dev/null
+          python3 ci/apply-bedrock-true-vanilla-natural-ai.py >/dev/null
+          python3 ci/apply-all-constructed-natural-ai.py
+          python3 ci/apply-village-runtime-parity-fix.py
+          grep -q 'migrateLegacyPlayerCreatedConstructedGolem' project/src/main/java/com/mcmoddev/golems/entity/GolemBase.java
+          grep -q 'extra_golems_constructed_true_natural_ai_v1' project/src/main/java/com/mcmoddev/golems/entity/GolemBase.java
+          for f in diamond emerald sculk_catalyst ancient_debris obsidian crying_obsidian; do
+            grep -q '"knockback_resistance": 1.0' "project/src/main/resources/data/golems/golems/golem/$f.json"
+          done
+          cp project/build.gradle /tmp/eg-production-build.gradle
+          cp project/src/main/resources/fabric.mod.json /tmp/eg-production-fabric.mod.json
+
+      - name: Install runtime village GameTest infrastructure
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat >> project/build.gradle <<'EOF'
+
+          // CI-only GameTest run. Restored before production packaging.
+          loom {
+              runs {
+                  gametest {
+                      server()
+                      name "Deep Village Runtime Game Test"
+                      vmArg "-Dfabric-api.gametest"
+                      vmArg "-Dfabric-api.gametest.report-file=${project.buildDir}/junit.xml"
+                      runDir "run/gametest"
+                  }
+              }
+          }
+          EOF
+          python3 ci/inject-village-runtime-deep-gametests.py
+          test -f project/src/main/java/com/mcmoddev/golems/test/VillageRuntimeParityGameTest.java
+          grep -q 'fabric-gametest' project/src/main/resources/fabric.mod.json
+
+      - name: Require real construction and legacy runtime village parity
+        working-directory: project
+        shell: bash
+        run: |
+          set -uo pipefail
+          mkdir -p run/gametest
+          printf 'eula=true\n' > run/gametest/eula.txt
+          set +e
+          gradle runGametest --no-daemon > ../gametest-village-runtime-deep.log 2>&1
+          status=$?
+          set -e
+          if [ ! -f build/junit.xml ]; then
+            cat ../gametest-village-runtime-deep.log
+            exit "${status:-1}"
+          fi
+          set +e
+          python3 - <<'PY'
+          import xml.etree.ElementTree as ET
+          root=ET.parse('build/junit.xml').getroot()
+          cases=list(root.iter('testcase'))
+          names=[c.attrib.get('name','').lower() for c in cases]
+          print('Village runtime GameTest JUnit cases:', names)
+          expected=[
+              'realtconstructedobsidianusesruntimevillagereputation',
+              'realtconstructedbedrockusesruntimevillagereputation',
+              'legacyplayercreatedgolemmigratesonloadandusesruntimereputation',
+          ]
+          for token in expected:
+              wanted=[c for c in cases if token in c.attrib.get('name','').lower()]
+              if len(wanted)!=1:
+                  raise SystemExit(f'Expected {token} once, found {len(wanted)}; all={names}')
+              c=wanted[0]
+              node=c.find('failure')
+              if node is None: node=c.find('error')
+              if node is not None:
+                  raise SystemExit(token+' FAILED: '+str(node.attrib.get('message'))+' body='+str(node.text))
+              print('PASS:', token)
+          PY
+          parse_status=$?
+          set -e
+          if [ "$parse_status" -ne 0 ] || [ "$status" -ne 0 ]; then
+            echo 'Deep village GameTest log:'
+            tail -500 ../gametest-village-runtime-deep.log
+            exit 1
+          fi
+
+      - name: Restore production sources after village GameTests
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp /tmp/eg-production-build.gradle project/build.gradle
+          cp /tmp/eg-production-fabric.mod.json project/src/main/resources/fabric.mod.json
+          rm -f project/src/main/java/com/mcmoddev/golems/test/VillageRuntimeParityGameTest.java
+          rm -rf project/run/gametest project/build/junit.xml
+          ! grep -q 'fabric-gametest' project/src/main/resources/fabric.mod.json
+
+      - name: Rerun isolated Bedrock retaliation regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 ci/inject-bedrock-ai-gametest.py >/dev/null
+          python3 ci/patch-bedrock-gametest-normal-difficulty.py >/dev/null
+          python3 ci/patch-bedrock-gametest-candidate-debug.py >/dev/null
+          mkdir -p project/run/gametest
+          printf 'eula=true\n' > project/run/gametest/eula.txt
+          cd project
+          set +e
+          gradle runGametest --no-daemon > ../gametest-bedrock-after-village-fix.log 2>&1
+          status=$?
+          set -e
+          test -f build/junit.xml
+          set +e
+          python3 - <<'PY'
+          import xml.etree.ElementTree as ET
+          root=ET.parse('build/junit.xml').getroot()
+          cases=list(root.iter('testcase'))
+          wanted=[c for c in cases if 'bedrockrecovershostiletargetafterplayerretaliation' in c.attrib.get('name','').lower()]
+          if len(wanted)!=1:
+              raise SystemExit(f'Expected Bedrock regression once; all={[c.attrib.get("name","") for c in cases]}')
+          node=wanted[0].find('failure')
+          if node is None: node=wanted[0].find('error')
+          if node is not None:
+              raise SystemExit('Bedrock retaliation regression failed: '+str(node.attrib.get('message'))+' '+str(node.text))
+          print('PASS: Bedrock retaliation/disengagement/hostile reacquisition preserved.')
+          PY
+          parse_status=$?
+          set -e
+          if [ "$parse_status" -ne 0 ] || [ "$status" -ne 0 ]; then
+            tail -500 ../gametest-bedrock-after-village-fix.log
+            exit 1
+          fi
+          cd ..
+          python3 ci/remove-bedrock-ai-gametest.py >/dev/null
+          rm -rf project/run/gametest project/build/junit.xml
+          ! grep -q 'fabric-gametest' project/src/main/resources/fabric.mod.json
+
+      - name: Build production JAR
+        working-directory: project
+        run: gradle clean build --stacktrace --no-daemon
+
+      - name: Verify compiled AI and legacy migration
+        working-directory: project
+        shell: bash
+        run: |
+          set -euo pipefail
+          javap -classpath build/classes/java/main -p -c com.mcmoddev.golems.entity.GolemBase > ../golem-base-runtime-village.txt
+          grep -q 'DefendVillageTargetGoal' ../golem-base-runtime-village.txt
+          grep -q 'HurtByTargetGoal' ../golem-base-runtime-village.txt
+          grep -q 'NearestAttackableTargetGoal' ../golem-base-runtime-village.txt
+          grep -q 'ResetUniversalAngerTargetGoal' ../golem-base-runtime-village.txt
+          grep -q 'migrateLegacyPlayerCreatedConstructedGolem' ../golem-base-runtime-village.txt
+          grep -q 'extra_golems_constructed_true_natural_ai_v1' ../golem-base-runtime-village.txt
+
+      - name: Dedicated server smoke test
+        working-directory: project
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p run/server
+          printf 'eula=true\n' > run/server/eula.txt
+          set +e
+          timeout --signal=TERM 90s gradle runServer --no-daemon > ../server-village-runtime.log 2>&1
+          status=$?
+          set -e
+          if [ "$status" -ne 0 ] && [ "$status" -ne 124 ]; then cat ../server-village-runtime.log; exit "$status"; fi
+          grep -q 'Done (' run/server/logs/latest.log
+
+      - name: Client resource/render smoke test
+        working-directory: project
+        shell: bash
+        run: |
+          set -euo pipefail
+          setsid env ALSOFT_DRIVERS=null LIBGL_ALWAYS_SOFTWARE=true xvfb-run -a gradle runClient --no-daemon > ../client-village-runtime.log 2>&1 &
+          pid=$!
+          ok=0
+          for i in $(seq 1 90); do
+            if [ -f run/client/logs/latest.log ] && grep -q 'minecraft:textures/atlas/blocks.png-atlas' run/client/logs/latest.log; then sleep 10; kill -0 "$pid" 2>/dev/null && ok=1; break; fi
+            kill -0 "$pid" 2>/dev/null || break
+            sleep 1
+          done
+          kill -TERM -- -"$pid" 2>/dev/null || true
+          wait "$pid" 2>/dev/null || true
+          test "$ok" -eq 1
+
+      - name: Collect verified production JAR
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifact
+          cp project/build/libs/Extra-Golems-Reborn-Fabric-1.21.1-21.1.0.1-fabric.jar artifact/
+          unzip -t artifact/Extra-Golems-Reborn-Fabric-1.21.1-21.1.0.1-fabric.jar
+          sha256sum artifact/Extra-Golems-Reborn-Fabric-1.21.1-21.1.0.1-fabric.jar
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: extra-golems-reborn-fabric-1.21.1-deep-village-runtime-fixed
+          path: artifact/*.jar
+          if-no-files-found: error
