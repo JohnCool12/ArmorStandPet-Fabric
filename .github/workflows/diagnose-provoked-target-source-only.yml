@@ -32,14 +32,16 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           s=Path('project/src/main/java/com/mcmoddev/golems/entity/GolemBase.java').read_text()
-          def method(sig):
-              i=s.find(sig)
-              if i<0: print('\nMISSING',sig); return
-              b=s.find('{',i); d=0
-              for j in range(b,len(s)):
-                  d += (s[j]=='{')-(s[j]=='}')
-                  if d==0:
-                      print('\n===== '+sig+' =====\n'+s[i:j+1]); return
-          for sig in ['private void configureBedrockNaturalIronGolemTargeting()', 'protected void customServerAiStep()', 'private void maintainConstructedNeutralRetaliation()', 'private void migrateLegacyPlayerCreatedConstructedGolem()', 'public void setTarget(@Nullable LivingEntity pTarget)', 'public boolean hurt(final DamageSource source, final float amount)']:
-              method(sig)
+          print('===== ALL ANGER/TARGET-RELATED LINES WITH CONTEXT =====')
+          lines=s.splitlines()
+          keys=('PersistentAnger','stopBeingAngry','setLastHurtByMob','setTarget(','getTarget()','isAngryAt','customServerAiStep','aiStep')
+          shown=set()
+          for i,line in enumerate(lines):
+              if any(k in line for k in keys):
+                  a=max(0,i-4); b=min(len(lines),i+6)
+                  key=(a,b)
+                  if key in shown: continue
+                  shown.add(key)
+                  print(f'\n--- lines {a+1}-{b} ---')
+                  for j in range(a,b): print(f'{j+1}: {lines[j]}')
           PY
