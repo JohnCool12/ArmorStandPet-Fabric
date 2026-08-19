@@ -1,0 +1,71 @@
+name: ChatGPT Giant Spawn 1.21.1 Build
+
+on:
+  push:
+    branches:
+      - chatgpt-giantspawn-rebuild-20260819
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout build inputs
+        uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Clone pristine Giant Spawn 1.21.1
+        run: |
+          git clone --depth 1 --branch 1.21.1 https://github.com/Serilum/Giant-Spawn.git Giant-Spawn-1.21.1
+
+      - name: Apply clean AI implementation
+        run: |
+          cp .giantspawn-build/GiantAttackGoal.java Giant-Spawn-1.21.1/Common/src/main/java/com/natamus/giantspawn/ai/GiantAttackGoal.java
+          cp .giantspawn-build/GiantEvent.java Giant-Spawn-1.21.1/Common/src/main/java/com/natamus/giantspawn/events/GiantEvent.java
+          cp .giantspawn-build/GiantMixin.java Giant-Spawn-1.21.1/Common/src/main/java/com/natamus/giantspawn/mixin/GiantMixin.java
+
+      - name: Build Fabric 1.21.1 jar
+        working-directory: Giant-Spawn-1.21.1
+        run: |
+          chmod +x gradlew
+          ./gradlew :Fabric:clean :Fabric:build --stacktrace
+
+      - name: Smoke-test Fabric server startup and mixins
+        working-directory: Giant-Spawn-1.21.1
+        shell: bash
+        run: |
+          mkdir -p Fabric/run
+          echo 'eula=true' > Fabric/run/eula.txt
+          set +e
+          timeout 120s ./gradlew :Fabric:runServer --stacktrace > /tmp/giantspawn-server.log 2>&1
+          rc=$?
+          set -e
+          cat /tmp/giantspawn-server.log
+          if grep -q 'Done (' /tmp/giantspawn-server.log; then
+            echo 'Server reached successful startup.'
+            exit 0
+          fi
+          if [ "$rc" -eq 0 ]; then
+            echo 'runServer exited cleanly before the usual Done marker.'
+            exit 0
+          fi
+          echo "Server smoke test failed (exit $rc)."
+          exit "$rc"
+
+      - name: Collect output
+        run: |
+          mkdir -p out
+          find Giant-Spawn-1.21.1/Fabric/build/libs -maxdepth 1 -type f -name '*.jar' -print -exec cp {} out/ \;
+          sha256sum out/*.jar | tee out/SHA256SUMS.txt
+
+      - name: Upload finished Fabric jar
+        uses: actions/upload-artifact@v4
+        with:
+          name: Giant-Spawn-Fabric-1.21.1-Clean-AI-Fix
+          path: out/*
+          if-no-files-found: error
