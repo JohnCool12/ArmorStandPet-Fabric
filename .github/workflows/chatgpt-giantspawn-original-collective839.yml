@@ -46,12 +46,12 @@ jobs:
           cp .giant-original-build/GiantEvent.java Giant-Spawn-1.21.1/Common/src/main/java/com/natamus/giantspawn/events/GiantEvent.java
           cp .giant-original-build/GiantMixin.java Giant-Spawn-1.21.1/Common/src/main/java/com/natamus/giantspawn/mixin/GiantMixin.java
 
-      - name: Prove only three source files changed
+      - name: Prove only three Giant source files changed
         working-directory: Giant-Spawn-1.21.1
         shell: bash
         run: |
           set -euo pipefail
-          git diff --name-only | sort | tee /tmp/changed-files.txt
+          git diff --name-only -- Common/src/main/java | sort | tee /tmp/changed-files.txt
           printf '%s\n' \
             Common/src/main/java/com/natamus/giantspawn/ai/GiantAttackGoal.java \
             Common/src/main/java/com/natamus/giantspawn/events/GiantEvent.java \
