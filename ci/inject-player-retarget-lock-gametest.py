@@ -83,10 +83,14 @@ public final class PlayerRetargetLockGameTest implements FabricGameTest {
         g.setTarget(null);
         g.setLastHurtByMob(null);
         g.stopBeingAngry();
-        helper.assertTrue(!g.canAttack(p),"Unprovoked player still passed GolemBase.canAttack provenance filter");
+        // Reproduce the exact lock precursor: a TargetGoal tries to assign an otherwise
+        // unprovoked player; GolemBase rejects that setter call and records the rejection.
+        g.setTarget(p);
+        helper.assertTrue(g.getTarget()==null,"Unprovoked player setter was not rejected");
+        helper.assertTrue(!g.canAttack(p),"Actually rejected player was not made invalid for stale TargetGoal continuation");
         StalePlayerTargetProbeGoal probe=new StalePlayerTargetProbeGoal(g,p);
         helper.assertTrue(!probe.canContinueToUse(),
-                "Stale player TargetGoal can still remain active and monopolize TARGET control");
+                "Stale rejected-player TargetGoal can still remain active and monopolize TARGET control");
         helper.getLevel().players().remove(p); g.discard(); helper.succeed();
     }
 
