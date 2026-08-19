@@ -44,6 +44,8 @@ jobs:
           grep -q 'recoverInterruptedDirectPlayerProvocation' /tmp/prod-GolemBase.java
           ! grep -q 'T-built Extra Golems use one retaliation episode only' /tmp/prod-GolemBase.java
           ! grep -q '!isConstructedNeutral() && !this.isPlayerCreated() && this.getPersistentAngerTarget() != null' /tmp/prod-GolemBase.java
+          ! grep -q 'targetSelector.getAvailableGoals().clear()' /tmp/prod-GolemBase.java
+          grep -q 'targetSelector.removeAllGoals(goal -> true)' /tmp/prod-GolemBase.java
       - name: Install recovery GameTests
         shell: bash
         run: |
@@ -56,6 +58,8 @@ jobs:
           set -uo pipefail
           mkdir -p run/gametest; printf 'eula=true\n' > run/gametest/eula.txt
           set +e; gradle runGametest --no-daemon > ../provoked-recovery-gametest.log 2>&1; status=$?; set -e
+          echo '===== PROVOKED RECOVERY TRACE ====='
+          grep 'REC[0-9]' ../provoked-recovery-gametest.log || true
           test -f build/junit.xml || { tail -500 ../provoked-recovery-gametest.log; exit 1; }
           python3 - <<'PY'
           import xml.etree.ElementTree as ET
