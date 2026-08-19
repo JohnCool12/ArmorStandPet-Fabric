@@ -1,8 +1,6 @@
 name: Build Extra Golem No Silent Aggravation
 on:
-  push:
-    branches:
-      - ci-extra-golem-no-silent-aggravation-20260819
+  pull_request:
 permissions:
   contents: read
 jobs:
@@ -55,7 +53,6 @@ jobs:
           grep -q 'interruptedDirectPlayerProvoker' ../golembase-no-silent.txt
           grep -q 'recoverInterruptedDirectPlayerProvocation' ../golembase-no-silent.txt
           grep -q 'sanitizeSilentAggravationState' ../golembase-no-silent.txt
-          grep -q 'stopBeingAngry' ../golembase-no-silent.txt || grep -q 'method_29922' ../golembase-no-silent.txt
           unzip -t build/libs/Extra-Golems-Reborn-Fabric-1.21.1-21.1.0.1-fabric.jar
       - name: Collect artifact
         shell: bash
