@@ -1,9 +1,6 @@
 name: Giant Spawn Original Collective 8.39 Validation
 
 on:
-  push:
-    branches:
-      - chatgpt-giantspawn-original-collective839
   pull_request:
     branches:
       - main
