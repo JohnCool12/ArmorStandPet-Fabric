@@ -24,7 +24,6 @@ import net.minecraft.server.level.ClientInformation;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
-import net.minecraft.world.entity.ai.goal.target.TargetGoal;
 import net.minecraft.world.entity.monster.Zombie;
 import net.minecraft.world.level.GameType;
 import net.minecraft.world.level.block.Blocks;
@@ -67,30 +66,15 @@ public final class PlayerRetargetLockGameTest implements FabricGameTest {
         mob.moveTo(x,y,zPos,0,0); mob.setNoGravity(true); helper.getLevel().addFreshEntity(mob); return mob;
     }
 
-    private static final class StalePlayerTargetProbeGoal extends TargetGoal {
-        StalePlayerTargetProbeGoal(GolemBase golem, LivingEntity stalePlayer) {
-            super(golem, false);
-            this.targetMob=stalePlayer;
-        }
-        @Override public boolean canUse() { return true; }
-    }
-
     @GameTest(template=FabricGameTest.EMPTY_STRUCTURE, timeoutTicks=100)
-    public void staleRejectedPlayerGoalCannotKeepTargetControl(GameTestHelper helper) {
+    public void unprovokedPlayerSetterStillRejected(GameTestHelper helper) {
         GolemBase g=construct(helper,new BlockPos(8,20,8));
-        ServerPlayer p=player(helper,"StalePlayer");
+        ServerPlayer p=player(helper,"UnprovokedPlayer");
         p.setPos(g.getX()+2.0D,g.getY(),g.getZ());
-        g.setTarget(null);
         g.setLastHurtByMob(null);
         g.stopBeingAngry();
-        // Reproduce the exact lock precursor: a TargetGoal tries to assign an otherwise
-        // unprovoked player; GolemBase rejects that setter call and records the rejection.
         g.setTarget(p);
-        helper.assertTrue(g.getTarget()==null,"Unprovoked player setter was not rejected");
-        helper.assertTrue(!g.canAttack(p),"Actually rejected player was not made invalid for stale TargetGoal continuation");
-        StalePlayerTargetProbeGoal probe=new StalePlayerTargetProbeGoal(g,p);
-        helper.assertTrue(!probe.canContinueToUse(),
-                "Stale rejected-player TargetGoal can still remain active and monopolize TARGET control");
+        helper.assertTrue(g.getTarget()==null,"Anti-shared-retaliation guard stopped rejecting an unprovoked player");
         helper.getLevel().players().remove(p); g.discard(); helper.succeed();
     }
 
@@ -101,20 +85,20 @@ public final class PlayerRetargetLockGameTest implements FabricGameTest {
         p.setPos(g.getX()+2.0D,g.getY(),g.getZ());
         Zombie z=zombie(helper,g.getX()+3.0D,g.getY(),g.getZ());
         g.setLastHurtByMob(p);
-        helper.assertTrue(g.canAttack(p),"Directly provoking player was rejected");
+        helper.assertTrue(g.canAttack(p),"Directly provoking player was not vanilla-attackable");
         g.setTarget(p);
         helper.assertTrue(g.getTarget()==p,"Directly provoking player could not become target");
         g.setPersistentAngerTarget(p.getUUID());
         g.setRemainingPersistentAngerTime(600);
         g.setLastHurtByMob(z);
-        helper.assertTrue(g.canAttack(p),"Persistent player anger stopped being valid after hostile mob overwrote lastHurtByMob");
+        helper.assertTrue(g.isAngryAt(p),"Persistent player anger stopped being valid after hostile mob overwrote lastHurtByMob");
         g.setTarget(p);
         helper.assertTrue(g.getTarget()==p,"Golem could not reacquire still-valid angry player");
         helper.getLevel().players().remove(p); z.discard(); g.discard(); helper.succeed();
     }
 
-    @GameTest(template=FabricGameTest.EMPTY_STRUCTURE, timeoutTicks=160)
-    public void hostileTargetingRecoversAfterInterruptedPlayerFight(GameTestHelper helper) {
+    @GameTest(template=FabricGameTest.EMPTY_STRUCTURE, timeoutTicks=180)
+    public void hostileTargetingRecoversWhenHostileOverwritesProvocation(GameTestHelper helper) {
         GolemBase g=construct(helper,new BlockPos(8,20,40));
         ServerPlayer p=player(helper,"InterruptedProvoker");
         p.setPos(g.getX()+3.0D,g.getY(),g.getZ());
@@ -122,20 +106,45 @@ public final class PlayerRetargetLockGameTest implements FabricGameTest {
         Zombie second=zombie(helper,g.getX()+4.0D,g.getY(),g.getZ()+2.0D);
         g.setLastHurtByMob(p);
         g.setTarget(p);
-        for(int i=0;i<3;i++) g.tick();
-        g.setTarget(first); // mirrors vanilla IronGolem.doPush hostile-target switch
-        for(int i=0;i<3;i++) g.tick();
+        for(int i=0;i<4;i++) g.tick(); // lets HurtByTargetGoal remember the player
+        g.setTarget(first);            // vanilla IronGolem.doPush can do this to a hostile
+        g.setLastHurtByMob(first);     // hostile also becomes the newest attacker
+        for(int i=0;i<4;i++) g.tick();
         first.discard();
         if (g.getTarget()==first) g.setTarget(null);
-        for(int i=0;i<50;i++) g.tick();
+        for(int i=0;i<60;i++) g.tick();
         LivingEntity after=g.getTarget();
-        boolean recovered=(after==p || after==second);
         String state="target="+(after==null?"null":after.getName().getString())
+                +", lastHurt="+(g.getLastHurtByMob()==null?"null":g.getLastHurtByMob().getName().getString())
                 +", anger="+g.getPersistentAngerTarget()+", angerTime="+g.getRemainingPersistentAngerTime();
         helper.getLevel().players().remove(p); second.discard(); g.discard();
-        helper.assertTrue(recovered,"Extra Golem entered dead targeting state after interrupted player fight: "+state);
+        helper.assertTrue(after==second,
+                "Extra Golem failed to release stale player HurtBy goal and reacquire remaining hostile mob: "+state);
+        helper.succeed();
+    }
+
+    @GameTest(template=FabricGameTest.EMPTY_STRUCTURE, timeoutTicks=180)
+    public void validPlayerProvocationIsResumedAfterTemporaryHostileSwitch(GameTestHelper helper) {
+        GolemBase g=construct(helper,new BlockPos(8,20,56));
+        ServerPlayer p=player(helper,"StillProvokedPlayer");
+        p.setPos(g.getX()+3.0D,g.getY(),g.getZ());
+        Zombie temporary=zombie(helper,g.getX()+2.0D,g.getY(),g.getZ()+2.0D);
+        g.setLastHurtByMob(p);
+        g.setTarget(p);
+        for(int i=0;i<4;i++) g.tick();
+        // Temporary hostile switch without overwriting the original attacker memory.
+        g.setTarget(temporary);
+        temporary.discard();
+        if (g.getTarget()==temporary) g.setTarget(null);
+        for(int i=0;i<30;i++) g.tick();
+        LivingEntity after=g.getTarget();
+        String state="target="+(after==null?"null":after.getName().getString())
+                +", lastHurt="+(g.getLastHurtByMob()==null?"null":g.getLastHurtByMob().getName().getString())
+                +", anger="+g.getPersistentAngerTarget()+", angerTime="+g.getRemainingPersistentAngerTime();
+        helper.getLevel().players().remove(p); g.discard();
+        helper.assertTrue(after==p,"Still-valid player provocation was not resumed after temporary hostile switch: "+state);
         helper.succeed();
     }
 }
 ''')
-print('Injected stale-player-goal lock and interrupted-retarget GameTests.')
+print('Injected stale HurtBy release, hostile recovery, and valid-player retarget GameTests.')
