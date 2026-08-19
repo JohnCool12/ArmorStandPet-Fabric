@@ -1,0 +1,1 @@
+Temporary CI inputs for Giant Spawn Fabric 1.21.1 validation. The production mod source remains based on the user's untouched Giant Spawn source with only GiantAttackGoal.java, GiantEvent.java, and GiantMixin.java modified. This file exists only to trigger a fresh pull-request workflow run after PR creation.
