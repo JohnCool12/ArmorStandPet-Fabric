@@ -25,7 +25,6 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.ai.goal.target.TargetGoal;
-import net.minecraft.world.entity.animal.IronGolem;
 import net.minecraft.world.entity.monster.Zombie;
 import net.minecraft.world.level.GameType;
 import net.minecraft.world.level.block.Blocks;
@@ -62,10 +61,10 @@ public final class PlayerRetargetLockGameTest implements FabricGameTest {
         GolemBase g=found.get(0); g.setNoGravity(true); return g;
     }
 
-    private static Zombie zombie(GameTestHelper helper, double x, double y, double z) {
-        Zombie z=EntityType.ZOMBIE.create(helper.getLevel());
-        helper.assertTrue(z!=null,"Failed zombie create");
-        z.moveTo(x,y,z,0,0); z.setNoGravity(true); helper.getLevel().addFreshEntity(z); return z;
+    private static Zombie zombie(GameTestHelper helper, double x, double y, double zPos) {
+        Zombie mob=EntityType.ZOMBIE.create(helper.getLevel());
+        helper.assertTrue(mob!=null,"Failed zombie create");
+        mob.moveTo(x,y,zPos,0,0); mob.setNoGravity(true); helper.getLevel().addFreshEntity(mob); return mob;
     }
 
     private static final class StalePlayerTargetProbeGoal extends TargetGoal {
