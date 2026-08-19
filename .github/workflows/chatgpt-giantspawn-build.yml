@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - chatgpt-giantspawn-rebuild-20260819
+  pull_request:
+    branches:
+      - main
 
 jobs:
   build:
