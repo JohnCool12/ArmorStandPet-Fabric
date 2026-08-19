@@ -40,8 +40,6 @@ new_invalid = '''\t\tif (!valid) {\n\t\t\tfinal LivingEntity staleAttacker = thi
 if old_invalid in s:
     s = s.replace(old_invalid, new_invalid, 1)
 elif 'final LivingEntity staleAttacker = this.getLastHurtByMob();' in s:
-    # Already upgraded on an earlier pass. Add the one-time selector reset only if absent
-    # from this upgraded invalid branch.
     marker = '''\t\t\tthis.interruptedDirectPlayerProvoker = null;\n\t\t\tthis.stopBeingAngry();\n'''
     with_reset = marker + '''\t\t\t// Reset running TARGET-flag owners once so dead HurtByTargetGoal state cannot\n\t\t\t// block the ordinary hostile-mob target goal after provocation is cancelled.\n\t\t\tconfigureBedrockNaturalIronGolemTargeting();\n'''
     if with_reset not in s:
@@ -57,6 +55,19 @@ s = s.replace('this.interruptedDirectPlayerProvoker = player.getUUID();',
 # Never erase the remembered episode merely because a competing goal briefly retargets player.
 old_clear = '''\t\tif (pTarget instanceof Player player\n\t\t\t\t&& this.interruptedDirectPlayerProvoker != null\n\t\t\t\t&& this.interruptedDirectPlayerProvoker.equals(player.getUUID())\n\t\t\t\t&& this.getTarget() == player) {\n\t\t\tthis.interruptedDirectPlayerProvoker = null;\n\t\t}\n'''
 s = s.replace(old_clear, '', 1)
+
+# CRITICAL: target-stack rebuilds must stop running goals through GoalSelector's API.
+# Directly clearing getAvailableGoals() bypasses WrappedGoal.stop() and can leave a stale
+# TARGET control flag locked by a removed HurtByTargetGoal, making all newly added hostile
+# target goals permanently unable to start. Replace every target-selector direct clear.
+unsafe_clear = 'this.targetSelector.getAvailableGoals().clear();'
+safe_clear = 'this.targetSelector.removeAllGoals(goal -> true);'
+if unsafe_clear in s:
+    s = s.replace(unsafe_clear, safe_clear)
+if unsafe_clear in s:
+    raise SystemExit('unsafe targetSelector direct clear remains')
+if safe_clear not in s:
+    raise SystemExit('safe targetSelector removeAllGoals call missing')
 
 if 'private Player interruptedDirectPlayerProvoker;' not in s:
     raise SystemExit('direct Player recovery field missing')
@@ -93,4 +104,4 @@ if test.exists():
         raise SystemExit('ServerPlayer reference remains in recovery GameTest')
     test.write_text(t)
 
-print('Idempotent provoked-target recovery transform applied.')
+print('Idempotent provoked-target recovery with safe GoalSelector reset applied.')
