@@ -24,6 +24,7 @@ import net.minecraft.server.level.ClientInformation;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.animal.IronGolem;
 import net.minecraft.world.entity.monster.Zombie;
 import net.minecraft.world.level.GameType;
 import net.minecraft.world.level.block.Blocks;
@@ -60,10 +61,32 @@ public final class PlayerRetargetLockGameTest implements FabricGameTest {
         GolemBase g=found.get(0); g.setNoGravity(true); return g;
     }
 
+    private static IronGolem vanilla(GameTestHelper helper) {
+        IronGolem g=EntityType.IRON_GOLEM.create(helper.getLevel());
+        helper.assertTrue(g!=null,"Failed vanilla Iron Golem create");
+        BlockPos p=helper.absolutePos(new BlockPos(8,20,8));
+        g.moveTo(p.getX()+0.5D,p.getY(),p.getZ()+0.5D,0,0);
+        g.setPlayerCreated(false); g.setNoGravity(true); helper.getLevel().addFreshEntity(g); return g;
+    }
+
     private static Zombie zombie(GameTestHelper helper, double x, double y, double zPos) {
         Zombie mob=EntityType.ZOMBIE.create(helper.getLevel());
         helper.assertTrue(mob!=null,"Failed zombie create");
         mob.moveTo(x,y,zPos,0,0); mob.setNoGravity(true); helper.getLevel().addFreshEntity(mob); return mob;
+    }
+
+    private static void forceDoPushSwitch(GameTestHelper helper, IronGolem g, Zombie hostile) {
+        for (int i=0; i<1000 && g.getTarget()!=hostile; i++) {
+            g.doPush(hostile);
+        }
+        helper.assertTrue(g.getTarget()==hostile,"Iron Golem doPush never selected hostile after 1000 attempts");
+    }
+
+    private static String state(IronGolem g) {
+        LivingEntity t=g.getTarget();
+        return "target="+(t==null?"null":t.getName().getString())
+                +", lastHurt="+(g.getLastHurtByMob()==null?"null":g.getLastHurtByMob().getName().getString())
+                +", anger="+g.getPersistentAngerTarget()+", angerTime="+g.getRemainingPersistentAngerTime();
     }
 
     @GameTest(template=FabricGameTest.EMPTY_STRUCTURE, timeoutTicks=100)
@@ -71,9 +94,7 @@ public final class PlayerRetargetLockGameTest implements FabricGameTest {
         GolemBase g=construct(helper);
         ServerPlayer p=player(helper,"UnprovokedPlayer");
         p.setPos(g.getX()+2.0D,g.getY(),g.getZ());
-        g.setLastHurtByMob(null);
-        g.stopBeingAngry();
-        g.setTarget(p);
+        g.setLastHurtByMob(null); g.stopBeingAngry(); g.setTarget(p);
         helper.assertTrue(g.getTarget()==null,"Anti-shared-retaliation guard stopped rejecting an unprovoked player");
         helper.getLevel().players().remove(p); g.discard(); helper.succeed();
     }
@@ -88,9 +109,7 @@ public final class PlayerRetargetLockGameTest implements FabricGameTest {
         helper.assertTrue(g.canAttack(p),"Directly provoking player was not vanilla-attackable");
         g.setTarget(p);
         helper.assertTrue(g.getTarget()==p,"Directly provoking player could not become target");
-        g.setPersistentAngerTarget(p.getUUID());
-        g.setRemainingPersistentAngerTime(600);
-        g.setLastHurtByMob(z);
+        g.setPersistentAngerTarget(p.getUUID()); g.setRemainingPersistentAngerTime(600); g.setLastHurtByMob(z);
         helper.assertTrue(g.isAngryAt(p),"Persistent player anger stopped being valid after hostile mob overwrote lastHurtByMob");
         g.setTarget(p);
         helper.assertTrue(g.getTarget()==p,"Golem could not reacquire still-valid angry player");
@@ -100,50 +119,50 @@ public final class PlayerRetargetLockGameTest implements FabricGameTest {
     @GameTest(template=FabricGameTest.EMPTY_STRUCTURE, timeoutTicks=180)
     public void hostileTargetingRecoversWhenHostileOverwritesProvocation(GameTestHelper helper) {
         GolemBase g=construct(helper);
-        ServerPlayer p=player(helper,"InterruptedProvoker");
-        p.setPos(g.getX()+3.0D,g.getY(),g.getZ());
+        ServerPlayer p=player(helper,"InterruptedProvoker"); p.setPos(g.getX()+3.0D,g.getY(),g.getZ());
         Zombie first=zombie(helper,g.getX()+2.0D,g.getY(),g.getZ()+2.0D);
         Zombie second=zombie(helper,g.getX()+4.0D,g.getY(),g.getZ()+2.0D);
-        g.setLastHurtByMob(p);
-        g.setTarget(p);
-        for(int i=0;i<4;i++) g.tick();
-        g.setTarget(first);
-        g.setLastHurtByMob(first);
-        for(int i=0;i<4;i++) g.tick();
-        first.discard();
-        if (g.getTarget()==first) g.setTarget(null);
-        for(int i=0;i<60;i++) g.tick();
-        LivingEntity after=g.getTarget();
-        String state="target="+(after==null?"null":after.getName().getString())
-                +", lastHurt="+(g.getLastHurtByMob()==null?"null":g.getLastHurtByMob().getName().getString())
-                +", anger="+g.getPersistentAngerTarget()+", angerTime="+g.getRemainingPersistentAngerTime();
+        g.setLastHurtByMob(p); g.setTarget(p); for(int i=0;i<4;i++) g.tick();
+        g.setTarget(first); g.setLastHurtByMob(first); for(int i=0;i<4;i++) g.tick();
+        first.discard(); if (g.getTarget()==first) g.setTarget(null); for(int i=0;i<60;i++) g.tick();
+        LivingEntity after=g.getTarget(); String s=state(g);
         helper.getLevel().players().remove(p); second.discard(); g.discard();
-        helper.assertTrue(after==second,
-                "Extra Golem failed to release stale player HurtBy goal and reacquire remaining hostile mob: "+state);
+        helper.assertTrue(after==second,"Extra Golem failed to release stale player goal and reacquire hostile: "+s);
         helper.succeed();
     }
 
     @GameTest(template=FabricGameTest.EMPTY_STRUCTURE, timeoutTicks=180)
-    public void validPlayerProvocationIsResumedAfterTemporaryHostileSwitch(GameTestHelper helper) {
-        GolemBase g=construct(helper);
-        ServerPlayer p=player(helper,"StillProvokedPlayer");
-        p.setPos(g.getX()+3.0D,g.getY(),g.getZ());
+    public void vanillaDoPushSwitchReturnsToProvokingPlayer(GameTestHelper helper) {
+        IronGolem g=vanilla(helper);
+        ServerPlayer p=player(helper,"VanillaProvoker"); p.setPos(g.getX()+3.0D,g.getY(),g.getZ());
         Zombie temporary=zombie(helper,g.getX()+2.0D,g.getY(),g.getZ()+2.0D);
-        g.setLastHurtByMob(p);
-        g.setTarget(p);
-        for(int i=0;i<4;i++) g.tick();
-        g.setTarget(temporary);
+        g.setLastHurtByMob(p); g.setTarget(p); for(int i=0;i<4;i++) g.tick();
+        forceDoPushSwitch(helper,g,temporary);
+        helper.assertTrue(g.getLastHurtByMob()==p,"doPush unexpectedly overwrote vanilla lastHurtByMob");
         temporary.discard();
-        if (g.getTarget()==temporary) g.setTarget(null);
-        for(int i=0;i<30;i++) g.tick();
-        LivingEntity after=g.getTarget();
-        String state="target="+(after==null?"null":after.getName().getString())
-                +", lastHurt="+(g.getLastHurtByMob()==null?"null":g.getLastHurtByMob().getName().getString())
-                +", anger="+g.getPersistentAngerTarget()+", angerTime="+g.getRemainingPersistentAngerTime();
+        for(int i=0;i<40;i++) g.tick();
+        LivingEntity after=g.getTarget(); String s=state(g);
         helper.getLevel().players().remove(p); g.discard();
-        helper.assertTrue(after==p,"Still-valid player provocation was not resumed after temporary hostile switch: "+state);
+        helper.assertTrue(after==p,"Vanilla natural Iron Golem did not resume the provoking player after doPush hostile died: "+s);
+        helper.succeed();
+    }
+
+    @GameTest(template=FabricGameTest.EMPTY_STRUCTURE, timeoutTicks=180)
+    public void extraDoPushSwitchMustNotEnterDeadTargetState(GameTestHelper helper) {
+        GolemBase g=construct(helper);
+        ServerPlayer p=player(helper,"ExtraProvoker"); p.setPos(g.getX()+3.0D,g.getY(),g.getZ());
+        Zombie temporary=zombie(helper,g.getX()+2.0D,g.getY(),g.getZ()+2.0D);
+        Zombie remaining=zombie(helper,g.getX()+4.0D,g.getY(),g.getZ()+2.0D);
+        g.setLastHurtByMob(p); g.setTarget(p); for(int i=0;i<4;i++) g.tick();
+        forceDoPushSwitch(helper,g,temporary);
+        helper.assertTrue(g.getLastHurtByMob()==p,"doPush unexpectedly overwrote Extra Golem lastHurtByMob");
+        temporary.discard();
+        for(int i=0;i<60;i++) g.tick();
+        LivingEntity after=g.getTarget(); String s=state(g);
+        helper.getLevel().players().remove(p); remaining.discard(); g.discard();
+        helper.assertTrue(after==p || after==remaining,"Extra Golem entered dead target state after real doPush switch: "+s);
         helper.succeed();
     }
 }
 ''')
-print('Injected isolated stale HurtBy release, hostile recovery, and valid-player retarget GameTests.')
+print('Injected actual doPush vanilla parity and Extra Golem dead-target regression tests.')
