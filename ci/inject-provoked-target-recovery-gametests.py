@@ -103,6 +103,10 @@ public final class ProvokedTargetRecoveryGameTest implements FabricGameTest {
             +" zCanAttack="+(z!=null&&g.canAttack(z))+" zCanAttackType="+(z!=null&&g.canAttackType(z.getType()))
             +" zAllied="+(z!=null&&g.isAlliedTo(z))+" goals=["+g.debugProvokedRecoveryTargetGoals()+"]");
     }
+    private static void debugFailure(GolemBase g) {
+        System.out.println("REC_FAIL_CANUSE "+g.debugProvokedRecoveryTargetGoalCanUse());
+        System.out.println("REC_FAIL_INTERNALS "+g.debugProvokedRecoverySelectorInternals());
+    }
 
     @GameTest(template=FabricGameTest.EMPTY_STRUCTURE, timeoutTicks=160)
     public void directPlayerIsReacquiredAfterTemporaryHostileDies(GameTestHelper h) {
@@ -113,27 +117,30 @@ public final class ProvokedTargetRecoveryGameTest implements FabricGameTest {
         h.runAfterDelay(70,()->{ h.assertTrue(g.getTarget()==p,"Extra Golem failed to reacquire its still-valid direct player provoker after temporary hostile died"); h.assertTrue(g.getLastHurtByMob()==p,"direct player provenance was not restored"); h.succeed(); });
     }
 
-    @GameTest(template=FabricGameTest.EMPTY_STRUCTURE, timeoutTicks=180)
+    @GameTest(template=FabricGameTest.EMPTY_STRUCTURE, timeoutTicks=280)
     public void creativeCancelsInterruptedProvocationAndHostileTargetingRecovers(GameTestHelper h) {
         GolemBase g=extra(h,4); Player p=player(h,g); final Zombie[] first=new Zombie[1]; final Zombie[] second=new Zombie[1]; final Zombie[] third=new Zombie[1];
         h.runAfterDelay(10,()->provoke(g,p));
         h.runAfterDelay(25,()->{ first[0]=zombie(h,g,2); g.setTarget(first[0]); g.setLastHurtByMob(first[0]); h.assertTrue(g.getTarget()==first[0],"temporary hostile did not interrupt player"); });
         h.runAfterDelay(40,()->{ p.setPos(g.getX()+100.0,g.getY(),g.getZ()); first[0].discard(); trace("REC40_AFTER_CANCEL",g,p,first[0]); });
         h.runAfterDelay(60,()->{ h.assertTrue(g.getTarget()!=p,"invalid player was incorrectly reacquired"); second[0]=zombie(h,g,4); trace("REC60_SPAWN_SECOND",g,p,second[0]); });
-        h.runAfterDelay(64,()->trace("REC64",g,p,second[0]));
-        h.runAfterDelay(68,()->trace("REC68",g,p,second[0]));
-        h.runAfterDelay(72,()->{
-            trace("REC72_ASSERT",g,p,second[0]);
-            if (!acquiredOrKilled(g,second[0])) {
-                System.out.println("REC72_CANUSE "+g.debugProvokedRecoveryTargetGoalCanUse());
-                System.out.println("REC72_INTERNALS "+g.debugProvokedRecoverySelectorInternals());
-            }
-            h.assertTrue(acquiredOrKilled(g,second[0]),"Extra Golem did not acquire the first hostile after player provocation was cancelled");
+        // NearestAttackableTargetGoal intentionally uses randomized acquisition attempts.
+        // Give it a long window like the established Bedrock regression; if the golem
+        // acquired and killed the hostile during the window, that is also success.
+        h.runAfterDelay(130,()->{
+            trace("REC130_SECOND",g,p,second[0]);
+            if (!acquiredOrKilled(g,second[0])) debugFailure(g);
+            h.assertTrue(acquiredOrKilled(g,second[0]),"Extra Golem never acquired the first hostile after player provocation was cancelled");
             if (!second[0].isRemoved()) second[0].discard();
         });
-        h.runAfterDelay(82,()->{ third[0]=zombie(h,g,4); trace("REC82_SPAWN_THIRD",g,p,third[0]); });
-        h.runAfterDelay(100,()->{ trace("REC100_ASSERT",g,p,third[0]); h.assertTrue(acquiredOrKilled(g,third[0]),"Extra Golem became stuck again instead of acquiring the next hostile after the first post-cancel hostile"); h.succeed(); });
+        h.runAfterDelay(145,()->{ third[0]=zombie(h,g,4); trace("REC145_SPAWN_THIRD",g,p,third[0]); });
+        h.runAfterDelay(220,()->{
+            trace("REC220_THIRD",g,p,third[0]);
+            if (!acquiredOrKilled(g,third[0])) debugFailure(g);
+            h.assertTrue(acquiredOrKilled(g,third[0]),"Extra Golem became permanently stuck instead of acquiring the next hostile");
+            h.succeed();
+        });
     }
 }
 ''')
-print('Injected canUse/selector-internal provoked-target diagnostics')
+print('Injected robust-window consecutive provoked-target recovery GameTests')
