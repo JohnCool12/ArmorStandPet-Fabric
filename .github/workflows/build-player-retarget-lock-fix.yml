@@ -100,7 +100,8 @@ jobs:
           wanted=('unprovokedPlayerSetterStillRejected'.lower(),
                   'directProvocationStillAllowsPlayerAndAngerSurvivesLastHurtOverwrite'.lower(),
                   'hostileTargetingRecoversWhenHostileOverwritesProvocation'.lower(),
-                  'validPlayerProvocationIsResumedAfterTemporaryHostileSwitch'.lower(),
+                  'vanillaDoPushSwitchReturnsToProvokingPlayer'.lower(),
+                  'extraDoPushSwitchMustNotEnterDeadTargetState'.lower(),
                   'directPunchDoesNotAlertBystanderExtraGolem'.lower(),
                   'vanillaNaturalIronGolemDirectPunchIsIndividual'.lower(),
                   'lowVillagerReputationCanMakeMultipleExtraGolemsHostile'.lower())
@@ -110,7 +111,7 @@ jobs:
               node=matches[0].find('failure')
               if node is None: node=matches[0].find('error')
               if node is not None: raise SystemExit('GameTest failed '+name+': '+str(node.attrib.get('message')))
-          print('PASS: direct retaliation, stale HurtBy release, hostile recovery, valid player retarget and village exception all verified.')
+          print('PASS: actual doPush parity, direct retaliation, stale-goal release, hostile recovery and village exception all verified.')
           PY
           if [ "$status" -ne 0 ]; then tail -500 ../player-retarget-gametest.log; exit 1; fi
 
