@@ -39,9 +39,11 @@ jobs:
           set -euo pipefail
           cd project
           python "$GITHUB_WORKSPACE/ci/artifacts-real-death-helper.py"
+          sed -i 's#Lnet/minecraft/world/entity/player/Player;)V#Lnet/minecraft/class_1657;)V#' common/src/main/java/artifacts/mixin/compat/hardcorerevival/HardcoreRevivalManagerMixin.java
           grep -F 'findRespawnPositionAndUseSpawnBlock(true, DimensionTransition.DO_NOTHING)' common/src/main/java/artifacts/compat/hardcorerevival/HardcoreRevivalFinalDeathCompat.java
           grep -F 'equippedTotem.setCount(0)' common/src/main/java/artifacts/compat/hardcorerevival/HardcoreRevivalFinalDeathCompat.java
           grep -F 'EquipmentSlotManager.tryEquipAccessory' common/src/main/java/artifacts/compat/hardcorerevival/HardcoreRevivalFinalDeathCompat.java
+          grep -F 'reset(Lnet/minecraft/class_1657;)V' common/src/main/java/artifacts/mixin/compat/hardcorerevival/HardcoreRevivalManagerMixin.java
           grep -F 'compat.hardcorerevival.PlayerListRespawnMixin' common/src/main/resources/mixins.artifacts.common.json
           git diff --check
 
