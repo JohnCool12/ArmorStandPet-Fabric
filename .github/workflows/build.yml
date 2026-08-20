@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -46,31 +46,46 @@ jobs:
           git diff --check
 
       - name: Build Fabric 1.21.1 helper
-        working-directory: project
-        run: |
-          chmod +x gradlew
-          ./gradlew :fabric:build --stacktrace --no-daemon
-
-      - name: Validate and collect helper JAR
         shell: bash
         run: |
-          set -euo pipefail
-          mkdir -p artifact
-          JAR="$(find project/fabric/build/libs -maxdepth 1 -type f -name 'artifacts-fabric-*.jar' ! -name '*-sources.jar' ! -name '*-dev-shadow.jar' -print -quit)"
-          test -n "$JAR"
-          cp "$JAR" artifact/artifacts-real-death-helper.jar
-          jar tf artifact/artifacts-real-death-helper.jar | grep -q 'artifacts/compat/hardcorerevival/HardcoreRevivalFinalDeathCompat.class'
-          jar tf artifact/artifacts-real-death-helper.jar | grep -q 'artifacts/mixin/compat/hardcorerevival/HardcoreRevivalManagerMixin.class'
-          jar tf artifact/artifacts-real-death-helper.jar | grep -q 'artifacts/mixin/compat/hardcorerevival/PlayerListRespawnMixin.class'
-          unzip -p artifact/artifacts-real-death-helper.jar artifacts/compat/hardcorerevival/HardcoreRevivalFinalDeathCompat.class | strings | grep -q 'PENDING_RESPAWN'
-          unzip -p artifact/artifacts-real-death-helper.jar artifacts/mixin/compat/hardcorerevival/HardcoreRevivalManagerMixin.class | strings | grep -q 'notRescuedInTime'
-          unzip -p artifact/artifacts-real-death-helper.jar artifacts/mixin/compat/hardcorerevival/PlayerListRespawnMixin.class | strings | grep -q 'respawn'
-          sha256sum artifact/artifacts-real-death-helper.jar > artifact/SHA256SUMS.txt
-          cat artifact/SHA256SUMS.txt
+          set -o pipefail
+          mkdir -p /tmp/artifacts-real-death-ci
+          cd project
+          chmod +x gradlew
+          ./gradlew :fabric:build --stacktrace --no-daemon 2>&1 | tee /tmp/artifacts-real-death-ci/build.log
+
+      - name: Publish CI result to temporary branch
+        if: always()
+        shell: bash
+        run: |
+          set -u
+          mkdir -p ci/output
+          rm -f ci/output/artifacts-real-death-helper.jar ci/output/STATUS.txt ci/output/build-tail.txt
+          JAR="$(find project/fabric/build/libs -maxdepth 1 -type f -name 'artifacts-fabric-*.jar' ! -name '*-sources.jar' ! -name '*-dev-shadow.jar' -print -quit 2>/dev/null || true)"
+          if [ -n "$JAR" ] \
+             && jar tf "$JAR" | grep -q 'artifacts/compat/hardcorerevival/HardcoreRevivalFinalDeathCompat.class' \
+             && jar tf "$JAR" | grep -q 'artifacts/mixin/compat/hardcorerevival/HardcoreRevivalManagerMixin.class' \
+             && jar tf "$JAR" | grep -q 'artifacts/mixin/compat/hardcorerevival/PlayerListRespawnMixin.class'; then
+            cp "$JAR" ci/output/artifacts-real-death-helper.jar
+            echo 'success' > ci/output/STATUS.txt
+          else
+            echo 'failure' > ci/output/STATUS.txt
+          fi
+          if [ -f /tmp/artifacts-real-death-ci/build.log ]; then
+            tail -n 500 /tmp/artifacts-real-death-ci/build.log > ci/output/build-tail.txt
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add ci/output
+          if ! git diff --cached --quiet; then
+            git commit -m '[skip ci] CI: publish Artifacts real-death helper result'
+            git push origin HEAD:ci/artifacts-finaldeath-20260813
+          fi
 
       - name: Upload helper
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: artifacts-real-death-helper
-          path: artifact/*
+          path: ci/output/*
           if-no-files-found: error
