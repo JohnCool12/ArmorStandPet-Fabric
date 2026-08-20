@@ -1,4 +1,4 @@
-name: Build Artifacts Spawn Teleport Helper
+name: Build Artifacts HR Knockout Suppression Helper
 
 on:
   push:
@@ -33,15 +33,108 @@ jobs:
           grep -Fx 'minecraft_version=1.21.1' gradle.properties
           grep -Fx 'mod_version=13.2.1' gradle.properties
 
-      - name: Apply personal spawn teleport patch
+      - name: Add Hardcore Revival knockout suppression compatibility
         shell: bash
         run: |
           set -euo pipefail
           cd project
-          python "$GITHUB_WORKSPACE/ci/artifacts-spawnpoint-patch.py"
-          grep -F 'findRespawnPositionAndUseSpawnBlock(false, DimensionTransition.DO_NOTHING)' common/src/main/java/artifacts/component/ability/DeathProtectionTeleport.java
-          grep -F '!respawn.missingRespawnBlock()' common/src/main/java/artifacts/component/ability/DeathProtectionTeleport.java
-          grep -F 'player.teleportTo(respawn.newLevel()' common/src/main/java/artifacts/component/ability/DeathProtectionTeleport.java
+          mkdir -p common/src/main/java/artifacts/compat/hardcorerevival
+          mkdir -p common/src/main/java/artifacts/mixin/compat/hardcorerevival
+
+          cat > common/src/main/java/artifacts/compat/hardcorerevival/HardcoreRevivalKnockoutCompat.java <<'JAVA'
+          package artifacts.compat.hardcorerevival;
+
+          import net.minecraft.world.entity.LivingEntity;
+          import net.minecraft.world.entity.player.Player;
+
+          import java.util.Collections;
+          import java.util.Map;
+          import java.util.WeakHashMap;
+
+          public final class HardcoreRevivalKnockoutCompat {
+              private static final Map<Player, Long> KNOCKOUT_TICKS = Collections.synchronizedMap(new WeakHashMap<>());
+
+              private HardcoreRevivalKnockoutCompat() {
+              }
+
+              public static void markKnockout(Player player) {
+                  KNOCKOUT_TICKS.put(player, player.level().getGameTime());
+              }
+
+              public static boolean consumeInitialKnockoutSuppression(LivingEntity entity) {
+                  if (!(entity instanceof Player player)) {
+                      return false;
+                  }
+                  Long tick = KNOCKOUT_TICKS.remove(player);
+                  return tick != null && tick.longValue() == player.level().getGameTime();
+              }
+          }
+          JAVA
+
+          cat > common/src/main/java/artifacts/mixin/compat/hardcorerevival/HardcoreRevivalKnockoutMixin.java <<'JAVA'
+          package artifacts.mixin.compat.hardcorerevival;
+
+          import artifacts.compat.hardcorerevival.HardcoreRevivalKnockoutCompat;
+          import net.minecraft.world.damagesource.DamageSource;
+          import net.minecraft.world.entity.player.Player;
+          import org.spongepowered.asm.mixin.Mixin;
+          import org.spongepowered.asm.mixin.Pseudo;
+          import org.spongepowered.asm.mixin.injection.At;
+          import org.spongepowered.asm.mixin.injection.Inject;
+          import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+
+          @Pseudo
+          @Mixin(targets = "net.blay09.mods.hardcorerevival.HardcoreRevivalManager", remap = false)
+          public abstract class HardcoreRevivalKnockoutMixin {
+              @Inject(method = "knockout", at = @At("HEAD"), remap = false, require = 0)
+              private static void artifacts$markInitialKnockout(Player player, DamageSource source, CallbackInfo ci) {
+                  HardcoreRevivalKnockoutCompat.markKnockout(player);
+              }
+          }
+          JAVA
+
+          cat > common/src/main/java/artifacts/mixin/compat/hardcorerevival/DeathProtectionTeleportInitialKnockoutMixin.java <<'JAVA'
+          package artifacts.mixin.compat.hardcorerevival;
+
+          import artifacts.compat.hardcorerevival.HardcoreRevivalKnockoutCompat;
+          import artifacts.component.ability.DeathProtectionTeleport;
+          import net.minecraft.world.entity.LivingEntity;
+          import net.minecraft.world.item.ItemStack;
+          import org.spongepowered.asm.mixin.Mixin;
+          import org.spongepowered.asm.mixin.injection.At;
+          import org.spongepowered.asm.mixin.injection.Inject;
+          import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
+
+          @Mixin(value = DeathProtectionTeleport.class, remap = false)
+          public abstract class DeathProtectionTeleportInitialKnockoutMixin {
+              @Inject(method = "findTotem", at = @At("HEAD"), cancellable = true, remap = false)
+              private static void artifacts$suppressDuringInitialKnockout(LivingEntity entity, CallbackInfoReturnable<ItemStack> cir) {
+                  if (HardcoreRevivalKnockoutCompat.consumeInitialKnockoutSuppression(entity)) {
+                      cir.setReturnValue(ItemStack.EMPTY);
+                  }
+              }
+          }
+          JAVA
+
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p = Path('common/src/main/resources/mixins.artifacts.common.json')
+          data = json.loads(p.read_text())
+          mixins = data['mixins']
+          for name in [
+              'compat.hardcorerevival.HardcoreRevivalKnockoutMixin',
+              'compat.hardcorerevival.DeathProtectionTeleportInitialKnockoutMixin',
+          ]:
+              if name not in mixins:
+                  mixins.append(name)
+          p.write_text(json.dumps(data, indent=2) + '\n')
+          PY
+
+          grep -F 'markKnockout(player)' common/src/main/java/artifacts/mixin/compat/hardcorerevival/HardcoreRevivalKnockoutMixin.java
+          grep -F 'consumeInitialKnockoutSuppression(entity)' common/src/main/java/artifacts/mixin/compat/hardcorerevival/DeathProtectionTeleportInitialKnockoutMixin.java
+          grep -F 'compat.hardcorerevival.HardcoreRevivalKnockoutMixin' common/src/main/resources/mixins.artifacts.common.json
+          grep -F 'compat.hardcorerevival.DeathProtectionTeleportInitialKnockoutMixin' common/src/main/resources/mixins.artifacts.common.json
           git diff --check
 
       - name: Build Fabric 1.21.1
@@ -57,14 +150,17 @@ jobs:
           mkdir -p artifact
           JAR="$(find project/fabric/build/libs -maxdepth 1 -type f -name 'artifacts-fabric-*.jar' ! -name '*-sources.jar' ! -name '*-dev-shadow.jar' -print -quit)"
           test -n "$JAR"
-          cp "$JAR" artifact/artifacts-spawn-teleport-helper.jar
-          jar tf artifact/artifacts-spawn-teleport-helper.jar | grep -q 'artifacts/component/ability/DeathProtectionTeleport.class'
-          unzip -p artifact/artifacts-spawn-teleport-helper.jar artifacts/component/ability/DeathProtectionTeleport.class | strings | grep -q 'method_60590'
-          sha256sum artifact/artifacts-spawn-teleport-helper.jar > artifact/SHA256SUMS.txt
+          cp "$JAR" artifact/artifacts-hr-knockout-suppression-helper.jar
+          jar tf artifact/artifacts-hr-knockout-suppression-helper.jar | grep -q 'artifacts/compat/hardcorerevival/HardcoreRevivalKnockoutCompat.class'
+          jar tf artifact/artifacts-hr-knockout-suppression-helper.jar | grep -q 'artifacts/mixin/compat/hardcorerevival/HardcoreRevivalKnockoutMixin.class'
+          jar tf artifact/artifacts-hr-knockout-suppression-helper.jar | grep -q 'artifacts/mixin/compat/hardcorerevival/DeathProtectionTeleportInitialKnockoutMixin.class'
+          unzip -p artifact/artifacts-hr-knockout-suppression-helper.jar artifacts/mixin/compat/hardcorerevival/HardcoreRevivalKnockoutMixin.class | strings | grep -q 'knockout'
+          unzip -p artifact/artifacts-hr-knockout-suppression-helper.jar artifacts/mixin/compat/hardcorerevival/DeathProtectionTeleportInitialKnockoutMixin.class | strings | grep -q 'findTotem'
+          sha256sum artifact/artifacts-hr-knockout-suppression-helper.jar > artifact/SHA256SUMS.txt
 
       - name: Upload helper
         uses: actions/upload-artifact@v4
         with:
-          name: artifacts-spawn-teleport-helper
+          name: artifacts-hr-knockout-suppression-helper
           path: artifact/*
           if-no-files-found: error
