@@ -39,19 +39,30 @@ jobs:
 
           TELEPORT=common/src/main/java/artifacts/component/ability/DeathProtectionTeleport.java
           COMPAT=common/src/main/java/artifacts/compat/hardcorerevival/HardcoreRevivalFinalDeathCompat.java
+          SCHED=common/src/main/java/artifacts/compat/hardcorerevival/ChorusTotemRespawnEffects.java
+          TICKMIXIN=common/src/main/java/artifacts/mixin/compat/hardcorerevival/ServerPlayerRespawnEffectsMixin.java
 
-          grep -F 'player.server.schedule(new TickTask(player.server.getTickCount() + 1' "$TELEPORT"
-          grep -F 'destinationLevel.broadcastEntityEvent(live, (byte) 46);' "$TELEPORT"
-          grep -F 'SoundEvents.CHORUS_FRUIT_TELEPORT' "$TELEPORT"
-          test "$(grep -Fc 'destinationLevel.broadcastEntityEvent(live, (byte) 46);' "$TELEPORT")" -eq 1
+          grep -F 'ChorusTotemRespawnEffects.scheduleTeleportEffects(player);' "$TELEPORT"
           ! grep -Fq 'oldLevel.playSound' "$TELEPORT"
           ! grep -Fq 'ServerLevel oldLevel = level;' "$TELEPORT"
+          grep -F 'findRespawnPositionAndUseSpawnBlock(false, DimensionTransition.DO_NOTHING)' "$TELEPORT"
 
-          grep -F 'player.server.schedule(new TickTask(player.server.getTickCount() + 1' "$COMPAT"
-          grep -F 'live.serverLevel().playSound(live, live.getX(), live.getY(), live.getZ(),' "$COMPAT"
+          grep -F 'ChorusTotemRespawnEffects.scheduleActivationEffects(player);' "$COMPAT"
           ! grep -Fq 'player.server.execute(' "$COMPAT"
 
-          grep -F 'findRespawnPositionAndUseSpawnBlock(false, DimensionTransition.DO_NOTHING)' "$TELEPORT"
+          grep -F 'int dueTick = player.server.getTickCount() + 1;' "$SCHED"
+          grep -F 'destinationLevel.playSound(null, x, y, z,' "$SCHED"
+          grep -F 'SoundEvents.CHORUS_FRUIT_TELEPORT' "$SCHED"
+          grep -F 'destinationLevel.broadcastEntityEvent(player, (byte) 46);' "$SCHED"
+          grep -F 'destinationLevel.playSound(player, x, y, z,' "$SCHED"
+          grep -F 'SoundEvents.TOTEM_USE' "$SCHED"
+          grep -F 'NetworkHandler.sendToPlayer(player, new ChorusTotemUsedPacket());' "$SCHED"
+
+          grep -F '@Mixin(ServerPlayer.class)' "$TICKMIXIN"
+          grep -F '@Inject(method = "tick", at = @At("HEAD"))' "$TICKMIXIN"
+          grep -F 'ChorusTotemRespawnEffects.tick((ServerPlayer) (Object) this);' "$TICKMIXIN"
+          grep -F 'compat.hardcorerevival.ServerPlayerRespawnEffectsMixin' common/src/main/resources/mixins.artifacts.common.json
+
           grep -F 'Codec.intRange(1, 3)' common/src/main/java/artifacts/registry/ModDataComponents.java
           grep -F 'schedulePostTeleportEffects(serverPlayer)' common/src/main/java/artifacts/mixin/compat/hardcorerevival/HardcoreRevivalManagerMixin.java
           test ! -e common/src/generated/resources/data/hardcorerevival/tags/item/passthrough_death_when_held.json
@@ -75,17 +86,28 @@ jobs:
 
           jar tf "$JAR" > deliver/jar-list.txt
           grep -Fx 'artifacts/compat/hardcorerevival/HardcoreRevivalFinalDeathCompat.class' deliver/jar-list.txt
+          grep -Fx 'artifacts/compat/hardcorerevival/ChorusTotemRespawnEffects.class' deliver/jar-list.txt
           grep -Fx 'artifacts/mixin/compat/hardcorerevival/HardcoreRevivalManagerMixin.class' deliver/jar-list.txt
+          grep -Fx 'artifacts/mixin/compat/hardcorerevival/ServerPlayerRespawnEffectsMixin.class' deliver/jar-list.txt
           ! grep -Fxq 'data/hardcorerevival/tags/item/passthrough_death_when_held.json' deliver/jar-list.txt
 
           unzip -p "$JAR" assets/artifacts/lang/en_us.json > deliver/en_us.json
           grep -Fq 'artifacts.tooltip.chorus_totem_uses' deliver/en_us.json
+          unzip -p "$JAR" mixins.artifacts.common.json > deliver/mixins.json
+          grep -Fq 'compat.hardcorerevival.ServerPlayerRespawnEffectsMixin' deliver/mixins.json
 
           javap -classpath "$JAR" -p -c artifacts.component.ability.DeathProtectionTeleport > deliver/teleport-bytecode.txt
           javap -classpath "$JAR" -p -c artifacts.compat.hardcorerevival.HardcoreRevivalFinalDeathCompat > deliver/compat-bytecode.txt
-          grep -Eq 'bipush +46' deliver/teleport-bytecode.txt
-          grep -Fq 'net/minecraft/server/TickTask' deliver/teleport-bytecode.txt
-          grep -Fq 'net/minecraft/server/TickTask' deliver/compat-bytecode.txt
+          javap -classpath "$JAR" -p -c artifacts.compat.hardcorerevival.ChorusTotemRespawnEffects > deliver/scheduler-bytecode.txt
+          javap -classpath "$JAR" -p -c artifacts.mixin.compat.hardcorerevival.ServerPlayerRespawnEffectsMixin > deliver/tick-mixin-bytecode.txt
+
+          grep -Fq 'scheduleTeleportEffects' deliver/teleport-bytecode.txt
+          grep -Fq 'scheduleActivationEffects' deliver/compat-bytecode.txt
+          grep -Fq 'getTickCount' deliver/scheduler-bytecode.txt
+          grep -Eq 'bipush +46' deliver/scheduler-bytecode.txt
+          grep -Fq 'broadcastEntityEvent' deliver/scheduler-bytecode.txt
+          grep -Fq 'NetworkHandler.sendToPlayer' deliver/scheduler-bytecode.txt
+          grep -Fq 'ChorusTotemRespawnEffects.tick' deliver/tick-mixin-bytecode.txt
 
           cp "$JAR" deliver/artifacts-fabric-13.2.1-chorus-totem-v8-respawn-effects-fix.jar
           sha256sum deliver/artifacts-fabric-13.2.1-chorus-totem-v8-respawn-effects-fix.jar > deliver/SHA256SUMS.txt
