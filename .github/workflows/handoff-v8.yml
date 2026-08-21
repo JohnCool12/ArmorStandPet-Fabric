@@ -1,0 +1,39 @@
+name: Handoff Artifacts V8 JAR
+
+on:
+  push:
+    branches:
+      - ci/artifacts-v8-handoff-20260820
+
+permissions:
+  contents: write
+
+jobs:
+  handoff:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Split finished JAR into text-safe chunks
+        shell: bash
+        run: |
+          set -euo pipefail
+          JAR='ci/output-v8/artifacts-fabric-13.2.1-chorus-totem-postrespawn-effects-v8.jar'
+          test -f "$JAR"
+          echo '91ba33a4e624dfff2a9f07e6766fbe94315c1dd394ab9aa230c7f3e4c412fe2c  '"$JAR" | sha256sum -c -
+          rm -rf ci/handoff-v8
+          mkdir -p ci/handoff-v8
+          base64 -w 0 "$JAR" | split -b 300000 - ci/handoff-v8/part-
+          sha256sum "$JAR" > ci/handoff-v8/SHA256SUMS.txt
+          wc -c ci/handoff-v8/part-* > ci/handoff-v8/SIZES.txt
+          echo success > ci/handoff-v8/STATUS.txt
+
+      - name: Publish chunks
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add ci/handoff-v8
+          git commit -m '[skip ci] CI: publish V8 binary handoff chunks'
+          git push origin HEAD:ci/artifacts-v8-handoff-20260820
