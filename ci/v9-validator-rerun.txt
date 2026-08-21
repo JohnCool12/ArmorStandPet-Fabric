@@ -1,0 +1,1 @@
+Rerun V9 PR validation after replacing pipefail-sensitive archive pipelines with file-based checks.
