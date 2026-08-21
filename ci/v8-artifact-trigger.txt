@@ -1,0 +1,1 @@
+Trigger binary-safe artifact handoff for the finished Artifacts V8 JAR.
