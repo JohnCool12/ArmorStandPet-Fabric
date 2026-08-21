@@ -1,9 +1,9 @@
-name: Build Artifacts Real Death Helper
+name: Build Artifacts V8 Post-Respawn Effects
 
 on:
   push:
     branches:
-      - ci/artifacts-finaldeath-20260813
+      - ci/artifacts-postrespawn-effects-20260820
   workflow_dispatch:
 
 permissions:
@@ -33,61 +33,76 @@ jobs:
           grep -Fx 'minecraft_version=1.21.1' gradle.properties
           grep -Fx 'mod_version=13.2.1' gradle.properties
 
-      - name: Apply real-death compatibility helper
+      - name: Apply V8 source overlay
         shell: bash
         run: |
           set -euo pipefail
+          base64 -d ci/artifacts-v8-overlay.b64 > /tmp/artifacts-v8-overlay.tar.xz
+          tar -xJf /tmp/artifacts-v8-overlay.tar.xz -C project
+          rm -f project/common/src/generated/resources/data/hardcorerevival/tags/item/passthrough_death_when_held.json
+          rm -f project/common/src/main/resources/data/hardcorerevival/tags/item/passthrough_death_when_held.json
           cd project
-          python "$GITHUB_WORKSPACE/ci/artifacts-real-death-helper.py"
-          sed -i 's#Lnet/minecraft/world/entity/player/Player;)V#Lnet/minecraft/class_1657;)V#' common/src/main/java/artifacts/mixin/compat/hardcorerevival/HardcoreRevivalManagerMixin.java
-          grep -F 'findRespawnPositionAndUseSpawnBlock(true, DimensionTransition.DO_NOTHING)' common/src/main/java/artifacts/compat/hardcorerevival/HardcoreRevivalFinalDeathCompat.java
-          grep -F 'equippedTotem.setCount(0)' common/src/main/java/artifacts/compat/hardcorerevival/HardcoreRevivalFinalDeathCompat.java
-          grep -F 'EquipmentSlotManager.tryEquipAccessory' common/src/main/java/artifacts/compat/hardcorerevival/HardcoreRevivalFinalDeathCompat.java
-          grep -F 'reset(Lnet/minecraft/class_1657;)V' common/src/main/java/artifacts/mixin/compat/hardcorerevival/HardcoreRevivalManagerMixin.java
-          grep -F 'compat.hardcorerevival.PlayerListRespawnMixin' common/src/main/resources/mixins.artifacts.common.json
+          grep -F 'schedulePostTeleportEffects(serverPlayer)' common/src/main/java/artifacts/mixin/compat/hardcorerevival/HardcoreRevivalManagerMixin.java
+          grep -F 'player.server.execute' common/src/main/java/artifacts/compat/hardcorerevival/HardcoreRevivalFinalDeathCompat.java
+          grep -F 'NetworkHandler.sendToPlayer(live, new ChorusTotemUsedPacket())' common/src/main/java/artifacts/compat/hardcorerevival/HardcoreRevivalFinalDeathCompat.java
+          grep -F 'compat.hardcorerevival.DeathProtectionTeleportKnockoutOnlyMixin' common/src/main/resources/mixins.artifacts.common.json
+          grep -F 'Codec.intRange(1, 3)' common/src/main/java/artifacts/registry/ModDataComponents.java
+          grep -F 'findRespawnPositionAndUseSpawnBlock(false, DimensionTransition.DO_NOTHING)' common/src/main/java/artifacts/component/ability/DeathProtectionTeleport.java
+          test ! -e common/src/generated/resources/data/hardcorerevival/tags/item/passthrough_death_when_held.json
+          python -m json.tool common/src/main/resources/mixins.artifacts.common.json >/dev/null
+          python -m json.tool common/src/generated/resources/assets/artifacts/lang/en_us.json >/dev/null
           git diff --check
 
-      - name: Build Fabric 1.21.1 helper
+      - name: Build Fabric 1.21.1 JAR
         shell: bash
         run: |
           set -o pipefail
-          mkdir -p /tmp/artifacts-real-death-ci
+          mkdir -p /tmp/artifacts-v8-ci
           cd project
           chmod +x gradlew
-          ./gradlew :fabric:build --stacktrace --no-daemon 2>&1 | tee /tmp/artifacts-real-death-ci/build.log
+          ./gradlew :fabric:build --stacktrace --no-daemon 2>&1 | tee /tmp/artifacts-v8-ci/build.log
 
-      - name: Publish CI result to temporary branch
+      - name: Validate and publish result
         if: always()
         shell: bash
         run: |
           set -u
-          mkdir -p ci/output
-          rm -f ci/output/artifacts-real-death-helper.jar ci/output/STATUS.txt ci/output/build-tail.txt
+          mkdir -p ci/output-v8
+          rm -f ci/output-v8/*
           JAR="$(find project/fabric/build/libs -maxdepth 1 -type f -name 'artifacts-fabric-*.jar' ! -name '*-sources.jar' ! -name '*-dev-shadow.jar' -print -quit 2>/dev/null || true)"
-          if [ -n "$JAR" ] \
-             && jar tf "$JAR" | grep -q 'artifacts/compat/hardcorerevival/HardcoreRevivalFinalDeathCompat.class' \
-             && jar tf "$JAR" | grep -q 'artifacts/mixin/compat/hardcorerevival/HardcoreRevivalManagerMixin.class' \
-             && jar tf "$JAR" | grep -q 'artifacts/mixin/compat/hardcorerevival/PlayerListRespawnMixin.class'; then
-            cp "$JAR" ci/output/artifacts-real-death-helper.jar
-            echo 'success' > ci/output/STATUS.txt
-          else
-            echo 'failure' > ci/output/STATUS.txt
+          OK=1
+          if [ -z "$JAR" ]; then OK=0; fi
+          if [ "$OK" = 1 ]; then
+            jar tf "$JAR" | grep -q 'artifacts/compat/hardcorerevival/HardcoreRevivalFinalDeathCompat.class' || OK=0
+            jar tf "$JAR" | grep -q 'artifacts/mixin/compat/hardcorerevival/HardcoreRevivalManagerMixin.class' || OK=0
+            jar tf "$JAR" | grep -q 'artifacts/mixin/compat/hardcorerevival/DeathProtectionTeleportKnockoutOnlyMixin.class' || OK=0
+            unzip -p "$JAR" mixins.artifacts.common.json | grep -q 'compat.hardcorerevival.DeathProtectionTeleportKnockoutOnlyMixin' || OK=0
+            unzip -p "$JAR" assets/artifacts/lang/en_us.json | grep -q 'artifacts.tooltip.chorus_totem_uses' || OK=0
+            if jar tf "$JAR" | grep -q 'data/hardcorerevival/tags/item/passthrough_death_when_held.json'; then OK=0; fi
           fi
-          if [ -f /tmp/artifacts-real-death-ci/build.log ]; then
-            tail -n 500 /tmp/artifacts-real-death-ci/build.log > ci/output/build-tail.txt
+          if [ "$OK" = 1 ]; then
+            OUT=ci/output-v8/artifacts-fabric-13.2.1-chorus-totem-postrespawn-effects-v8.jar
+            cp "$JAR" "$OUT"
+            sha256sum "$OUT" > ci/output-v8/SHA256SUMS.txt
+            echo success > ci/output-v8/STATUS.txt
+          else
+            echo failure > ci/output-v8/STATUS.txt
+          fi
+          if [ -f /tmp/artifacts-v8-ci/build.log ]; then
+            tail -n 500 /tmp/artifacts-v8-ci/build.log > ci/output-v8/build-tail.txt
           fi
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add ci/output
+          git add ci/output-v8
           if ! git diff --cached --quiet; then
-            git commit -m '[skip ci] CI: publish Artifacts real-death helper result'
-            git push origin HEAD:ci/artifacts-finaldeath-20260813
+            git commit -m '[skip ci] CI: publish Artifacts V8 post-respawn effects'
+            git push origin HEAD:ci/artifacts-postrespawn-effects-20260820
           fi
 
-      - name: Upload helper
+      - name: Upload finished mod
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: artifacts-real-death-helper
-          path: ci/output/*
+          name: artifacts-fabric-1.21.1-postrespawn-effects-v8
+          path: ci/output-v8/*
           if-no-files-found: error
