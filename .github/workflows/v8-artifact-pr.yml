@@ -1,0 +1,25 @@
+name: V8 Artifact Binary Handoff
+
+on:
+  pull_request:
+    branches:
+      - ci/v8-artifact-base-20260820
+
+jobs:
+  upload:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify finished JAR
+        shell: bash
+        run: |
+          set -euo pipefail
+          JAR='ci/output-v8/artifacts-fabric-13.2.1-chorus-totem-postrespawn-effects-v8.jar'
+          test -f "$JAR"
+          echo '91ba33a4e624dfff2a9f07e6766fbe94315c1dd394ab9aa230c7f3e4c412fe2c  '"$JAR" | sha256sum -c -
+      - name: Upload finished JAR
+        uses: actions/upload-artifact@v4
+        with:
+          name: artifacts-v8-finished-jar
+          path: ci/output-v8/artifacts-fabric-13.2.1-chorus-totem-postrespawn-effects-v8.jar
+          if-no-files-found: error
