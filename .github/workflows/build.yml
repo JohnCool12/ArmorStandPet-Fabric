@@ -1,9 +1,9 @@
-name: Build Artifacts V8 Post-Respawn Effects
+name: Build Artifacts V9 Respawn Teleport Particles
 
 on:
   push:
     branches:
-      - ci/artifacts-v8-final-20260820
+      - ci/artifacts-v9-respawn-particles-20260821
   workflow_dispatch:
 
 permissions:
@@ -33,18 +33,21 @@ jobs:
           grep -Fx 'minecraft_version=1.21.1' gradle.properties
           grep -Fx 'mod_version=13.2.1' gradle.properties
 
-      - name: Apply minimal V8 patch
+      - name: Apply V8 behavior plus V9 respawn particles
         shell: bash
         run: |
           set -euo pipefail
           cd project
           python "$GITHUB_WORKSPACE/ci/artifacts-v8-minimal-patch.py"
+          python "$GITHUB_WORKSPACE/ci/artifacts-v9-respawn-particles.py"
           grep -F 'schedulePostTeleportEffects(serverPlayer)' common/src/main/java/artifacts/mixin/compat/hardcorerevival/HardcoreRevivalManagerMixin.java
           grep -F 'player.server.execute' common/src/main/java/artifacts/compat/hardcorerevival/HardcoreRevivalFinalDeathCompat.java
           grep -F 'NetworkHandler.sendToPlayer(live, new ChorusTotemUsedPacket())' common/src/main/java/artifacts/compat/hardcorerevival/HardcoreRevivalFinalDeathCompat.java
           grep -F 'compat.hardcorerevival.DeathProtectionTeleportKnockoutOnlyMixin' common/src/main/resources/mixins.artifacts.common.json
           grep -F 'Codec.intRange(1, 3)' common/src/main/java/artifacts/registry/ModDataComponents.java
           grep -F 'findRespawnPositionAndUseSpawnBlock(false, DimensionTransition.DO_NOTHING)' common/src/main/java/artifacts/component/ability/DeathProtectionTeleport.java
+          grep -F 'player.serverLevel().broadcastEntityEvent(player, (byte) 46);' common/src/main/java/artifacts/component/ability/DeathProtectionTeleport.java
+          test "$(grep -Fc 'broadcastEntityEvent(player, (byte) 46)' common/src/main/java/artifacts/component/ability/DeathProtectionTeleport.java)" -eq 1
           test ! -e common/src/generated/resources/data/hardcorerevival/tags/item/passthrough_death_when_held.json
           python -m json.tool common/src/main/resources/mixins.artifacts.common.json >/dev/null
           python -m json.tool common/src/generated/resources/assets/artifacts/lang/en_us.json >/dev/null
@@ -54,18 +57,18 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          mkdir -p /tmp/artifacts-v8-ci
+          mkdir -p /tmp/artifacts-v9-ci
           cd project
           chmod +x gradlew
-          ./gradlew :fabric:build --stacktrace --no-daemon 2>&1 | tee /tmp/artifacts-v8-ci/build.log
+          ./gradlew :fabric:build --stacktrace --no-daemon 2>&1 | tee /tmp/artifacts-v9-ci/build.log
 
       - name: Validate and publish result
         if: always()
         shell: bash
         run: |
           set -u
-          mkdir -p ci/output-v8
-          rm -f ci/output-v8/*
+          mkdir -p ci/output-v9
+          rm -f ci/output-v9/*
           JAR="$(find project/fabric/build/libs -maxdepth 1 -type f -name 'artifacts-fabric-*.jar' ! -name '*-sources.jar' ! -name '*-dev-shadow.jar' -print -quit 2>/dev/null || true)"
           OK=1
           if [ -z "$JAR" ]; then OK=0; fi
@@ -75,31 +78,34 @@ jobs:
             jar tf "$JAR" | grep -q 'artifacts/mixin/compat/hardcorerevival/DeathProtectionTeleportKnockoutOnlyMixin.class' || OK=0
             unzip -p "$JAR" mixins.artifacts.common.json | grep -q 'compat.hardcorerevival.DeathProtectionTeleportKnockoutOnlyMixin' || OK=0
             unzip -p "$JAR" assets/artifacts/lang/en_us.json | grep -q 'artifacts.tooltip.chorus_totem_uses' || OK=0
+            javap -classpath "$JAR" -p -c artifacts.component.ability.DeathProtectionTeleport > /tmp/artifacts-v9-ci/teleport-bytecode.txt || OK=0
+            grep -q 'broadcastEntityEvent' /tmp/artifacts-v9-ci/teleport-bytecode.txt || OK=0
             if jar tf "$JAR" | grep -q 'data/hardcorerevival/tags/item/passthrough_death_when_held.json'; then OK=0; fi
           fi
           if [ "$OK" = 1 ]; then
-            OUT=ci/output-v8/artifacts-fabric-13.2.1-chorus-totem-postrespawn-effects-v8.jar
+            OUT=ci/output-v9/artifacts-fabric-13.2.1-chorus-totem-respawn-particles-v9.jar
             cp "$JAR" "$OUT"
-            sha256sum "$OUT" > ci/output-v8/SHA256SUMS.txt
-            echo success > ci/output-v8/STATUS.txt
+            sha256sum "$OUT" > ci/output-v9/SHA256SUMS.txt
+            echo success > ci/output-v9/STATUS.txt
+            cp /tmp/artifacts-v9-ci/teleport-bytecode.txt ci/output-v9/teleport-bytecode.txt
           else
-            echo failure > ci/output-v8/STATUS.txt
+            echo failure > ci/output-v9/STATUS.txt
           fi
-          if [ -f /tmp/artifacts-v8-ci/build.log ]; then
-            tail -n 500 /tmp/artifacts-v8-ci/build.log > ci/output-v8/build-tail.txt
+          if [ -f /tmp/artifacts-v9-ci/build.log ]; then
+            tail -n 500 /tmp/artifacts-v9-ci/build.log > ci/output-v9/build-tail.txt
           fi
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add ci/output-v8
+          git add ci/output-v9
           if ! git diff --cached --quiet; then
-            git commit -m '[skip ci] CI: publish Artifacts V8 post-respawn effects'
-            git push origin HEAD:ci/artifacts-v8-final-20260820
+            git commit -m '[skip ci] CI: publish Artifacts V9 respawn particles'
+            git push origin HEAD:ci/artifacts-v9-respawn-particles-20260821
           fi
 
       - name: Upload finished mod
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: artifacts-fabric-1.21.1-postrespawn-effects-v8
-          path: ci/output-v8/*
+          name: artifacts-fabric-1.21.1-respawn-particles-v9
+          path: ci/output-v9/*
           if-no-files-found: error
