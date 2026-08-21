@@ -1,0 +1,500 @@
+  location: variable items of type ItemConfigs
+/home/runner/work/ArmorStandPet-Fabric/ArmorStandPet-Fabric/project/common/src/main/java/artifacts/registry/ModItems.java:158: error: cannot find symbol
+                    Artifacts.CONFIG.items.thornPendant.minDamage,
+                                          ^
+  symbol:   variable thornPendant
+  location: variable items of type ItemConfigs
+/home/runner/work/ArmorStandPet-Fabric/ArmorStandPet-Fabric/project/common/src/main/java/artifacts/registry/ModItems.java:159: error: cannot find symbol
+                    Artifacts.CONFIG.items.thornPendant.maxDamage
+                                          ^
+  symbol:   variable thornPendant
+  location: variable items of type ItemConfigs
+/home/runner/work/ArmorStandPet-Fabric/ArmorStandPet-Fabric/project/common/src/main/java/artifacts/registry/ModItems.java:165: error: cannot find symbol
+                    Artifacts.CONFIG.items.charmOfSinking.enabled,
+                                          ^
+  symbol:   variable charmOfSinking
+  location: variable items of type ItemConfigs
+/home/runner/work/ArmorStandPet-Fabric/ArmorStandPet-Fabric/project/common/src/main/java/artifacts/registry/ModItems.java:167: error: cannot find symbol
+                    Artifacts.CONFIG.items.charmOfSinking.underwaterFallDamage.get() ? EntityCondition.NEVER : EntityCondition.IN_WATER
+                                          ^
+  symbol:   variable charmOfSinking
+  location: variable items of type ItemConfigs
+/home/runner/work/ArmorStandPet-Fabric/ArmorStandPet-Fabric/project/common/src/main/java/artifacts/registry/ModItems.java:163: error: cannot find symbol
+            .component(ModDataComponents.SINKING.get(), Artifacts.CONFIG.items.charmOfSinking.enabled)
+                                                                              ^
+  symbol:   variable charmOfSinking
+  location: variable items of type ItemConfigs
+/home/runner/work/ArmorStandPet-Fabric/ArmorStandPet-Fabric/project/common/src/main/java/artifacts/registry/ModItems.java:169: error: cannot find symbol
+            .addAttributeModifier(Attributes.OXYGEN_BONUS, Artifacts.CONFIG.items.charmOfSinking.enabled.get() ?
+                                                                                 ^
+  symbol:   variable charmOfSinking
+  location: variable items of type ItemConfigs
+/home/runner/work/ArmorStandPet-Fabric/ArmorStandPet-Fabric/project/common/src/main/java/artifacts/registry/ModItems.java:170: error: cannot find symbol
+                    Artifacts.CONFIG.items.charmOfSinking.oxygenBonus : Value.of(0D), AttributeModifier.Operation.ADD_VALUE
+                                          ^
+  symbol:   variable charmOfSinking
+  location: variable items of type ItemConfigs
+/home/runner/work/ArmorStandPet-Fabric/ArmorStandPet-Fabric/project/common/src/main/java/artifacts/registry/ModItems.java:175: error: cannot find symbol
+            .addAttributeModifier(Attributes.SCALE, Artifacts.CONFIG.items.charmOfShrinking.scaleModifier, AttributeModifier.Operation.ADD_MULTIPLIED_TOTAL)
+                                                                          ^
+  symbol:   variable charmOfShrinking
+  location: variable items of type ItemConfigs
+/home/runner/work/ArmorStandPet-Fabric/ArmorStandPet-Fabric/project/common/src/main/java/artifacts/registry/ModItems.java:188: error: cannot find symbol
+            .addAttributeModifier(Attributes.SAFE_FALL_DISTANCE, Artifacts.CONFIG.items.cloudInABottle.safeFallDistanceBonus, AttributeModifier.Operation.ADD_VALUE)
+                                                                                       ^
+  symbol:   variable cloudInABottle
+  location: variable items of type ItemConfigs
+/home/runner/work/ArmorStandPet-Fabric/ArmorStandPet-Fabric/project/common/src/main/java/artifacts/registry/ModItems.java:183: error: cannot find symbol
+                    Artifacts.CONFIG.items.cloudInABottle.enabled,
+                                          ^
+  symbol:   variable cloudInABottle
+  location: variable items of type ItemConfigs
+/home/runner/work/ArmorStandPet-Fabric/ArmorStandPet-Fabric/project/common/src/main/java/artifacts/registry/ModItems.java:184: error: cannot find symbol
+                    Artifacts.CONFIG.items.cloudInABottle.fallDamageMultiplier,
+                                          ^
+  symbol:   variable cloudInABottle
+  location: variable items of type ItemConfigs
+/home/runner/work/ArmorStandPet-Fabric/ArmorStandPet-Fabric/project/common/src/main/java/artifacts/registry/ModItems.java:185: error: cannot find symbol
+                    Artifacts.CONFIG.items.cloudInABottle.sprintJumpHorizontalVelocity,
+                                          ^
+  symbol:   variable cloudInABottle
+  location: variable items of type ItemConfigs
+/home/runner/work/ArmorStandPet-Fabric/ArmorStandPet-Fabric/project/common/src/main/java/artifacts/registry/ModItems.java:186: error: cannot find symbol
+                    Artifacts.CONFIG.items.cloudInABottle.sprintJumpVerticalVelocity
+                                          ^
+  symbol:   variable cloudInABottle
+  location: variable items of type ItemConfigs
+/home/runner/work/ArmorStandPet-Fabric/ArmorStandPet-Fabric/project/common/src/main/java/artifacts/registry/ModItems.java:198: error: cannot find symbol
+                    Artifacts.CONFIG.items.obsidianSkull.cooldown,
+                                          ^
+  symbol:   variable obsidianSkull
+  location: variable items of type ItemConfigs
+/home/runner/work/ArmorStandPet-Fabric/ArmorStandPet-Fabric/project/common/src/main/java/artifacts/registry/ModItems.java:193: error: cannot find symbol
+                    new MobEffectProvider(MobEffects.FIRE_RESISTANCE, Value.of(1), Artifacts.CONFIG.items.obsidianSkull.fireResistanceDuration, Value.of(true), Value.of(true), EntityCondition.ALWAYS),
+                                                                                                         ^
+  symbol:   variable obsidianSkull
+  location: variable items of type ItemConfigs
+/home/runner/work/ArmorStandPet-Fabric/ArmorStandPet-Fabric/project/common/src/main/java/artifacts/registry/ModItems.java:206: error: cannot find symbol
+                    Artifacts.CONFIG.items.antidoteVessel.enabled,
+                                          ^
+  symbol:   variable antidoteVessel
+  location: variable items of type ItemConfigs
+/home/runner/work/ArmorStandPet-Fabric/ArmorStandPet-Fabric/project/common/src/main/java/artifacts/registry/ModItems.java:207: error: cannot find symbol
+                    Artifacts.CONFIG.items.antidoteVessel.maxEffectDuration
+                                          ^
+  symbol:   variable antidoteVessel
+  location: variable items of type ItemConfigs
+/home/runner/work/ArmorStandPet-Fabric/ArmorStandPet-Fabric/project/common/src/main/java/artifacts/registry/ModItems.java:212: error: cannot find symbol
+            .mobEffect(ModMobEffects.MAGNETISM, Artifacts.CONFIG.items.universalAttractor.magnetismLevel, Value.of(10), EntityCondition.ALWAYS)
+                                                                      ^
+  symbol:   variable universalAttractor
+  location: variable items of type ItemConfigs
+/home/runner/work/ArmorStandPet-Fabric/ArmorStandPet-Fabric/project/common/src/main/java/artifacts/registry/ModItems.java:217: error: cannot find symbol
+            .addAttributeModifier(Attributes.MAX_HEALTH, Artifacts.CONFIG.items.crystalHeart.healthBonus, AttributeModifier.Operation.ADD_VALUE)
+                                                                               ^
+  symbol:   variable crystalHeart
+  location: variable items of type ItemConfigs
+/home/runner/work/ArmorStandPet-Fabric/ArmorStandPet-Fabric/project/common/src/main/java/artifacts/registry/ModItems.java:222: error: cannot find symbol
+                    Artifacts.CONFIG.items.heliumFlamingo.flightDuration,
+                                          ^
+  symbol:   variable heliumFlamingo
+  location: variable items of type ItemConfigs
+/home/runner/work/ArmorStandPet-Fabric/ArmorStandPet-Fabric/project/common/src/main/java/artifacts/registry/ModItems.java:223: error: cannot find symbol
+                    Artifacts.CONFIG.items.heliumFlamingo.rechargeDuration,
+                                          ^
+  symbol:   variable heliumFlamingo
+  location: variable items of type ItemConfigs
+/home/runner/work/ArmorStandPet-Fabric/ArmorStandPet-Fabric/project/common/src/main/java/artifacts/registry/ModItems.java:224: error: cannot find symbol
+                    Artifacts.CONFIG.items.heliumFlamingo.cooldown
+                                          ^
+  symbol:   variable heliumFlamingo
+  location: variable items of type ItemConfigs
+/home/runner/work/ArmorStandPet-Fabric/ArmorStandPet-Fabric/project/common/src/main/java/artifacts/registry/ModItems.java:230: error: cannot find symbol
+                    Artifacts.CONFIG.items.chorusTotem.teleportationChance,
+                                          ^
+  symbol:   variable chorusTotem
+  location: variable items of type ItemConfigs
+/home/runner/work/ArmorStandPet-Fabric/ArmorStandPet-Fabric/project/common/src/main/java/artifacts/registry/ModItems.java:231: error: cannot find symbol
+                    Artifacts.CONFIG.items.chorusTotem.healthRestored,
+                                          ^
+  symbol:   variable chorusTotem
+  location: variable items of type ItemConfigs
+/home/runner/work/ArmorStandPet-Fabric/ArmorStandPet-Fabric/project/common/src/main/java/artifacts/registry/ModItems.java:232: error: cannot find symbol
+                    Artifacts.CONFIG.items.chorusTotem.cooldown,
+                                          ^
+  symbol:   variable chorusTotem
+  location: variable items of type ItemConfigs
+/home/runner/work/ArmorStandPet-Fabric/ArmorStandPet-Fabric/project/common/src/main/java/artifacts/registry/ModItems.java:233: error: cannot find symbol
+                    Artifacts.CONFIG.items.chorusTotem.consumeOnUse
+                                          ^
+  symbol:   variable chorusTotem
+  location: variable items of type ItemConfigs
+/home/runner/work/ArmorStandPet-Fabric/ArmorStandPet-Fabric/project/common/src/main/java/artifacts/registry/ModItems.java:242: error: cannot find symbol
+            .component(ModDataComponents.ENDER_PEARL_DAMAGE_IMMUNITY.get(), Artifacts.CONFIG.items.warpDrive.nullifyEnderPearlDamage)
+                                                                                                  ^
+  symbol:   variable warpDrive
+  location: variable items of type ItemConfigs
+/home/runner/work/ArmorStandPet-Fabric/ArmorStandPet-Fabric/project/common/src/main/java/artifacts/registry/ModItems.java:238: error: cannot find symbol
+                    Artifacts.CONFIG.items.warpDrive.enabled,
+                                          ^
+  symbol:   variable warpDrive
+  location: variable items of type ItemConfigs
+/home/runner/work/ArmorStandPet-Fabric/ArmorStandPet-Fabric/project/common/src/main/java/artifacts/registry/ModItems.java:239: error: cannot find symbol
+                    Artifacts.CONFIG.items.warpDrive.hungerCost,
+                                          ^
+  symbol:   variable warpDrive
+  location: variable items of type ItemConfigs
+/home/runner/work/ArmorStandPet-Fabric/ArmorStandPet-Fabric/project/common/src/main/java/artifacts/registry/ModItems.java:240: error: cannot find symbol
+                    Artifacts.CONFIG.items.warpDrive.cooldown
+                                          ^
+  symbol:   variable warpDrive
+  location: variable items of type ItemConfigs
+/home/runner/work/ArmorStandPet-Fabric/ArmorStandPet-Fabric/project/common/src/main/java/artifacts/registry/ModItems.java:249: error: cannot find symbol
+            .component(ModDataComponents.TOOL_TIER_UPGRADE.get(), new ToolTierUpgrade(Artifacts.CONFIG.items.diggingClaws.toolTier))
+                                                                                                            ^
+  symbol:   variable diggingClaws
+  location: variable items of type ItemConfigs
+/home/runner/work/ArmorStandPet-Fabric/ArmorStandPet-Fabric/project/common/src/main/java/artifacts/registry/ModItems.java:248: error: cannot find symbol
+            .addAttributeModifier(Attributes.BLOCK_BREAK_SPEED, Artifacts.CONFIG.items.diggingClaws.blockBreakSpeedBonus, AttributeModifier.Operation.ADD_MULTIPLIED_BASE)
+                                                                                      ^
+  symbol:   variable diggingClaws
+  location: variable items of type ItemConfigs
+/home/runner/work/ArmorStandPet-Fabric/ArmorStandPet-Fabric/project/common/src/main/java/artifacts/registry/ModItems.java:253: error: cannot find symbol
+            .addAttributeModifier(Attributes.ATTACK_SPEED, Artifacts.CONFIG.items.feralClaws.attackSpeedBonus, AttributeModifier.Operation.ADD_MULTIPLIED_BASE)
+                                                                                 ^
+  symbol:   variable feralClaws
+  location: variable items of type ItemConfigs
+/home/runner/work/ArmorStandPet-Fabric/ArmorStandPet-Fabric/project/common/src/main/java/artifacts/registry/ModItems.java:256: error: cannot find symbol
+            .addAttributeModifier(Attributes.ATTACK_DAMAGE, Artifacts.CONFIG.items.powerGlove.attackDamageBonus, AttributeModifier.Operation.ADD_VALUE)
+                                                                                  ^
+  symbol:   variable powerGlove
+  location: variable items of type ItemConfigs
+/home/runner/work/ArmorStandPet-Fabric/ArmorStandPet-Fabric/project/common/src/main/java/artifacts/registry/ModItems.java:260: error: cannot find symbol
+            .addAttributeModifier(ModAttributes.ATTACK_BURNING_DURATION, Artifacts.CONFIG.items.fireGauntlet.fireDuration, AttributeModifier.Operation.ADD_VALUE)
+                                                                                               ^
+  symbol:   variable fireGauntlet
+  location: variable items of type ItemConfigs
+/home/runner/work/ArmorStandPet-Fabric/ArmorStandPet-Fabric/project/common/src/main/java/artifacts/registry/ModItems.java:264: error: cannot find symbol
+            .addAttributeModifier(Attributes.ATTACK_KNOCKBACK, Artifacts.CONFIG.items.pocketPiston.attackKnockbackBonus, AttributeModifier.Operation.ADD_VALUE)
+                                                                                     ^
+  symbol:   variable pocketPiston
+  location: variable items of type ItemConfigs
+/home/runner/work/ArmorStandPet-Fabric/ArmorStandPet-Fabric/project/common/src/main/java/artifacts/registry/ModItems.java:268: error: cannot find symbol
+                    Artifacts.CONFIG.items.vampiricGlove.absorptionRatio,
+                                          ^
+  symbol:   variable vampiricGlove
+  location: variable items of type ItemConfigs
+/home/runner/work/ArmorStandPet-Fabric/ArmorStandPet-Fabric/project/common/src/main/java/artifacts/registry/ModItems.java:269: error: cannot find symbol
+                    Artifacts.CONFIG.items.vampiricGlove.absorptionChance,
+                                          ^
+  symbol:   variable vampiricGlove
+  location: variable items of type ItemConfigs
+/home/runner/work/ArmorStandPet-Fabric/ArmorStandPet-Fabric/project/common/src/main/java/artifacts/registry/ModItems.java:270: error: cannot find symbol
+                    Artifacts.CONFIG.items.vampiricGlove.maxHealingPerHit
+                                          ^
+  symbol:   variable vampiricGlove
+  location: variable items of type ItemConfigs
+/home/runner/work/ArmorStandPet-Fabric/ArmorStandPet-Fabric/project/common/src/main/java/artifacts/registry/ModItems.java:274: error: cannot find symbol
+            .addAttributeModifier(ModAttributes.ENTITY_EXPERIENCE, Artifacts.CONFIG.items.goldenHook.entityExperienceBonus, AttributeModifier.Operation.ADD_MULTIPLIED_BASE)
+                                                                                         ^
+  symbol:   variable goldenHook
+  location: variable items of type ItemConfigs
+/home/runner/work/ArmorStandPet-Fabric/ArmorStandPet-Fabric/project/common/src/main/java/artifacts/registry/ModItems.java:282: error: cannot find symbol
+                            Artifacts.CONFIG.items.onionRing.hasteLevel,
+                                                  ^
+  symbol:   variable onionRing
+  location: variable items of type ItemConfigs
+/home/runner/work/ArmorStandPet-Fabric/ArmorStandPet-Fabric/project/common/src/main/java/artifacts/registry/ModItems.java:283: error: cannot find symbol
+                            Artifacts.CONFIG.items.onionRing.hasteDurationPerFoodPoint,
+                                                  ^
+  symbol:   variable onionRing
+  location: variable items of type ItemConfigs
+/home/runner/work/ArmorStandPet-Fabric/ArmorStandPet-Fabric/project/common/src/main/java/artifacts/registry/ModItems.java:290: error: cannot find symbol
+            .component(ModDataComponents.AUTO_SMELT.get(), Artifacts.CONFIG.items.pickaxeHeater.enabled)
+                                                                                 ^
+  symbol:   variable pickaxeHeater
+  location: variable items of type ItemConfigs
+/home/runner/work/ArmorStandPet-Fabric/ArmorStandPet-Fabric/project/common/src/main/java/artifacts/registry/ModItems.java:297: error: cannot find symbol
+                                    Artifacts.CONFIG.items.witheredBracelet.witherLevel,
+                                                          ^
+  symbol:   variable witheredBracelet
+  location: variable items of type ItemConfigs
+/home/runner/work/ArmorStandPet-Fabric/ArmorStandPet-Fabric/project/common/src/main/java/artifacts/registry/ModItems.java:298: error: cannot find symbol
+                                    Artifacts.CONFIG.items.witheredBracelet.witherDuration,
+                                                          ^
+  symbol:   variable witheredBracelet
+  location: variable items of type ItemConfigs
+/home/runner/work/ArmorStandPet-Fabric/ArmorStandPet-Fabric/project/common/src/main/java/artifacts/registry/ModItems.java:301: error: cannot find symbol
+                            Artifacts.CONFIG.items.witheredBracelet.witherChance,
+                                                  ^
+  symbol:   variable witheredBracelet
+  location: variable items of type ItemConfigs
+/home/runner/work/ArmorStandPet-Fabric/ArmorStandPet-Fabric/project/common/src/main/java/artifacts/registry/ModItems.java:302: error: cannot find symbol
+                            Artifacts.CONFIG.items.witheredBracelet.cooldown
+                                                  ^
+  symbol:   variable witheredBracelet
+  location: variable items of type ItemConfigs
+/home/runner/work/ArmorStandPet-Fabric/ArmorStandPet-Fabric/project/common/src/main/java/artifacts/registry/ModItems.java:309: error: cannot find symbol
+            .component(ModDataComponents.FLUID_COLLISION.get(), new FluidCollision(Artifacts.CONFIG.items.aquaDashers.enabled,
+                                                                                                         ^
+  symbol:   variable aquaDashers
+  location: variable items of type ItemConfigs
+/home/runner/work/ArmorStandPet-Fabric/ArmorStandPet-Fabric/project/common/src/main/java/artifacts/registry/ModItems.java:317: error: cannot find symbol
+            .component(ModDataComponents.HURT_SOUND.get(), new HurtSound(BuiltInRegistries.SOUND_EVENT.wrapAsHolder(SoundEvents.RABBIT_HURT), Artifacts.CONFIG.items.bunnyHoppers.modifyHurtSounds))
+                                                                                                                                                                    ^
+  symbol:   variable bunnyHoppers
+  location: variable items of type ItemConfigs
+/home/runner/work/ArmorStandPet-Fabric/ArmorStandPet-Fabric/project/common/src/main/java/artifacts/registry/ModItems.java:316: error: cannot find symbol
+            .addAttributeModifier(Attributes.SAFE_FALL_DISTANCE, Artifacts.CONFIG.items.bunnyHoppers.safeFallDistanceBonus, AttributeModifier.Operation.ADD_VALUE)
+                                                                                       ^
+  symbol:   variable bunnyHoppers
+  location: variable items of type ItemConfigs
+/home/runner/work/ArmorStandPet-Fabric/ArmorStandPet-Fabric/project/common/src/main/java/artifacts/registry/ModItems.java:315: error: cannot find symbol
+            .addAttributeModifier(Attributes.FALL_DAMAGE_MULTIPLIER, Artifacts.CONFIG.items.bunnyHoppers.fallDamageMultiplier, AttributeModifier.Operation.ADD_MULTIPLIED_BASE)
+                                                                                           ^
+  symbol:   variable bunnyHoppers
+  location: variable items of type ItemConfigs
+/home/runner/work/ArmorStandPet-Fabric/ArmorStandPet-Fabric/project/common/src/main/java/artifacts/registry/ModItems.java:314: error: cannot find symbol
+            .addAttributeModifier(Attributes.JUMP_STRENGTH, Artifacts.CONFIG.items.bunnyHoppers.jumpStrengthBonus, AttributeModifier.Operation.ADD_MULTIPLIED_BASE)
+                                                                                  ^
+  symbol:   variable bunnyHoppers
+  location: variable items of type ItemConfigs
+/home/runner/work/ArmorStandPet-Fabric/ArmorStandPet-Fabric/project/common/src/main/java/artifacts/registry/ModItems.java:323: error: cannot find symbol
+            .component(ModDataComponents.HURT_SOUND.get(), new HurtSound(BuiltInRegistries.SOUND_EVENT.wrapAsHolder(SoundEvents.CAT_HURT), Artifacts.CONFIG.items.kittySlippers.modifyHurtSounds))
+                                                                                                                                                                 ^
+  symbol:   variable kittySlippers
+  location: variable items of type ItemConfigs
+/home/runner/work/ArmorStandPet-Fabric/ArmorStandPet-Fabric/project/common/src/main/java/artifacts/registry/ModItems.java:322: error: cannot find symbol
+            .component(ModDataComponents.PHANTOM_REPELLENT.get(), Artifacts.CONFIG.items.kittySlippers.repelPhantoms)
+                                                                                        ^
+  symbol:   variable kittySlippers
+  location: variable items of type ItemConfigs
+/home/runner/work/ArmorStandPet-Fabric/ArmorStandPet-Fabric/project/common/src/main/java/artifacts/registry/ModItems.java:321: error: cannot find symbol
+            .component(ModDataComponents.CREEPER_REPELLENT.get(), Artifacts.CONFIG.items.kittySlippers.repelCreepers)
+                                                                                        ^
+  symbol:   variable kittySlippers
+  location: variable items of type ItemConfigs
+/home/runner/work/ArmorStandPet-Fabric/ArmorStandPet-Fabric/project/common/src/main/java/artifacts/registry/ModItems.java:327: error: cannot find symbol
+            .addAttributeModifier(ModAttributes.SPRINTING_STEP_HEIGHT, Artifacts.CONFIG.items.runningShoes.sprintingStepHeightBonus, AttributeModifier.Operation.ADD_VALUE)
+                                                                                             ^
+  symbol:   variable runningShoes
+  location: variable items of type ItemConfigs
+/home/runner/work/ArmorStandPet-Fabric/ArmorStandPet-Fabric/project/common/src/main/java/artifacts/registry/ModItems.java:326: error: cannot find symbol
+            .addAttributeModifier(ModAttributes.SPRINTING_SPEED, Artifacts.CONFIG.items.runningShoes.sprintingSpeedBonus, AttributeModifier.Operation.ADD_MULTIPLIED_BASE)
+                                                                                       ^
+  symbol:   variable runningShoes
+  location: variable items of type ItemConfigs
+/home/runner/work/ArmorStandPet-Fabric/ArmorStandPet-Fabric/project/common/src/main/java/artifacts/registry/ModItems.java:331: error: cannot find symbol
+            .addAttributeModifier(ModAttributes.MOVEMENT_SPEED_ON_SNOW, Artifacts.CONFIG.items.snowshoes.movementSpeedOnSnowBonus, AttributeModifier.Operation.ADD_MULTIPLIED_BASE)
+                                                                                              ^
+  symbol:   variable snowshoes
+  location: variable items of type ItemConfigs
+/home/runner/work/ArmorStandPet-Fabric/ArmorStandPet-Fabric/project/common/src/main/java/artifacts/registry/ModItems.java:330: error: cannot find symbol
+            .component(ModDataComponents.WALK_ON_POWDER_SNOW.get(), Artifacts.CONFIG.items.snowshoes.allowWalkingOnPowderedSnow)
+                                                                                          ^
+  symbol:   variable snowshoes
+  location: variable items of type ItemConfigs
+/home/runner/work/ArmorStandPet-Fabric/ArmorStandPet-Fabric/project/common/src/main/java/artifacts/registry/ModItems.java:335: error: cannot find symbol
+            .addAttributeModifier(ModAttributes.SLIP_RESISTANCE, Artifacts.CONFIG.items.steadfastSpikes.slipperinessReduction, AttributeModifier.Operation.ADD_VALUE)
+                                                                                       ^
+  symbol:   variable steadfastSpikes
+  location: variable items of type ItemConfigs
+/home/runner/work/ArmorStandPet-Fabric/ArmorStandPet-Fabric/project/common/src/main/java/artifacts/registry/ModItems.java:334: error: cannot find symbol
+            .addAttributeModifier(Attributes.KNOCKBACK_RESISTANCE, Artifacts.CONFIG.items.steadfastSpikes.knockbackResistance, AttributeModifier.Operation.ADD_VALUE)
+                                                                                         ^
+  symbol:   variable steadfastSpikes
+  location: variable items of type ItemConfigs
+/home/runner/work/ArmorStandPet-Fabric/ArmorStandPet-Fabric/project/common/src/main/java/artifacts/registry/ModItems.java:338: error: cannot find symbol
+            .addAttributeModifier(ModAttributes.SWIM_SPEED, Artifacts.CONFIG.items.flippers.swimSpeedBonus, AttributeModifier.Operation.ADD_MULTIPLIED_BASE)
+                                                                                  ^
+  symbol:   variable flippers
+  location: variable items of type ItemConfigs
+/home/runner/work/ArmorStandPet-Fabric/ArmorStandPet-Fabric/project/common/src/main/java/artifacts/registry/ModItems.java:346: error: cannot find symbol
+            .component(ModDataComponents.POST_EATING_PLANT_GROWTH.get(), Artifacts.CONFIG.items.rootedBoots.growPlantsAfterEating)
+                                                                                               ^
+  symbol:   variable rootedBoots
+  location: variable items of type ItemConfigs
+/home/runner/work/ArmorStandPet-Fabric/ArmorStandPet-Fabric/project/common/src/main/java/artifacts/registry/ModItems.java:343: error: cannot find symbol
+                    Artifacts.CONFIG.items.rootedBoots.enabled,
+                                          ^
+  symbol:   variable rootedBoots
+  location: variable items of type ItemConfigs
+/home/runner/work/ArmorStandPet-Fabric/ArmorStandPet-Fabric/project/common/src/main/java/artifacts/registry/ModItems.java:344: error: cannot find symbol
+                    Artifacts.CONFIG.items.rootedBoots.hungerReplenishingDuration
+                                          ^
+  symbol:   variable rootedBoots
+  location: variable items of type ItemConfigs
+/home/runner/work/ArmorStandPet-Fabric/ArmorStandPet-Fabric/project/common/src/main/java/artifacts/registry/ModItems.java:353: error: cannot find symbol
+                    new DamageImmunity(Artifacts.CONFIG.items.striderShoes.cancelHotFloorDamage, ModTags.IS_HOT_FLOOR, EntityCondition.ALWAYS)
+                                                             ^
+  symbol:   variable striderShoes
+  location: variable items of type ItemConfigs
+/home/runner/work/ArmorStandPet-Fabric/ArmorStandPet-Fabric/project/common/src/main/java/artifacts/registry/ModItems.java:350: error: cannot find symbol
+            .component(ModDataComponents.FLUID_COLLISION.get(), new FluidCollision(Artifacts.CONFIG.items.striderShoes.enabled,
+                                                                                                         ^
+  symbol:   variable striderShoes
+  location: variable items of type ItemConfigs
+Note: Recompile with -Xlint:unchecked for details.
+Note: Some input files use unchecked or unsafe operations.
+100 errors
+1 warning
+	at org.gradle.api.internal.tasks.compile.JdkJavaCompiler.execute(JdkJavaCompiler.java:89)
+	at org.gradle.api.internal.tasks.compile.JdkJavaCompiler.execute(JdkJavaCompiler.java:50)
+	at org.gradle.api.internal.tasks.compile.NormalizingJavaCompiler.delegateAndHandleErrors(NormalizingJavaCompiler.java:98)
+	at org.gradle.api.internal.tasks.compile.NormalizingJavaCompiler.execute(NormalizingJavaCompiler.java:52)
+	at org.gradle.api.internal.tasks.compile.NormalizingJavaCompiler.execute(NormalizingJavaCompiler.java:38)
+	at org.gradle.api.internal.tasks.compile.AnnotationProcessorDiscoveringCompiler.execute(AnnotationProcessorDiscoveringCompiler.java:52)
+	at org.gradle.api.internal.tasks.compile.AnnotationProcessorDiscoveringCompiler.execute(AnnotationProcessorDiscoveringCompiler.java:38)
+	at org.gradle.api.internal.tasks.compile.ModuleApplicationNameWritingCompiler.execute(ModuleApplicationNameWritingCompiler.java:46)
+	at org.gradle.api.internal.tasks.compile.ModuleApplicationNameWritingCompiler.execute(ModuleApplicationNameWritingCompiler.java:36)
+	at org.gradle.jvm.toolchain.internal.DefaultToolchainJavaCompiler.execute(DefaultToolchainJavaCompiler.java:57)
+	at org.gradle.api.tasks.compile.JavaCompile.lambda$createToolchainCompiler$3(JavaCompile.java:206)
+	at org.gradle.api.internal.tasks.compile.CleaningJavaCompiler.execute(CleaningJavaCompiler.java:53)
+	at org.gradle.api.internal.tasks.compile.incremental.IncrementalCompilerFactory.lambda$createRebuildAllCompiler$0(IncrementalCompilerFactory.java:55)
+	at org.gradle.api.internal.tasks.compile.incremental.SelectiveCompiler.execute(SelectiveCompiler.java:70)
+	at org.gradle.api.internal.tasks.compile.incremental.SelectiveCompiler.execute(SelectiveCompiler.java:44)
+	at org.gradle.api.internal.tasks.compile.incremental.IncrementalResultStoringCompiler.execute(IncrementalResultStoringCompiler.java:66)
+	at org.gradle.api.internal.tasks.compile.incremental.IncrementalResultStoringCompiler.execute(IncrementalResultStoringCompiler.java:52)
+	at org.gradle.api.internal.tasks.compile.CompileJavaBuildOperationReportingCompiler$1.call(CompileJavaBuildOperationReportingCompiler.java:64)
+	at org.gradle.api.internal.tasks.compile.CompileJavaBuildOperationReportingCompiler$1.call(CompileJavaBuildOperationReportingCompiler.java:48)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperationRunner.java:210)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperationRunner.java:205)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:67)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:60)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:167)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:60)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.call(DefaultBuildOperationRunner.java:54)
+	at org.gradle.api.internal.tasks.compile.CompileJavaBuildOperationReportingCompiler.execute(CompileJavaBuildOperationReportingCompiler.java:48)
+	at org.gradle.api.tasks.compile.JavaCompile.performCompilation(JavaCompile.java:224)
+	at org.gradle.api.tasks.compile.JavaCompile.performIncrementalCompilation(JavaCompile.java:165)
+	at org.gradle.api.tasks.compile.JavaCompile.compile(JavaCompile.java:150)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	at org.gradle.internal.reflect.JavaMethod.invoke(JavaMethod.java:125)
+	at org.gradle.api.internal.project.taskfactory.IncrementalTaskAction.doExecute(IncrementalTaskAction.java:45)
+	at org.gradle.api.internal.project.taskfactory.StandardTaskAction.execute(StandardTaskAction.java:51)
+	at org.gradle.api.internal.project.taskfactory.IncrementalTaskAction.execute(IncrementalTaskAction.java:26)
+	at org.gradle.api.internal.project.taskfactory.StandardTaskAction.execute(StandardTaskAction.java:29)
+	at org.gradle.api.internal.tasks.execution.TaskExecution$3.run(TaskExecution.java:244)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$1.execute(DefaultBuildOperationRunner.java:30)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$1.execute(DefaultBuildOperationRunner.java:27)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:67)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:60)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:167)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:60)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.run(DefaultBuildOperationRunner.java:48)
+	at org.gradle.api.internal.tasks.execution.TaskExecution.executeAction(TaskExecution.java:229)
+	at org.gradle.api.internal.tasks.execution.TaskExecution.executeActions(TaskExecution.java:212)
+	at org.gradle.api.internal.tasks.execution.TaskExecution.executeWithPreviousOutputFiles(TaskExecution.java:195)
+	at org.gradle.api.internal.tasks.execution.TaskExecution.execute(TaskExecution.java:162)
+	at org.gradle.internal.execution.steps.ExecuteStep.executeInternal(ExecuteStep.java:105)
+	at org.gradle.internal.execution.steps.ExecuteStep.access$000(ExecuteStep.java:44)
+	at org.gradle.internal.execution.steps.ExecuteStep$1.call(ExecuteStep.java:59)
+	at org.gradle.internal.execution.steps.ExecuteStep$1.call(ExecuteStep.java:56)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperationRunner.java:210)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperationRunner.java:205)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:67)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:60)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:167)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:60)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.call(DefaultBuildOperationRunner.java:54)
+	at org.gradle.internal.execution.steps.ExecuteStep.execute(ExecuteStep.java:56)
+	at org.gradle.internal.execution.steps.ExecuteStep.execute(ExecuteStep.java:44)
+	at org.gradle.internal.execution.steps.CancelExecutionStep.execute(CancelExecutionStep.java:42)
+	at org.gradle.internal.execution.steps.TimeoutStep.executeWithoutTimeout(TimeoutStep.java:75)
+	at org.gradle.internal.execution.steps.TimeoutStep.execute(TimeoutStep.java:55)
+	at org.gradle.internal.execution.steps.PreCreateOutputParentsStep.execute(PreCreateOutputParentsStep.java:50)
+	at org.gradle.internal.execution.steps.PreCreateOutputParentsStep.execute(PreCreateOutputParentsStep.java:28)
+	at org.gradle.internal.execution.steps.RemovePreviousOutputsStep.execute(RemovePreviousOutputsStep.java:67)
+	at org.gradle.internal.execution.steps.RemovePreviousOutputsStep.execute(RemovePreviousOutputsStep.java:37)
+	at org.gradle.internal.execution.steps.BroadcastChangingOutputsStep.execute(BroadcastChangingOutputsStep.java:61)
+	at org.gradle.internal.execution.steps.BroadcastChangingOutputsStep.execute(BroadcastChangingOutputsStep.java:26)
+	at org.gradle.internal.execution.steps.CaptureOutputsAfterExecutionStep.execute(CaptureOutputsAfterExecutionStep.java:69)
+	at org.gradle.internal.execution.steps.CaptureOutputsAfterExecutionStep.execute(CaptureOutputsAfterExecutionStep.java:46)
+	at org.gradle.internal.execution.steps.ResolveInputChangesStep.execute(ResolveInputChangesStep.java:40)
+	at org.gradle.internal.execution.steps.ResolveInputChangesStep.execute(ResolveInputChangesStep.java:29)
+	at org.gradle.internal.execution.steps.BuildCacheStep.executeWithoutCache(BuildCacheStep.java:189)
+	at org.gradle.internal.execution.steps.BuildCacheStep.lambda$execute$1(BuildCacheStep.java:75)
+	at org.gradle.internal.Either$Right.fold(Either.java:175)
+	at org.gradle.internal.execution.caching.CachingState.fold(CachingState.java:62)
+	at org.gradle.internal.execution.steps.BuildCacheStep.execute(BuildCacheStep.java:73)
+	at org.gradle.internal.execution.steps.BuildCacheStep.execute(BuildCacheStep.java:48)
+	at org.gradle.internal.execution.steps.StoreExecutionStateStep.execute(StoreExecutionStateStep.java:46)
+	at org.gradle.internal.execution.steps.StoreExecutionStateStep.execute(StoreExecutionStateStep.java:35)
+	at org.gradle.internal.execution.steps.SkipUpToDateStep.executeBecause(SkipUpToDateStep.java:75)
+	at org.gradle.internal.execution.steps.SkipUpToDateStep.lambda$execute$2(SkipUpToDateStep.java:53)
+	at org.gradle.internal.execution.steps.SkipUpToDateStep.execute(SkipUpToDateStep.java:53)
+	at org.gradle.internal.execution.steps.SkipUpToDateStep.execute(SkipUpToDateStep.java:35)
+	at org.gradle.internal.execution.steps.legacy.MarkSnapshottingInputsFinishedStep.execute(MarkSnapshottingInputsFinishedStep.java:37)
+	at org.gradle.internal.execution.steps.legacy.MarkSnapshottingInputsFinishedStep.execute(MarkSnapshottingInputsFinishedStep.java:27)
+	at org.gradle.internal.execution.steps.ResolveIncrementalCachingStateStep.executeDelegate(ResolveIncrementalCachingStateStep.java:49)
+	at org.gradle.internal.execution.steps.ResolveIncrementalCachingStateStep.executeDelegate(ResolveIncrementalCachingStateStep.java:27)
+	at org.gradle.internal.execution.steps.AbstractResolveCachingStateStep.execute(AbstractResolveCachingStateStep.java:71)
+	at org.gradle.internal.execution.steps.AbstractResolveCachingStateStep.execute(AbstractResolveCachingStateStep.java:39)
+	at org.gradle.internal.execution.steps.ResolveChangesStep.execute(ResolveChangesStep.java:65)
+	at org.gradle.internal.execution.steps.ResolveChangesStep.execute(ResolveChangesStep.java:36)
+	at org.gradle.internal.execution.steps.ValidateStep.execute(ValidateStep.java:107)
+	at org.gradle.internal.execution.steps.ValidateStep.execute(ValidateStep.java:56)
+	at org.gradle.internal.execution.steps.AbstractCaptureStateBeforeExecutionStep.execute(AbstractCaptureStateBeforeExecutionStep.java:64)
+	at org.gradle.internal.execution.steps.AbstractCaptureStateBeforeExecutionStep.execute(AbstractCaptureStateBeforeExecutionStep.java:43)
+	at org.gradle.internal.execution.steps.AbstractSkipEmptyWorkStep.executeWithNonEmptySources(AbstractSkipEmptyWorkStep.java:125)
+	at org.gradle.internal.execution.steps.AbstractSkipEmptyWorkStep.execute(AbstractSkipEmptyWorkStep.java:61)
+	at org.gradle.internal.execution.steps.AbstractSkipEmptyWorkStep.execute(AbstractSkipEmptyWorkStep.java:36)
+	at org.gradle.internal.execution.steps.legacy.MarkSnapshottingInputsStartedStep.execute(MarkSnapshottingInputsStartedStep.java:38)
+	at org.gradle.internal.execution.steps.LoadPreviousExecutionStateStep.execute(LoadPreviousExecutionStateStep.java:36)
+	at org.gradle.internal.execution.steps.LoadPreviousExecutionStateStep.execute(LoadPreviousExecutionStateStep.java:23)
+	at org.gradle.internal.execution.steps.HandleStaleOutputsStep.execute(HandleStaleOutputsStep.java:75)
+	at org.gradle.internal.execution.steps.HandleStaleOutputsStep.execute(HandleStaleOutputsStep.java:41)
+	at org.gradle.internal.execution.steps.AssignMutableWorkspaceStep.lambda$execute$0(AssignMutableWorkspaceStep.java:35)
+	at org.gradle.api.internal.tasks.execution.TaskExecution$4.withWorkspace(TaskExecution.java:289)
+	at org.gradle.internal.execution.steps.AssignMutableWorkspaceStep.execute(AssignMutableWorkspaceStep.java:31)
+	at org.gradle.internal.execution.steps.AssignMutableWorkspaceStep.execute(AssignMutableWorkspaceStep.java:22)
+	at org.gradle.internal.execution.steps.ChoosePipelineStep.execute(ChoosePipelineStep.java:40)
+	at org.gradle.internal.execution.steps.ChoosePipelineStep.execute(ChoosePipelineStep.java:23)
+	at org.gradle.internal.execution.steps.ExecuteWorkBuildOperationFiringStep.lambda$execute$2(ExecuteWorkBuildOperationFiringStep.java:67)
+	at org.gradle.internal.execution.steps.ExecuteWorkBuildOperationFiringStep.execute(ExecuteWorkBuildOperationFiringStep.java:67)
+	at org.gradle.internal.execution.steps.ExecuteWorkBuildOperationFiringStep.execute(ExecuteWorkBuildOperationFiringStep.java:39)
+	at org.gradle.internal.execution.steps.IdentityCacheStep.execute(IdentityCacheStep.java:46)
+	at org.gradle.internal.execution.steps.IdentityCacheStep.execute(IdentityCacheStep.java:34)
+	at org.gradle.internal.execution.steps.IdentifyStep.execute(IdentifyStep.java:48)
+	at org.gradle.internal.execution.steps.IdentifyStep.execute(IdentifyStep.java:35)
+	at org.gradle.internal.execution.impl.DefaultExecutionEngine$1.execute(DefaultExecutionEngine.java:64)
+	at org.gradle.api.internal.tasks.execution.ExecuteActionsTaskExecuter.executeIfValid(ExecuteActionsTaskExecuter.java:127)
+	at org.gradle.api.internal.tasks.execution.ExecuteActionsTaskExecuter.execute(ExecuteActionsTaskExecuter.java:116)
+	at org.gradle.api.internal.tasks.execution.ProblemsTaskPathTrackingTaskExecuter.execute(ProblemsTaskPathTrackingTaskExecuter.java:41)
+	at org.gradle.api.internal.tasks.execution.FinalizePropertiesTaskExecuter.execute(FinalizePropertiesTaskExecuter.java:46)
+	at org.gradle.api.internal.tasks.execution.ResolveTaskExecutionModeExecuter.execute(ResolveTaskExecutionModeExecuter.java:51)
+	at org.gradle.api.internal.tasks.execution.SkipTaskWithNoActionsExecuter.execute(SkipTaskWithNoActionsExecuter.java:57)
+	at org.gradle.api.internal.tasks.execution.SkipOnlyIfTaskExecuter.execute(SkipOnlyIfTaskExecuter.java:74)
+	at org.gradle.api.internal.tasks.execution.CatchExceptionTaskExecuter.execute(CatchExceptionTaskExecuter.java:36)
+	at org.gradle.api.internal.tasks.execution.EventFiringTaskExecuter$1.executeTask(EventFiringTaskExecuter.java:77)
+	at org.gradle.api.internal.tasks.execution.EventFiringTaskExecuter$1.call(EventFiringTaskExecuter.java:55)
+	at org.gradle.api.internal.tasks.execution.EventFiringTaskExecuter$1.call(EventFiringTaskExecuter.java:52)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperationRunner.java:210)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperationRunner.java:205)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:67)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:60)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:167)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:60)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.call(DefaultBuildOperationRunner.java:54)
+	at org.gradle.api.internal.tasks.execution.EventFiringTaskExecuter.execute(EventFiringTaskExecuter.java:52)
+	at org.gradle.execution.plan.LocalTaskNodeExecutor.execute(LocalTaskNodeExecutor.java:42)
+	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph$InvokeNodeExecutorsAction.execute(DefaultTaskExecutionGraph.java:331)
+	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph$InvokeNodeExecutorsAction.execute(DefaultTaskExecutionGraph.java:318)
+	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph$BuildOperationAwareExecutionAction.lambda$execute$0(DefaultTaskExecutionGraph.java:314)
+	at org.gradle.internal.operations.CurrentBuildOperationRef.with(CurrentBuildOperationRef.java:85)
+	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph$BuildOperationAwareExecutionAction.execute(DefaultTaskExecutionGraph.java:314)
+	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph$BuildOperationAwareExecutionAction.execute(DefaultTaskExecutionGraph.java:303)
+	at org.gradle.execution.plan.DefaultPlanExecutor$ExecutorWorker.execute(DefaultPlanExecutor.java:459)
+	at org.gradle.execution.plan.DefaultPlanExecutor$ExecutorWorker.run(DefaultPlanExecutor.java:376)
+	at org.gradle.internal.concurrent.ExecutorPolicy$CatchAndRecordFailures.onExecute(ExecutorPolicy.java:64)
+	at org.gradle.internal.concurrent.AbstractManagedExecutor$1.run(AbstractManagedExecutor.java:48)
+
+
+Deprecated Gradle features were used in this build, making it incompatible with Gradle 9.0.
+
+You can use '--warning-mode all' to show the individual deprecation warnings and determine if they come from your own scripts or plugins.
+
+For more on this, please refer to https://docs.gradle.org/8.14/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
+
+BUILD FAILED in 4m 17s
+1 actionable task: 1 executed
