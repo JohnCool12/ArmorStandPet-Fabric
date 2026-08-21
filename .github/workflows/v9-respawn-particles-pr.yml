@@ -53,17 +53,32 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p deliver
-          JAR="$(find project/fabric/build/libs -maxdepth 1 -type f -name 'artifacts-fabric-*.jar' ! -name '*-sources.jar' ! -name '*-dev-shadow.jar' -print -quit)"
-          test -n "$JAR"
-          jar tf "$JAR" | grep -q 'artifacts/compat/hardcorerevival/HardcoreRevivalFinalDeathCompat.class'
-          jar tf "$JAR" | grep -q 'artifacts/mixin/compat/hardcorerevival/HardcoreRevivalManagerMixin.class'
-          unzip -p "$JAR" assets/artifacts/lang/en_us.json | grep -q 'artifacts.tooltip.chorus_totem_uses'
-          ! jar tf "$JAR" | grep -q 'data/hardcorerevival/tags/item/passthrough_death_when_held.json'
+
+          mapfile -t JARS < <(find project/fabric/build/libs -maxdepth 1 -type f -name 'artifacts-fabric-*.jar' ! -name '*-sources.jar' ! -name '*-dev.jar' ! -name '*-dev-shadow.jar' -print | sort)
+          printf 'Candidate runtime JARs (%s):\n' "${#JARS[@]}"
+          printf '  %s\n' "${JARS[@]}"
+          test "${#JARS[@]}" -eq 1
+          JAR="${JARS[0]}"
+
+          jar tf "$JAR" > deliver/jar-list.txt
+          grep -Fqx 'artifacts/compat/hardcorerevival/HardcoreRevivalFinalDeathCompat.class' deliver/jar-list.txt
+          grep -Fqx 'artifacts/mixin/compat/hardcorerevival/HardcoreRevivalManagerMixin.class' deliver/jar-list.txt
+          grep -Fqx 'artifacts/mixin/compat/hardcorerevival/DeathProtectionTeleportKnockoutOnlyMixin.class' deliver/jar-list.txt
+          if grep -Fqx 'data/hardcorerevival/tags/item/passthrough_death_when_held.json' deliver/jar-list.txt; then
+            echo 'ERROR: held-item Hardcore Revival passthrough tag unexpectedly present' >&2
+            exit 1
+          fi
+
+          unzip -p "$JAR" assets/artifacts/lang/en_us.json > deliver/en_us.json
+          grep -F 'artifacts.tooltip.chorus_totem_uses' deliver/en_us.json >/dev/null
+
           javap -classpath "$JAR" -p -c artifacts.component.ability.DeathProtectionTeleport > deliver/teleport-bytecode.txt
-          grep -q 'broadcastEntityEvent' deliver/teleport-bytecode.txt
-          cp "$JAR" deliver/artifacts-fabric-13.2.1-chorus-totem-respawn-particles-v9.jar
-          sha256sum deliver/artifacts-fabric-13.2.1-chorus-totem-respawn-particles-v9.jar > deliver/SHA256SUMS.txt
-          unzip -t deliver/artifacts-fabric-13.2.1-chorus-totem-respawn-particles-v9.jar >/dev/null
+          grep -E 'bipush[[:space:]]+46' deliver/teleport-bytecode.txt >/dev/null
+
+          OUT=deliver/artifacts-fabric-13.2.1-chorus-totem-respawn-particles-v9.jar
+          cp "$JAR" "$OUT"
+          sha256sum "$OUT" > deliver/SHA256SUMS.txt
+          unzip -t "$OUT" > deliver/unzip-test.txt
           echo success > deliver/STATUS.txt
       - name: Upload finished V9 mod
         uses: actions/upload-artifact@v4
