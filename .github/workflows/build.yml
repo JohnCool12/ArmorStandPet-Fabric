@@ -33,18 +33,12 @@ jobs:
           grep -Fx 'minecraft_version=1.21.1' gradle.properties
           grep -Fx 'mod_version=13.2.1' gradle.properties
 
-      - name: Apply V8 source overlay
+      - name: Apply minimal V8 patch
         shell: bash
         run: |
           set -euo pipefail
-          cat ci/artifacts-v8-overlay.part-* | base64 -d > /tmp/artifacts-v8-overlay.tar.xz
-          test "$(wc -c < /tmp/artifacts-v8-overlay.tar.xz)" -eq 17940
-          echo 'a678291f61ddc7f5cec537dbde8ac743cb456f0fd70f7853b6e7f4ff3671cfbc  /tmp/artifacts-v8-overlay.tar.xz' | sha256sum -c -
-          xz -t /tmp/artifacts-v8-overlay.tar.xz
-          tar -xJf /tmp/artifacts-v8-overlay.tar.xz -C project
-          rm -f project/common/src/generated/resources/data/hardcorerevival/tags/item/passthrough_death_when_held.json
-          rm -f project/common/src/main/resources/data/hardcorerevival/tags/item/passthrough_death_when_held.json
           cd project
+          python "$GITHUB_WORKSPACE/ci/artifacts-v8-minimal-patch.py"
           grep -F 'schedulePostTeleportEffects(serverPlayer)' common/src/main/java/artifacts/mixin/compat/hardcorerevival/HardcoreRevivalManagerMixin.java
           grep -F 'player.server.execute' common/src/main/java/artifacts/compat/hardcorerevival/HardcoreRevivalFinalDeathCompat.java
           grep -F 'NetworkHandler.sendToPlayer(live, new ChorusTotemUsedPacket())' common/src/main/java/artifacts/compat/hardcorerevival/HardcoreRevivalFinalDeathCompat.java
