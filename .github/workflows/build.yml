@@ -3,7 +3,7 @@ name: Build Artifacts V8 Post-Respawn Effects
 on:
   push:
     branches:
-      - ci/artifacts-postrespawn-effects-20260820
+      - ci/artifacts-v8-final-20260820
   workflow_dispatch:
 
 permissions:
@@ -93,7 +93,7 @@ jobs:
           git add ci/output-v8
           if ! git diff --cached --quiet; then
             git commit -m '[skip ci] CI: publish Artifacts V8 post-respawn effects'
-            git push origin HEAD:ci/artifacts-postrespawn-effects-20260820
+            git push origin HEAD:ci/artifacts-v8-final-20260820
           fi
 
       - name: Upload finished mod
