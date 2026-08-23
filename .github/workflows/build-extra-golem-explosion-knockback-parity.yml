@@ -1,0 +1,145 @@
+name: Build Extra Golem Explosion Knockback Parity
+on:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.5.1'
+
+      - name: Reconstruct cumulative production source
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat ci/egpatch.part-* | base64 --decode > /tmp/fabric-port.patch.xz
+          echo '8b5eb02294d41d7ef3af71ce280dcded9920b2ae097f73043cf60c751f94c7ba  /tmp/fabric-port.patch.xz' | sha256sum --check
+          git clone -q https://github.com/bigenergy/extra-golems-reborn.git project
+          cd project
+          git checkout -q 6b21ec4a59ca16e8362b26e38fc63b2807042bdf
+          xz -dc /tmp/fabric-port.patch.xz | patch -p4 --batch --forward >/dev/null
+          patch -p1 --batch --forward < ../ci/eg-fix1.patch >/dev/null
+          patch -p1 --batch --forward < ../ci/eg-fix2.patch >/dev/null
+          patch -p1 --batch --forward < ../ci/eg-bedrock-targetable.patch >/dev/null
+          patch -p1 --batch --forward < ../ci/eg-fix4.patch >/dev/null
+          patch -p1 --batch --forward < ../ci/eg-advanced-swim.patch >/dev/null
+          patch -p1 --batch --forward < ../ci/eg-surface-swim.patch >/dev/null
+          patch -p1 --batch --forward < ../ci/eg-bedrock-provocation.patch >/dev/null
+          patch -p1 --batch --forward < ../ci/eg-all-eyes-neutral.patch >/dev/null
+          cp ../ci/GolemFinalEyesLayer.java src/main/java/com/mcmoddev/golems/client/entity/layer/GolemFinalEyesLayer.java
+          cd ..
+          for s in \
+            apply-strict-neutral.py \
+            apply-legacy-neutral-migration.py \
+            apply-hybrid-village-neutral.py \
+            apply-bedrock-natural-hostility.py \
+            apply-stable-village-targeting.py \
+            apply-bedrock-true-vanilla-natural-ai.py \
+            apply-all-constructed-natural-ai.py \
+            apply-village-runtime-parity-fix.py \
+            apply-individual-player-target-provenance.py \
+            apply-minimum-iron-golem-speed.py \
+            apply-sculk-catalyst-player-blindness-exemption.py \
+            refine-sculk-catalyst-player-blindness-predicate.py \
+            apply-village-golem-pretracking-initialization.py \
+            apply-village-golem-failed-replacement-fallback.py \
+            apply-village-golem-spawn-helper.py \
+            apply-provoked-target-interruption-recovery.py; do
+              python3 ci/$s >/dev/null
+          done
+          python3 ci/fix-provoked-recovery-compile.py >/dev/null
+          python3 ci/apply-no-silent-aggravation-invariant.py >/dev/null
+          python3 ci/apply-golem-mob-difficulty-scaling.py >/dev/null
+          python3 ci/apply-extra-golem-explosion-knockback-parity.py
+
+          grep -q 'Attributes.EXPLOSION_KNOCKBACK_RESISTANCE, 0.0D' project/src/main/java/com/mcmoddev/golems/entity/GolemBase.java
+          python3 - <<'PY'
+          from pathlib import Path
+          s=Path('project/src/main/java/com/mcmoddev/golems/entity/GolemBase.java').read_text()
+          start=s.index('public boolean ignoreExplosion(')
+          body=s[start:s.index('\n\t}', start)+3]
+          assert 'return super.ignoreExplosion(explosion);' in body
+          assert 'DamageTypes.EXPLOSION' not in body
+          print('PASS: Extra Golem explosion eligibility now delegates to vanilla Iron Golem.')
+          PY
+          grep -q 'IronGolemDamageDifficultyMixin' project/src/main/resources/golems.mixins.json
+          grep -q 'sanitizeSilentAggravationState' project/src/main/java/com/mcmoddev/golems/entity/GolemBase.java
+
+      - name: Build production JAR
+        working-directory: project
+        run: gradle clean build --stacktrace --no-daemon
+
+      - name: Verify compiled explosion knockback parity and cumulative features
+        working-directory: project
+        shell: bash
+        run: |
+          set -euo pipefail
+          javap -classpath build/classes/java/main -p -c com.mcmoddev.golems.entity.GolemBase > ../golembase-explosion-kb.txt
+          grep -q 'EXPLOSION_KNOCKBACK_RESISTANCE' ../golembase-explosion-kb.txt
+          grep -q 'ignoreExplosion' ../golembase-explosion-kb.txt
+          grep -q 'sanitizeSilentAggravationState' ../golembase-explosion-kb.txt
+          test -f build/classes/java/main/com/mcmoddev/golems/mixin/IronGolemDamageDifficultyMixin.class
+          unzip -t build/libs/Extra-Golems-Reborn-Fabric-1.21.1-21.1.0.1-fabric.jar
+
+      - name: Dedicated server smoke test
+        working-directory: project
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p run/server
+          printf 'eula=true\n' > run/server/eula.txt
+          set +e
+          timeout --signal=TERM 90s gradle runServer --no-daemon > ../server-explosion-kb.log 2>&1
+          status=$?
+          set -e
+          if [ "$status" -ne 0 ] && [ "$status" -ne 124 ]; then
+            cat ../server-explosion-kb.log
+            exit "$status"
+          fi
+          grep -q 'Done (' run/server/logs/latest.log
+          ! grep -Eqi 'Mixin apply failed|InjectionError|InvalidInjectionException|MixinTransformerError' run/server/logs/latest.log
+
+      - name: Client resource/render smoke test
+        working-directory: project
+        shell: bash
+        run: |
+          set -euo pipefail
+          setsid env ALSOFT_DRIVERS=null LIBGL_ALWAYS_SOFTWARE=true xvfb-run -a gradle runClient --no-daemon > ../client-explosion-kb.log 2>&1 &
+          pid=$!
+          ok=0
+          for i in $(seq 1 90); do
+            if [ -f run/client/logs/latest.log ] && grep -q 'minecraft:textures/atlas/blocks.png-atlas' run/client/logs/latest.log; then
+              sleep 8
+              kill -0 "$pid" 2>/dev/null && ok=1
+              break
+            fi
+            kill -0 "$pid" 2>/dev/null || break
+            sleep 1
+          done
+          kill -TERM -- -"$pid" 2>/dev/null || true
+          wait "$pid" 2>/dev/null || true
+          test "$ok" -eq 1
+          ! grep -Eqi 'Mixin apply failed|InjectionError|InvalidInjectionException|MixinTransformerError' run/client/logs/latest.log
+
+      - name: Collect artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifact
+          cp project/build/libs/Extra-Golems-Reborn-Fabric-1.21.1-21.1.0.1-fabric.jar artifact/
+          unzip -t artifact/Extra-Golems-Reborn-Fabric-1.21.1-21.1.0.1-fabric.jar
+          sha256sum artifact/Extra-Golems-Reborn-Fabric-1.21.1-21.1.0.1-fabric.jar
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: extra-golems-explosion-knockback-parity
+          path: artifact/*.jar
+          if-no-files-found: error
