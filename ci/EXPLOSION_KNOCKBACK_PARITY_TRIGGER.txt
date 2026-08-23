@@ -1,0 +1,1 @@
+Trigger production compile/smoke verification for Extra Golem vanilla Iron Golem explosion and wind knockback parity.
