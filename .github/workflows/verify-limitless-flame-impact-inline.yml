@@ -1,0 +1,246 @@
+name: Verify Limitless Flame Impact Scaling
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Recover exact pre-Tax-Free-Levels base JAR
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p base final verify helper/src/main/java/limitless/enchantments/mixin helper/src/main/resources
+          curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/JohnCool12/ArmorStandPet-Fabric/actions/artifacts/9311012324/zip -o /tmp/base.zip
+          unzip -q /tmp/base.zip -d base
+          BASE=$(find base -type f -name '*.jar' -print -quit)
+          echo '62a66a39426fb410783d00870fcc97262a2ce3a2ca7083974e21648a4bd16682  '"$BASE" | sha256sum -c -
+          cp "$BASE" final/limitless-fabric-2.0.0-1.21.1-true-unlimited-flame-impact-scaling.jar
+          unzip -p "$BASE" fabric.mod.json > verify/base-fabric.mod.json
+          python3 - <<'PY'
+          import json
+          d=json.load(open('verify/base-fabric.mod.json'))
+          assert 'taxfreelevels:options' not in d.get('custom', {})
+          PY
+
+      - name: Create isolated Loom project for Flame impact mixin
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --depth 1 https://github.com/ThomasDarkson/limitlessenchantments.git /tmp/wrapper-source
+          cp /tmp/wrapper-source/gradlew helper/gradlew
+          cp -r /tmp/wrapper-source/gradle helper/gradle
+          chmod +x helper/gradlew
+
+          cat > helper/settings.gradle <<'EOF'
+          pluginManagement {
+              repositories {
+                  maven { url='https://maven.fabricmc.net/' }
+                  maven { url='https://maven.architectury.dev/' }
+                  maven { url='https://maven.minecraftforge.net/' }
+                  gradlePluginPortal()
+              }
+          }
+          rootProject.name='flame-impact-helper'
+          EOF
+
+          cat > helper/build.gradle <<'EOF'
+          plugins { id 'dev.architectury.loom' version '1.13-SNAPSHOT' }
+
+          loom {
+              silentMojangMappingsLicense()
+              mixin {
+                  defaultRefmapName = 'limitless-flame-impact-refmap.json'
+              }
+          }
+
+          repositories { maven { url='https://maven.fabricmc.net/' } }
+
+          dependencies {
+              minecraft 'net.minecraft:minecraft:1.21.1'
+              mappings loom.layered() { officialMojangMappings() }
+              modImplementation 'net.fabricmc:fabric-loader:0.19.3'
+          }
+
+          java {
+              sourceCompatibility = JavaVersion.VERSION_21
+              targetCompatibility = JavaVersion.VERSION_21
+          }
+          tasks.withType(JavaCompile).configureEach { options.release = 21 }
+          EOF
+
+          cat > helper/src/main/resources/fabric.mod.json <<'EOF'
+          {
+            "schemaVersion": 1,
+            "id": "limitless_flame_impact_helper",
+            "version": "1.0.0",
+            "name": "Limitless Flame Impact Helper",
+            "environment": "*",
+            "mixins": ["limitless-flame-impact.mixins.json"],
+            "depends": {"fabricloader": ">=0.16.0", "minecraft": "1.21.1", "java": ">=21"}
+          }
+          EOF
+
+          cat > helper/src/main/resources/limitless-flame-impact.mixins.json <<'EOF'
+          {
+            "required": true,
+            "package": "limitless.enchantments.mixin",
+            "compatibilityLevel": "JAVA_21",
+            "refmap": "limitless-flame-impact-refmap.json",
+            "mixins": ["AbstractArrowMixin"],
+            "injectors": {"defaultRequire": 1}
+          }
+          EOF
+
+          cat > helper/src/main/java/limitless/enchantments/mixin/AbstractArrowMixin.java <<'EOF'
+          package limitless.enchantments.mixin;
+
+          import net.minecraft.core.registries.Registries;
+          import net.minecraft.server.level.ServerLevel;
+          import net.minecraft.world.entity.projectile.AbstractArrow;
+          import net.minecraft.world.item.ItemStack;
+          import net.minecraft.world.item.enchantment.EnchantmentHelper;
+          import net.minecraft.world.item.enchantment.Enchantments;
+          import org.spongepowered.asm.mixin.Mixin;
+          import org.spongepowered.asm.mixin.injection.At;
+          import org.spongepowered.asm.mixin.injection.ModifyArg;
+
+          /** Scales the actual target burn duration from the Flame level on the firing weapon. */
+          @Mixin(AbstractArrow.class)
+          public abstract class AbstractArrowMixin {
+              @ModifyArg(
+                      method = "onHitEntity",
+                      at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/Entity;igniteForSeconds(F)V"),
+                      index = 0,
+                      require = 1
+              )
+              private float limitless$scaleFlameTargetBurnDuration(float vanillaSeconds) {
+                  AbstractArrow arrow = (AbstractArrow) (Object) this;
+                  ItemStack weapon = arrow.getWeaponItem();
+                  if (weapon == null || weapon.isEmpty() || !(arrow.level() instanceof ServerLevel serverLevel)) {
+                      return vanillaSeconds;
+                  }
+
+                  var flame = serverLevel.registryAccess()
+                          .lookupOrThrow(Registries.ENCHANTMENT)
+                          .getOrThrow(Enchantments.FLAME);
+                  int flameLevel = EnchantmentHelper.getItemEnchantmentLevel(flame, weapon);
+                  return flameLevel > 0 ? 5.0F * flameLevel : vanillaSeconds;
+              }
+          }
+          EOF
+
+      - name: Compile and remap Flame mixin
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd helper
+          ./gradlew remapJar --stacktrace --no-daemon
+          cd ..
+          HELPER=$(find helper/build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*sources*' -print -quit)
+          test -n "$HELPER"
+          unzip -t "$HELPER" > verify/helper-unzip.txt
+          unzip -l "$HELPER" | tee verify/helper-contents.txt
+          test "$(unzip -Z1 "$HELPER" | grep -c '^limitless/enchantments/mixin/AbstractArrowMixin.class$')" -eq 1
+          test "$(unzip -Z1 "$HELPER" | grep -c '^limitless-flame-impact.mixins.json$')" -eq 1
+          cp "$HELPER" /tmp/helper-remapped.jar
+          javap -classpath "$HELPER" -p -v limitless.enchantments.mixin.AbstractArrowMixin > verify/AbstractArrowMixin.javap.txt
+
+      - name: Merge verified Flame mixin into exact Limitless base
+        shell: bash
+        run: |
+          set -euo pipefail
+          JAR=final/limitless-fabric-2.0.0-1.21.1-true-unlimited-flame-impact-scaling.jar
+          mkdir -p /tmp/merge/limitless/enchantments/mixin /tmp/meta
+          unzip -p /tmp/helper-remapped.jar limitless/enchantments/mixin/AbstractArrowMixin.class > /tmp/merge/limitless/enchantments/mixin/AbstractArrowMixin.class
+          unzip -p /tmp/helper-remapped.jar limitless-flame-impact.mixins.json > /tmp/merge/limitless-flame-impact.mixins.json
+          if unzip -Z1 /tmp/helper-remapped.jar | grep -q '^limitless-flame-impact-refmap.json$'; then
+            unzip -p /tmp/helper-remapped.jar limitless-flame-impact-refmap.json > /tmp/merge/limitless-flame-impact-refmap.json
+          fi
+          (cd /tmp/merge && zip -q -u "$GITHUB_WORKSPACE/$JAR" limitless/enchantments/mixin/AbstractArrowMixin.class limitless-flame-impact.mixins.json)
+          if [ -f /tmp/merge/limitless-flame-impact-refmap.json ]; then
+            (cd /tmp/merge && zip -q -u "$GITHUB_WORKSPACE/$JAR" limitless-flame-impact-refmap.json)
+          fi
+
+          unzip -p "$JAR" fabric.mod.json > /tmp/meta/fabric.mod.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('/tmp/meta/fabric.mod.json')
+          d=json.loads(p.read_text())
+          assert 'taxfreelevels:options' not in d.get('custom', {})
+          mixins=d.setdefault('mixins', [])
+          entry='limitless-flame-impact.mixins.json'
+          if entry not in mixins: mixins.append(entry)
+          p.write_text(json.dumps(d, indent=2)+'\n')
+          PY
+          (cd /tmp/meta && zip -q -u "$GITHUB_WORKSPACE/$JAR" fabric.mod.json)
+
+          unzip -t "$JAR" > verify/final-unzip.txt
+          unzip -p "$JAR" fabric.mod.json > verify/final-fabric.mod.json
+          unzip -p "$JAR" limitless-flame-impact.mixins.json > verify/final-flame-mixin.json
+          python3 - <<'PY'
+          import json
+          d=json.load(open('verify/final-fabric.mod.json'))
+          assert 'taxfreelevels:options' not in d.get('custom', {})
+          assert 'limitless-flame-impact.mixins.json' in d['mixins']
+          m=json.load(open('verify/final-flame-mixin.json'))
+          assert m['mixins']==['AbstractArrowMixin']
+          PY
+          sha256sum "$JAR" | tee verify/sha256.txt
+
+      - name: Prepare Fabric 1.21.1 server
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p server/mods
+          cp final/*.jar server/mods/
+          curl -fsSL 'https://meta.fabricmc.net/v2/versions/loader/1.21.1/0.19.3/1.1.1/server/jar' -o server/fabric-server-launch.jar
+          curl -fsSL 'https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-api/0.116.14+1.21.1/fabric-api-0.116.14+1.21.1.jar' -o server/mods/fabric-api.jar
+          curl -fsSL 'https://maven.architectury.dev/dev/architectury/architectury-fabric/13.0.8/architectury-fabric-13.0.8.jar' -o server/mods/architectury.jar
+          echo 'eula=true' > server/eula.txt
+
+      - name: Runtime Mixin smoke test
+        shell: bash
+        run: |
+          set +e
+          cd server
+          timeout 120s java -Dmixin.debug.verbose=true -Xms512M -Xmx1G -jar fabric-server-launch.jar nogui > ../verify/server.log 2>&1
+          CODE=$?
+          cd ..
+          set -e
+          tail -240 verify/server.log
+          grep -Fq 'limitlessenchantments' verify/server.log
+          grep -Eq 'Done \([0-9.]+s\)!' verify/server.log
+          if grep -Eiq 'Critical injection failure|InjectionError|InvalidMixinException|Mixin apply failed|MixinApplyError|AbstractArrowMixin.*failed' verify/server.log; then
+            echo 'Fatal Flame impact Mixin failure.' >&2
+            exit 1
+          fi
+          if [ "$CODE" -ne 0 ] && [ "$CODE" -ne 124 ]; then exit "$CODE"; fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: limitless-flame-impact-scaling-jar
+          path: final/*.jar
+          if-no-files-found: error
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: limitless-flame-impact-scaling-verification
+          path: verify/
+          if-no-files-found: warn
