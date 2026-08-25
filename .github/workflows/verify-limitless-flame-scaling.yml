@@ -1,0 +1,142 @@
+name: Verify Limitless Flame Scaling
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Construct exact pre-Tax-Free-Levels Flame-scaling JAR
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p base artifact verify patch/data/minecraft/enchantment
+
+          curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/JohnCool12/ArmorStandPet-Fabric/actions/artifacts/9311012324/zip -o /tmp/base.zip
+          unzip -q /tmp/base.zip -d base
+          BASE=$(find base -type f -name '*.jar' -print -quit)
+          test -n "$BASE"
+          echo '62a66a39426fb410783d00870fcc97262a2ce3a2ca7083974e21648a4bd16682  '"$BASE" | sha256sum -c -
+
+          JAR=artifact/limitless-fabric-2.0.0-1.21.1-true-unlimited-flame-scaling.jar
+          cp "$BASE" "$JAR"
+
+          cat > patch/data/minecraft/enchantment/flame.json <<'EOF'
+          {
+            "anvil_cost": 4,
+            "description": {
+              "translate": "enchantment.minecraft.flame"
+            },
+            "effects": {
+              "minecraft:projectile_spawned": [
+                {
+                  "effect": {
+                    "type": "minecraft:ignite",
+                    "duration": {
+                      "type": "minecraft:linear",
+                      "base": 100.0,
+                      "per_level_above_first": 100.0
+                    }
+                  }
+                }
+              ]
+            },
+            "max_cost": {
+              "base": 50,
+              "per_level_above_first": 0
+            },
+            "max_level": 1,
+            "min_cost": {
+              "base": 20,
+              "per_level_above_first": 0
+            },
+            "slots": [
+              "mainhand"
+            ],
+            "supported_items": "#minecraft:enchantable/bow",
+            "weight": 2
+          }
+          EOF
+
+          (cd patch && zip -q -u "$GITHUB_WORKSPACE/$JAR" data/minecraft/enchantment/flame.json)
+
+          unzip -t "$JAR" > verify/unzip-test.txt
+          unzip -p "$JAR" data/minecraft/enchantment/flame.json > verify/flame.json
+          unzip -p "$JAR" fabric.mod.json > verify/fabric.mod.json
+
+          python3 - <<'PY'
+          import json
+          flame=json.load(open('verify/flame.json'))
+          duration=flame['effects']['minecraft:projectile_spawned'][0]['effect']['duration']
+          assert duration == {'type':'minecraft:linear','base':100.0,'per_level_above_first':100.0}
+          assert flame['max_level'] == 1
+          meta=json.load(open('verify/fabric.mod.json'))
+          # This build must NOT contain the later Tax Free Levels compatibility metadata.
+          assert 'taxfreelevels:options' not in meta.get('custom', {})
+          # Verify intended duration formula for representative overlevels.
+          for level, ticks in [(1,100),(2,200),(3,300),(4,400),(10,1000)]:
+              got=duration['base'] + duration['per_level_above_first']*(level-1)
+              assert got == ticks, (level, got, ticks)
+          PY
+
+          sha256sum "$JAR" | tee verify/sha256.txt
+
+      - name: Prepare Fabric 1.21.1 dedicated server
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p server/mods
+          cp artifact/*.jar server/mods/
+          curl -fsSL 'https://meta.fabricmc.net/v2/versions/loader/1.21.1/0.19.3/1.1.1/server/jar' -o server/fabric-server-launch.jar
+          curl -fsSL 'https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-api/0.116.14+1.21.1/fabric-api-0.116.14+1.21.1.jar' -o server/mods/fabric-api.jar
+          curl -fsSL 'https://maven.architectury.dev/dev/architectury/architectury-fabric/13.0.8/architectury-fabric-13.0.8.jar' -o server/mods/architectury.jar
+          echo 'eula=true' > server/eula.txt
+
+      - name: Server registry/datapack smoke test
+        shell: bash
+        run: |
+          set +e
+          cd server
+          timeout 120s java -Xms512M -Xmx1G -jar fabric-server-launch.jar nogui > ../verify/server.log 2>&1
+          CODE=$?
+          cd ..
+          set -e
+          tail -220 verify/server.log
+          grep -Fq 'limitlessenchantments' verify/server.log
+          grep -Eq 'Done \([0-9.]+s\)!' verify/server.log
+          if grep -Eiq 'Failed to parse|Parsing error loading|Couldn.t parse|JsonParseException|DataResult.*error|Critical injection failure|InjectionError|InvalidMixinException|Mixin apply failed|MixinApplyError' verify/server.log; then
+            echo 'Fatal registry/datapack or Mixin failure detected.' >&2
+            exit 1
+          fi
+          if [ "$CODE" -ne 0 ] && [ "$CODE" -ne 124 ]; then
+            echo "Server exited unexpectedly with code $CODE" >&2
+            exit "$CODE"
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: limitless-flame-scaling-jar
+          path: artifact/*.jar
+          if-no-files-found: error
+
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: limitless-flame-scaling-verification
+          path: verify/
+          if-no-files-found: warn
