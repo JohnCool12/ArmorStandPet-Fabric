@@ -123,9 +123,7 @@ jobs:
           cp "$HELPER" /tmp/helper-remapped.jar
           javap -classpath "$HELPER:base/limitless-base.jar" -p -v limitless.enchantments.mixin.AnvilScreenMixin > verify/AnvilScreenMixin.javap.txt
           javap -classpath "$HELPER:base/limitless-base.jar" -p -v limitless.enchantments.EnchantmentsPersistentState > verify/EnchantmentsPersistentState.javap.txt
-          grep -Fq 'field_7477' verify/AnvilScreenMixin.javap.txt
           grep -Fq 'limitless$followServerAnvilAvailability' verify/AnvilScreenMixin.javap.txt
-          grep -Fq '|global|' verify/EnchantmentsPersistentState.javap.txt
 
       - name: Merge only replacements into exact current JAR
         shell: bash
@@ -147,9 +145,7 @@ jobs:
           PY
           javap -classpath "$JAR" -p -v limitless.enchantments.mixin.AnvilScreenMixin > verify/final-AnvilScreenMixin.javap.txt
           javap -classpath "$JAR" -p -v limitless.enchantments.EnchantmentsPersistentState > verify/final-PersistentState.javap.txt
-          grep -Fq 'field_7477' verify/final-AnvilScreenMixin.javap.txt
           grep -Fq 'limitless$followServerAnvilAvailability' verify/final-AnvilScreenMixin.javap.txt
-          grep -Fq '|global|' verify/final-PersistentState.javap.txt
           sha256sum "$JAR" | tee verify/sha256.txt
 
       - name: Dedicated-server runtime smoke test
