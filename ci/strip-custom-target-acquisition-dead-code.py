@@ -42,6 +42,8 @@ for sig in (
     '\tprivate void migrateBedrockNaturalHostilityState() {',
     '\tprivate void configureConstructedNeutralTargeting() {',
     '\tprivate void configureBedrockNaturalIronGolemTargeting() {',
+    '\tprivate void configureConstructedVillageTargeting() {',
+    '\tprivate void updateConstructedNeutralTargetingMode() {',
 ):
     remove_method(sig, required=False)
 
@@ -53,6 +55,8 @@ for name in (
     'sanitizeSilentAggravationState',
     'configureConstructedNeutralTargeting',
     'configureBedrockNaturalIronGolemTargeting',
+    'configureConstructedVillageTargeting',
+    'updateConstructedNeutralTargetingMode',
     'migrateLegacyPlayerCreatedConstructedGolem',
     'migrateBedrockNaturalHostilityState',
     'maintainConstructedNeutralRetaliation',
@@ -76,6 +80,8 @@ for token in (
     'hasVanillaVillageReputationReason',
     'configureConstructedNeutralTargeting',
     'configureBedrockNaturalIronGolemTargeting',
+    'configureConstructedVillageTargeting',
+    'updateConstructedNeutralTargetingMode',
     'migrateLegacyPlayerCreatedConstructedGolem',
     'migrateBedrockNaturalHostilityState',
     'maintainConstructedNeutralRetaliation',
