@@ -11,7 +11,6 @@ def remove_method(signature, required=False):
     if i<0:
         if required: raise SystemExit(f'method missing: {signature}')
         return False
-    # Include immediately preceding @Override when the signature itself starts after it only if requested signature includes it.
     b=s.find('{',i); d=0; end=None
     for j in range(b,len(s)):
         if s[j]=='{': d+=1
@@ -20,18 +19,16 @@ def remove_method(signature, required=False):
             if d==0:
                 end=j+1; break
     if end is None: raise SystemExit(f'unclosed method: {signature}')
-    # Consume following blank lines for clean source.
     while end < len(s) and s[end] in '\r\n': end += 1
     s=s[:i]+s[end:]
     return True
 
-# Delete the three acquisition-related overrides completely. GolemBase extends IronGolem,
-# so Java now dispatches directly to Minecraft's own implementations.
+# Delete acquisition-related overrides: Java dispatch now goes directly to IronGolem.
 remove_method('\t@Override\n\tprotected void registerGoals() {', required=True)
 remove_method('\t@Override\n\tpublic boolean canAttackType(final EntityType<?> type) {', required=True)
 remove_method('\t@Override\n\tpublic void setTarget(@Nullable LivingEntity pTarget) {', required=True)
 
-# Delete all obsolete private target-recovery/acquisition machinery from earlier iterations.
+# Delete all obsolete target recovery/selector machinery from earlier iterations.
 for sig in (
     '\tprivate boolean hasVanillaVillageReputationReason(final Player player) {',
     '\tprivate boolean isInvalidPlayerCombatTarget(@Nullable final Player player) {',
@@ -48,42 +45,55 @@ for sig in (
 ):
     remove_method(sig, required=False)
 
-# Remove private state that existed only for the deleted custom target model.
+# Remove any call sites to deleted target helpers that existed in compatibility paths.
+for name in (
+    'hardResetInvalidPlayerProvocationBeforeAiTick',
+    'seedNearestNormalHostileTarget',
+    'recoverInterruptedDirectPlayerProvocation',
+    'sanitizeSilentAggravationState',
+    'configureConstructedNeutralTargeting',
+    'configureBedrockNaturalIronGolemTargeting',
+    'migrateLegacyPlayerCreatedConstructedGolem',
+    'migrateBedrockNaturalHostilityState',
+    'maintainConstructedNeutralRetaliation',
+):
+    s=re.sub(r'^\s*this\.'+re.escape(name)+r'\(\);\s*\n','',s,flags=re.M)
+    s=re.sub(r'^\s*'+re.escape(name)+r'\(\);\s*\n','',s,flags=re.M)
+
+# Remove private state used only by the deleted target model.
 for pat in (
     r'\n\tprivate boolean assigningVillageDefensePlayerTarget;\n',
     r'\n\t@Nullable\n\tprivate Player interruptedDirectPlayerProvoker;\n',
 ):
     s=re.sub(pat,'\n',s,count=1)
 
-# No direct call to any deleted acquisition helper may remain.
+# No custom target helper or provenance symbol may survive anywhere in GolemBase.
 for token in (
-    'hardResetInvalidPlayerProvocationBeforeAiTick(',
-    'seedNearestNormalHostileTarget(',
-    'recoverInterruptedDirectPlayerProvocation(',
-    'sanitizeSilentAggravationState(',
-    'hasVanillaVillageReputationReason(',
-    'configureConstructedNeutralTargeting(',
-    'configureBedrockNaturalIronGolemTargeting(',
-    'migrateLegacyPlayerCreatedConstructedGolem(',
-    'migrateBedrockNaturalHostilityState(',
-    'maintainConstructedNeutralRetaliation(',
+    'hardResetInvalidPlayerProvocationBeforeAiTick',
+    'seedNearestNormalHostileTarget',
+    'recoverInterruptedDirectPlayerProvocation',
+    'sanitizeSilentAggravationState',
+    'hasVanillaVillageReputationReason',
+    'configureConstructedNeutralTargeting',
+    'configureBedrockNaturalIronGolemTargeting',
+    'migrateLegacyPlayerCreatedConstructedGolem',
+    'migrateBedrockNaturalHostilityState',
+    'maintainConstructedNeutralRetaliation',
+    'assigningVillageDefensePlayerTarget',
+    'interruptedDirectPlayerProvoker',
 ):
-    if token in s:
-        raise SystemExit(f'custom acquisition token remains: {token}')
+    if token in s: raise SystemExit(f'custom acquisition token remains: {token}')
 
-# The inherited methods themselves must not be redeclared by GolemBase.
 for token in (
     'protected void registerGoals()',
     'public void setTarget(@Nullable LivingEntity pTarget)',
     'public boolean canAttackType(final EntityType<?> type)',
 ):
-    if token in s:
-        raise SystemExit(f'acquisition override remains: {token}')
+    if token in s: raise SystemExit(f'acquisition override remains: {token}')
 
-# Goal rebuild still clears targetSelector then invokes this.registerGoals(); because there is
-# now no override, that virtual call resolves directly to IronGolem.registerGoals().
+# Safe material reinitialization: stop old selectors and then call inherited IronGolem.registerGoals().
 if 'this.targetSelector.removeAllGoals(goal -> true);\n\t\t\tthis.registerGoals();' not in s:
     raise SystemExit('safe target-selector rebuild missing')
 
 p.write_text(s)
-print('Stripped custom target acquisition code; GolemBase now directly inherits IronGolem targeting methods.')
+print('Stripped all custom target acquisition code; GolemBase directly inherits IronGolem targeting.')
