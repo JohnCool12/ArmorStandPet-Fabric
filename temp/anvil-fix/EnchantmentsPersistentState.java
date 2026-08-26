@@ -96,7 +96,7 @@ public final class EnchantmentsPersistentState {
     public static boolean delete(ServerLevel world, String name) {
         try {
             Path dir = worldDataDir(world.getServer());
-            Path in = dir.resolve(safeFileName(name) + ".json.enc");
+            Path in = dir.resolve(safeFileName(name) + ".dat");
             if (Files.exists(in)) {
                 Files.delete(in);
                 return true;
