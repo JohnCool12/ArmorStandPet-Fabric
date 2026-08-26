@@ -78,11 +78,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          for cls in \
-            IronGolemMeleeAttackGoalMixin \
-            IronGolemPathNavigationMixin \
-            IronGolemMoveControlMixin \
-            IronGolemDamageDifficultyMixin; do
+          for cls in IronGolemMeleeAttackGoalMixin IronGolemPathNavigationMixin IronGolemMoveControlMixin IronGolemDamageDifficultyMixin; do
             test -f build/classes/java/main/com/mcmoddev/golems/mixin/${cls}.class
           done
           javap -classpath build/classes/java/main -p -c com.mcmoddev.golems.mixin.IronGolemMeleeAttackGoalMixin > ../melee-smooth.txt
@@ -109,10 +105,7 @@ jobs:
           timeout --signal=TERM 90s gradle runServer --no-daemon > ../server-smooth-combat.log 2>&1
           status=$?
           set -e
-          if [ "$status" -ne 0 ] && [ "$status" -ne 124 ]; then
-            cat ../server-smooth-combat.log
-            exit "$status"
-          fi
+          if [ "$status" -ne 0 ] && [ "$status" -ne 124 ]; then cat ../server-smooth-combat.log; exit "$status"; fi
           grep -q 'Done (' run/server/logs/latest.log
           ! grep -Eqi 'Mixin apply failed|InjectionError|InvalidInjectionException|MixinTransformerError' run/server/logs/latest.log
 
@@ -125,11 +118,7 @@ jobs:
           pid=$!
           ok=0
           for i in $(seq 1 90); do
-            if [ -f run/client/logs/latest.log ] && grep -q 'minecraft:textures/atlas/blocks.png-atlas' run/client/logs/latest.log; then
-              sleep 8
-              kill -0 "$pid" 2>/dev/null && ok=1
-              break
-            fi
+            if [ -f run/client/logs/latest.log ] && grep -q 'minecraft:textures/atlas/blocks.png-atlas' run/client/logs/latest.log; then sleep 8; kill -0 "$pid" 2>/dev/null && ok=1; break; fi
             kill -0 "$pid" 2>/dev/null || break
             sleep 1
           done
