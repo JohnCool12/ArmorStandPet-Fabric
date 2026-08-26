@@ -1,0 +1,279 @@
+name: Verify Limitless Anvil Consistency V2
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Recover exact Flame-scaling base JAR
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p base final verify helper/src/main/java/limitless/enchantments/mixin helper/src/main/java/limitless/enchantments helper/src/main/resources
+          curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/JohnCool12/ArmorStandPet-Fabric/actions/artifacts/9585410171/zip -o /tmp/base.zip
+          unzip -q /tmp/base.zip -d base
+          BASE=$(find base -type f -name '*.jar' -print -quit)
+          echo 'f643eaf8d909b0bf2fbb9daf1dead5925ccd335be29cb23cc88e86ff3b974e2a  '"$BASE" | sha256sum -c -
+          cp "$BASE" base/limitless-base.jar
+          cp "$BASE" final/limitless-fabric-2.0.0-1.21.1-true-unlimited-flame-impact-anvil-consistency-fixed.jar
+          unzip -p "$BASE" fabric.mod.json > verify/base-fabric.mod.json
+          python3 - <<'PY'
+          import json
+          d=json.load(open('verify/base-fabric.mod.json'))
+          assert 'taxfreelevels:options' not in d.get('custom', {})
+          assert 'limitless-flame-impact.mixins.json' in d.get('mixins', [])
+          PY
+
+      - name: Create isolated Loom replacement project
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --depth 1 https://github.com/ThomasDarkson/limitlessenchantments.git /tmp/wrapper-source
+          cp /tmp/wrapper-source/gradlew helper/gradlew
+          cp -r /tmp/wrapper-source/gradle helper/gradle
+          chmod +x helper/gradlew
+          cat > helper/settings.gradle <<'EOF'
+          pluginManagement {
+              repositories {
+                  maven { url='https://maven.fabricmc.net/' }
+                  maven { url='https://maven.architectury.dev/' }
+                  maven { url='https://maven.minecraftforge.net/' }
+                  gradlePluginPortal()
+              }
+          }
+          rootProject.name='anvil-consistency-helper'
+          EOF
+          cat > helper/build.gradle <<'EOF'
+          plugins { id 'dev.architectury.loom' version '1.13-SNAPSHOT' }
+          loom { silentMojangMappingsLicense() }
+          repositories { maven { url='https://maven.fabricmc.net/' } }
+          dependencies {
+              minecraft 'net.minecraft:minecraft:1.21.1'
+              mappings loom.layered() { officialMojangMappings() }
+              modImplementation 'net.fabricmc:fabric-loader:0.19.3'
+              compileOnly files('../base/limitless-base.jar')
+          }
+          java { sourceCompatibility = JavaVersion.VERSION_21; targetCompatibility = JavaVersion.VERSION_21 }
+          tasks.withType(JavaCompile).configureEach { options.release = 21 }
+          EOF
+          cat > helper/src/main/resources/fabric.mod.json <<'EOF'
+          {"schemaVersion":1,"id":"limitless_anvil_consistency_helper","version":"1.0.0","name":"Limitless Anvil Consistency Helper","environment":"*","depends":{"fabricloader":">=0.16.0","minecraft":"1.21.1","java":">=21"}}
+          EOF
+          cat > helper/src/main/java/limitless/enchantments/mixin/AnvilScreenMixin.java <<'EOF'
+          package limitless.enchantments.mixin;
+          import net.minecraft.client.gui.screens.inventory.AnvilScreen;
+          import net.minecraft.world.entity.player.Abilities;
+          import org.objectweb.asm.Opcodes;
+          import org.spongepowered.asm.mixin.Mixin;
+          import org.spongepowered.asm.mixin.injection.At;
+          import org.spongepowered.asm.mixin.injection.Redirect;
+          @Mixin(AnvilScreen.class)
+          public class AnvilScreenMixin {
+              @Redirect(method="renderLabels",at=@At(value="FIELD",target="Lnet/minecraft/world/entity/player/Abilities;instabuild:Z",opcode=Opcodes.GETFIELD,ordinal=0),require=1)
+              private boolean limitless$followServerAnvilAvailability(Abilities abilities) {
+                  AnvilScreen screen=(AnvilScreen)(Object)this;
+                  return abilities.instabuild || screen.getMenu().getSlot(2).hasItem();
+              }
+          }
+          EOF
+          cat > helper/src/main/java/limitless/enchantments/EnchantmentsPersistentState.java <<'EOF'
+          package limitless.enchantments;
+          import com.google.gson.Gson;
+          import com.google.gson.GsonBuilder;
+          import com.google.gson.JsonElement;
+          import com.google.gson.JsonParser;
+          import net.minecraft.server.MinecraftServer;
+          import net.minecraft.server.level.ServerLevel;
+          import net.minecraft.world.level.storage.LevelResource;
+          import javax.crypto.Cipher;
+          import javax.crypto.KeyGenerator;
+          import javax.crypto.SecretKey;
+          import javax.crypto.spec.GCMParameterSpec;
+          import javax.crypto.spec.SecretKeySpec;
+          import java.io.IOException;
+          import java.io.UncheckedIOException;
+          import java.nio.charset.StandardCharsets;
+          import java.nio.file.Files;
+          import java.nio.file.Path;
+          import java.security.GeneralSecurityException;
+          import java.security.SecureRandom;
+          import java.util.HexFormat;
+          public final class EnchantmentsPersistentState {
+              private static final Gson GSON=new GsonBuilder().setPrettyPrinting().create();
+              private static final SecureRandom RNG=new SecureRandom();
+              private EnchantmentsPersistentState(){}
+              public static void save(ServerLevel world,String name,JsonElement json){
+                  try{
+                      MinecraftServer server=world.getServer(); Path dir=worldDataDir(server); Files.createDirectories(dir);
+                      SecretKey key=loadOrCreateKey(keyDir(server));
+                      byte[] plaintext=GSON.toJson(json).getBytes(StandardCharsets.UTF_8);
+                      byte[] enc=Crypto.encryptAesGcm(key,plaintext,buildAAD(name));
+                      Files.write(dir.resolve(safeFileName(name)+".dat"),enc);
+                  }catch(IOException e){}catch(GeneralSecurityException e){}
+              }
+              public static JsonElement load(ServerLevel world,String name){
+                  try{
+                      MinecraftServer server=world.getServer(); Path dir=worldDataDir(server); Path in=dir.resolve(safeFileName(name)+".dat");
+                      if(!Files.exists(in)){ LimitlessEnchantments.LOGGER.info(in+" doesn't exist? Probably initial boot."); return null; }
+                      SecretKey key=loadOrCreateKey(keyDir(server)); byte[] enc=Files.readAllBytes(in); byte[] dec; boolean migrated=false;
+                      try{ dec=Crypto.decryptAesGcm(key,enc,buildAAD(name)); }
+                      catch(GeneralSecurityException globalFailure){
+                          try{ dec=Crypto.decryptAesGcm(key,enc,buildLegacyAAD(world,name)); migrated=true; }
+                          catch(GeneralSecurityException legacyFailure){ globalFailure.addSuppressed(legacyFailure); throw globalFailure; }
+                      }
+                      if(migrated){ Files.write(in,Crypto.encryptAesGcm(key,dec,buildAAD(name))); LimitlessEnchantments.LOGGER.info("Migrated Limitless Enchantments settings to dimension-independent storage authentication."); }
+                      return JsonParser.parseString(new String(dec,StandardCharsets.UTF_8));
+                  }catch(IOException e){throw new UncheckedIOException(e);}catch(GeneralSecurityException e){throw new RuntimeException(e);}
+              }
+              public static boolean delete(ServerLevel world,String name){
+                  try{Path in=worldDataDir(world.getServer()).resolve(safeFileName(name)+".json.enc"); if(Files.exists(in)){Files.delete(in);return true;}return false;}catch(IOException e){return false;}
+              }
+              private static byte[] buildAAD(String name){return (LimitlessEnchantments.MOD_ID+"|global|"+name).getBytes(StandardCharsets.UTF_8);}
+              private static byte[] buildLegacyAAD(ServerLevel world,String name){String dimId=safeFileName(world.toString());return (LimitlessEnchantments.MOD_ID+"|"+dimId+"|"+name).getBytes(StandardCharsets.UTF_8);}
+              private static Path worldDataDir(MinecraftServer server){return server.getWorldPath(LevelResource.ROOT).resolve("data");}
+              private static Path keyDir(MinecraftServer server){return server.getWorldPath(LevelResource.ROOT);}
+              private static String safeFileName(String s){String safe=s.replaceAll("[^a-zA-Z0-9-_]","_");if(safe.isBlank())safe="entry"+HexFormat.of().formatHex(random(4));return safe;}
+              private static SecretKey loadOrCreateKey(Path dir)throws IOException,GeneralSecurityException{Path keyFile=dir.resolve("key.bin");if(Files.exists(keyFile)){byte[] raw=Files.readAllBytes(keyFile);if(raw.length!=32)throw new GeneralSecurityException("Invalid key.bin length: "+raw.length);return new SecretKeySpec(raw,"AES");}KeyGenerator kg=KeyGenerator.getInstance("AES");kg.init(256,RNG);SecretKey key=kg.generateKey();Files.createDirectories(dir);Files.write(keyFile,key.getEncoded());return key;}
+              private static byte[] random(int len){byte[] b=new byte[len];RNG.nextBytes(b);return b;}
+              private static final class Crypto{
+                  private static final int GCM_TAG_BITS=128;
+                  static byte[] encryptAesGcm(SecretKey key,byte[] plaintext,byte[] aad)throws GeneralSecurityException{byte[] iv=random(12);Cipher cipher=Cipher.getInstance("AES/GCM/NoPadding");cipher.init(Cipher.ENCRYPT_MODE,key,new GCMParameterSpec(GCM_TAG_BITS,iv));if(aad!=null&&aad.length>0)cipher.updateAAD(aad);byte[] ct=cipher.doFinal(plaintext);byte[] out=new byte[1+iv.length+ct.length];out[0]=0x01;System.arraycopy(iv,0,out,1,iv.length);System.arraycopy(ct,0,out,1+iv.length,ct.length);return out;}
+                  static byte[] decryptAesGcm(SecretKey key,byte[] packed,byte[] aad)throws GeneralSecurityException{if(packed.length<29)throw new GeneralSecurityException("Ciphertext too short");if(packed[0]!=0x01)throw new GeneralSecurityException("Unsupported ciphertext version: "+packed[0]);byte[] iv=new byte[12];System.arraycopy(packed,1,iv,0,12);byte[] ct=new byte[packed.length-13];System.arraycopy(packed,13,ct,0,ct.length);Cipher cipher=Cipher.getInstance("AES/GCM/NoPadding");cipher.init(Cipher.DECRYPT_MODE,key,new GCMParameterSpec(GCM_TAG_BITS,iv));if(aad!=null&&aad.length>0)cipher.updateAAD(aad);return cipher.doFinal(ct);}
+              }
+          }
+          EOF
+
+      - name: Compile and remap replacements
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd helper && ./gradlew remapJar --stacktrace --no-daemon && cd ..
+          HELPER=$(find helper/build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*sources*' -print -quit)
+          test -n "$HELPER"
+          unzip -t "$HELPER" > verify/helper-unzip.txt
+          test "$(unzip -Z1 "$HELPER" | grep -c '^limitless/enchantments/mixin/AnvilScreenMixin.class$')" -eq 1
+          test "$(unzip -Z1 "$HELPER" | grep -c '^limitless/enchantments/EnchantmentsPersistentState.class$')" -eq 1
+          cp "$HELPER" /tmp/helper-remapped.jar
+          javap -classpath "$HELPER:base/limitless-base.jar" -p -v limitless.enchantments.mixin.AnvilScreenMixin > verify/AnvilScreenMixin.javap.txt
+          javap -classpath "$HELPER:base/limitless-base.jar" -p -v limitless.enchantments.EnchantmentsPersistentState > verify/EnchantmentsPersistentState.javap.txt
+          grep -Fq 'field_7477' verify/AnvilScreenMixin.javap.txt
+          grep -Fq 'limitless$followServerAnvilAvailability' verify/AnvilScreenMixin.javap.txt
+          grep -Fq '|global|' verify/EnchantmentsPersistentState.javap.txt
+
+      - name: Merge replacements into exact current JAR
+        shell: bash
+        run: |
+          set -euo pipefail
+          JAR=final/limitless-fabric-2.0.0-1.21.1-true-unlimited-flame-impact-anvil-consistency-fixed.jar
+          mkdir -p /tmp/merge/limitless/enchantments/mixin /tmp/merge/limitless/enchantments
+          unzip -p /tmp/helper-remapped.jar limitless/enchantments/mixin/AnvilScreenMixin.class > /tmp/merge/limitless/enchantments/mixin/AnvilScreenMixin.class
+          unzip -p /tmp/helper-remapped.jar limitless/enchantments/EnchantmentsPersistentState.class > /tmp/merge/limitless/enchantments/EnchantmentsPersistentState.class
+          unzip -p /tmp/helper-remapped.jar 'limitless/enchantments/EnchantmentsPersistentState$Crypto.class' > '/tmp/merge/limitless/enchantments/EnchantmentsPersistentState$Crypto.class'
+          (cd /tmp/merge && zip -q -u "$GITHUB_WORKSPACE/$JAR" limitless/enchantments/mixin/AnvilScreenMixin.class limitless/enchantments/EnchantmentsPersistentState.class 'limitless/enchantments/EnchantmentsPersistentState$Crypto.class')
+          unzip -t "$JAR" > verify/final-unzip.txt
+          unzip -p "$JAR" fabric.mod.json > verify/final-fabric.mod.json
+          python3 - <<'PY'
+          import json
+          d=json.load(open('verify/final-fabric.mod.json'))
+          assert 'taxfreelevels:options' not in d.get('custom', {})
+          assert 'limitless-flame-impact.mixins.json' in d.get('mixins', [])
+          PY
+          javap -classpath "$JAR" -p -v limitless.enchantments.mixin.AnvilScreenMixin > verify/final-AnvilScreenMixin.javap.txt
+          javap -classpath "$JAR" -p -v limitless.enchantments.EnchantmentsPersistentState > verify/final-PersistentState.javap.txt
+          grep -Fq 'field_7477' verify/final-AnvilScreenMixin.javap.txt
+          grep -Fq 'limitless$followServerAnvilAvailability' verify/final-AnvilScreenMixin.javap.txt
+          grep -Fq '|global|' verify/final-PersistentState.javap.txt
+          sha256sum "$JAR" | tee verify/sha256.txt
+
+      - name: Dedicated-server runtime smoke test
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p server/mods
+          cp final/*.jar server/mods/
+          curl -fsSL 'https://meta.fabricmc.net/v2/versions/loader/1.21.1/0.19.3/1.1.1/server/jar' -o server/fabric-server-launch.jar
+          curl -fsSL 'https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-api/0.116.14+1.21.1/fabric-api-0.116.14+1.21.1.jar' -o server/mods/fabric-api.jar
+          curl -fsSL 'https://maven.architectury.dev/dev/architectury/architectury-fabric/13.0.8/architectury-fabric-13.0.8.jar' -o server/mods/architectury.jar
+          echo 'eula=true' > server/eula.txt
+          set +e
+          cd server
+          timeout 120s java -Dmixin.debug.verbose=true -Xms512M -Xmx1G -jar fabric-server-launch.jar nogui > ../verify/server.log 2>&1
+          CODE=$?
+          cd ..
+          set -e
+          tail -220 verify/server.log
+          grep -Eq 'Done \([0-9.]+s\)!' verify/server.log
+          if grep -Eiq 'Critical injection failure|InjectionError|InvalidMixinException|Mixin apply failed|MixinApplyError' verify/server.log; then exit 1; fi
+          if [ "$CODE" -ne 0 ] && [ "$CODE" -ne 124 ]; then exit "$CODE"; fi
+
+      - name: Prepare isolated client runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p clienttest/src/main/resources clienttest/mods
+          cp /tmp/wrapper-source/gradlew clienttest/gradlew
+          cp -r /tmp/wrapper-source/gradle clienttest/gradle
+          chmod +x clienttest/gradlew
+          cp final/*.jar clienttest/mods/limitless.jar
+          cat > clienttest/settings.gradle <<'EOF'
+          pluginManagement { repositories { maven { url='https://maven.fabricmc.net/' }; maven { url='https://maven.architectury.dev/' }; maven { url='https://maven.minecraftforge.net/' }; gradlePluginPortal() } }
+          rootProject.name='clienttest'
+          EOF
+          cat > clienttest/build.gradle <<'EOF'
+          plugins { id 'dev.architectury.loom' version '1.13-SNAPSHOT' }
+          loom { silentMojangMappingsLicense() }
+          repositories { maven { url='https://maven.architectury.dev/' } }
+          dependencies {
+              minecraft 'net.minecraft:minecraft:1.21.1'
+              mappings loom.layered() { officialMojangMappings() }
+              modImplementation 'net.fabricmc:fabric-loader:0.19.3'
+              modRuntimeOnly files('mods/limitless.jar')
+              modRuntimeOnly 'net.fabricmc.fabric-api:fabric-api:0.116.14+1.21.1'
+              modRuntimeOnly 'dev.architectury:architectury-fabric:13.0.8'
+          }
+          loom { runs { client { client(); runDir 'run' } } }
+          EOF
+          echo '{"schemaVersion":1,"id":"clienttestdummy","version":"1.0.0","name":"Client Test Dummy","environment":"*"}' > clienttest/src/main/resources/fabric.mod.json
+
+      - name: Client Mixin smoke test
+        shell: bash
+        run: |
+          set +e
+          cd clienttest
+          timeout 300s xvfb-run -a ./gradlew runClient --no-daemon > ../verify/client.log 2>&1
+          CODE=$?
+          cd ..
+          set -e
+          tail -260 verify/client.log
+          grep -Eiq 'limitlessenchantments|Limitless Enchantments' verify/client.log
+          grep -Eiq 'Render thread' verify/client.log
+          if grep -Eiq 'Critical injection failure|InjectionError|InvalidMixinException|Mixin apply failed|MixinApplyError|AnvilScreenMixin.*failed' verify/client.log; then exit 1; fi
+          if [ "$CODE" -ne 0 ] && [ "$CODE" -ne 124 ]; then exit "$CODE"; fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: limitless-anvil-consistency-fixed-jar-v2
+          path: final/*.jar
+          if-no-files-found: error
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: limitless-anvil-consistency-verification-v2
+          path: verify/
+          if-no-files-found: warn
