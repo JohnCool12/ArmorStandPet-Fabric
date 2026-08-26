@@ -1,0 +1,196 @@
+name: Verify Limitless Anvil Consistency V3
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Recover exact current Flame build
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p base final verify helper/src/main/java/limitless/enchantments/mixin helper/src/main/java/limitless/enchantments helper/src/main/java/limitless/anviltest helper/src/main/resources
+          curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/JohnCool12/ArmorStandPet-Fabric/actions/artifacts/9585410171/zip -o /tmp/base.zip
+          unzip -q /tmp/base.zip -d base
+          BASE=$(find base -type f -name '*.jar' -print -quit)
+          echo 'f643eaf8d909b0bf2fbb9daf1dead5925ccd335be29cb23cc88e86ff3b974e2a  '"$BASE" | sha256sum -c -
+          cp "$BASE" base/limitless-base.jar
+          cp "$BASE" final/limitless-fabric-2.0.0-1.21.1-true-unlimited-flame-impact-anvil-consistency-fixed.jar
+          unzip -p "$BASE" fabric.mod.json > verify/base-fabric.mod.json
+          python3 - <<'PY'
+          import json
+          d=json.load(open('verify/base-fabric.mod.json'))
+          assert 'taxfreelevels:options' not in d.get('custom', {})
+          assert 'limitless-flame-impact.mixins.json' in d.get('mixins', [])
+          PY
+
+      - name: Prepare isolated Loom project
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --depth 1 https://github.com/ThomasDarkson/limitlessenchantments.git /tmp/wrapper-source
+          cp /tmp/wrapper-source/gradlew helper/gradlew
+          cp -r /tmp/wrapper-source/gradle helper/gradle
+          chmod +x helper/gradlew
+          cp temp/anvil-fix/AnvilScreenMixin.java helper/src/main/java/limitless/enchantments/mixin/AnvilScreenMixin.java
+          cp temp/anvil-fix/EnchantmentsPersistentState.java helper/src/main/java/limitless/enchantments/EnchantmentsPersistentState.java
+
+          cat > helper/settings.gradle <<'EOF'
+          pluginManagement {
+              repositories {
+                  maven { url='https://maven.fabricmc.net/' }
+                  maven { url='https://maven.architectury.dev/' }
+                  maven { url='https://maven.minecraftforge.net/' }
+                  gradlePluginPortal()
+              }
+          }
+          rootProject.name='limitless-anvil-consistency-helper'
+          EOF
+
+          cat > helper/build.gradle <<'EOF'
+          plugins { id 'dev.architectury.loom' version '1.13-SNAPSHOT' }
+          loom { silentMojangMappingsLicense() }
+          repositories { maven { url='https://maven.fabricmc.net/' } }
+          dependencies {
+              minecraft 'net.minecraft:minecraft:1.21.1'
+              mappings loom.layered() { officialMojangMappings() }
+              modImplementation 'net.fabricmc:fabric-loader:0.19.3'
+              compileOnly files('../base/limitless-base.jar')
+          }
+          java { sourceCompatibility = JavaVersion.VERSION_21; targetCompatibility = JavaVersion.VERSION_21 }
+          tasks.withType(JavaCompile).configureEach { options.release = 21 }
+          loom { runs { client { client(); runDir 'run' } } }
+          EOF
+
+          cat > helper/src/main/resources/fabric.mod.json <<'EOF'
+          {
+            "schemaVersion":1,
+            "id":"limitless_anvil_consistency_helper",
+            "version":"1.0.0",
+            "name":"Limitless Anvil Consistency Helper",
+            "environment":"client",
+            "entrypoints":{"client":["limitless.anviltest.ClientForceLoad"]},
+            "mixins":["anvil-consistency-test.mixins.json"],
+            "depends":{"fabricloader":">=0.16.0","minecraft":"1.21.1","java":">=21"}
+          }
+          EOF
+          cat > helper/src/main/resources/anvil-consistency-test.mixins.json <<'EOF'
+          {
+            "required":true,
+            "package":"limitless.enchantments.mixin",
+            "compatibilityLevel":"JAVA_21",
+            "client":["AnvilScreenMixin"],
+            "injectors":{"defaultRequire":1}
+          }
+          EOF
+          cat > helper/src/main/java/limitless/anviltest/ClientForceLoad.java <<'EOF'
+          package limitless.anviltest;
+          import net.fabricmc.api.ClientModInitializer;
+          public final class ClientForceLoad implements ClientModInitializer {
+              @Override public void onInitializeClient() {
+                  try { Class.forName("net.minecraft.client.gui.screens.inventory.AnvilScreen"); }
+                  catch (ClassNotFoundException e) { throw new RuntimeException(e); }
+              }
+          }
+          EOF
+
+      - name: Compile and remap replacement classes
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd helper && ./gradlew remapJar --stacktrace --no-daemon && cd ..
+          HELPER=$(find helper/build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*sources*' -print -quit)
+          test -n "$HELPER"
+          unzip -t "$HELPER" > verify/helper-unzip.txt
+          test "$(unzip -Z1 "$HELPER" | grep -c '^limitless/enchantments/mixin/AnvilScreenMixin.class$')" -eq 1
+          test "$(unzip -Z1 "$HELPER" | grep -c '^limitless/enchantments/EnchantmentsPersistentState.class$')" -eq 1
+          cp "$HELPER" /tmp/helper-remapped.jar
+          javap -classpath "$HELPER:base/limitless-base.jar" -p -v limitless.enchantments.mixin.AnvilScreenMixin > verify/AnvilScreenMixin.javap.txt
+          javap -classpath "$HELPER:base/limitless-base.jar" -p -v limitless.enchantments.EnchantmentsPersistentState > verify/EnchantmentsPersistentState.javap.txt
+          grep -Fq 'limitless$followServerAnvilAvailability' verify/AnvilScreenMixin.javap.txt
+
+      - name: Merge only replacements into exact current JAR
+        shell: bash
+        run: |
+          set -euo pipefail
+          JAR=final/limitless-fabric-2.0.0-1.21.1-true-unlimited-flame-impact-anvil-consistency-fixed.jar
+          mkdir -p /tmp/merge/limitless/enchantments/mixin /tmp/merge/limitless/enchantments
+          unzip -p /tmp/helper-remapped.jar limitless/enchantments/mixin/AnvilScreenMixin.class > /tmp/merge/limitless/enchantments/mixin/AnvilScreenMixin.class
+          unzip -p /tmp/helper-remapped.jar limitless/enchantments/EnchantmentsPersistentState.class > /tmp/merge/limitless/enchantments/EnchantmentsPersistentState.class
+          unzip -p /tmp/helper-remapped.jar 'limitless/enchantments/EnchantmentsPersistentState$Crypto.class' > '/tmp/merge/limitless/enchantments/EnchantmentsPersistentState$Crypto.class'
+          (cd /tmp/merge && zip -q -u "$GITHUB_WORKSPACE/$JAR" limitless/enchantments/mixin/AnvilScreenMixin.class limitless/enchantments/EnchantmentsPersistentState.class 'limitless/enchantments/EnchantmentsPersistentState$Crypto.class')
+          unzip -t "$JAR" > verify/final-unzip.txt
+          unzip -p "$JAR" fabric.mod.json > verify/final-fabric.mod.json
+          python3 - <<'PY'
+          import json
+          d=json.load(open('verify/final-fabric.mod.json'))
+          assert 'taxfreelevels:options' not in d.get('custom', {})
+          assert 'limitless-flame-impact.mixins.json' in d.get('mixins', [])
+          PY
+          javap -classpath "$JAR" -p -v limitless.enchantments.mixin.AnvilScreenMixin > verify/final-AnvilScreenMixin.javap.txt
+          javap -classpath "$JAR" -p -v limitless.enchantments.EnchantmentsPersistentState > verify/final-PersistentState.javap.txt
+          grep -Fq 'limitless$followServerAnvilAvailability' verify/final-AnvilScreenMixin.javap.txt
+          sha256sum "$JAR" | tee verify/sha256.txt
+
+      - name: Dedicated-server runtime smoke test
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p server/mods
+          cp final/*.jar server/mods/
+          curl -fsSL 'https://meta.fabricmc.net/v2/versions/loader/1.21.1/0.19.3/1.1.1/server/jar' -o server/fabric-server-launch.jar
+          curl -fsSL 'https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-api/0.116.14+1.21.1/fabric-api-0.116.14+1.21.1.jar' -o server/mods/fabric-api.jar
+          curl -fsSL 'https://maven.architectury.dev/dev/architectury/architectury-fabric/13.0.8/architectury-fabric-13.0.8.jar' -o server/mods/architectury.jar
+          echo 'eula=true' > server/eula.txt
+          set +e
+          cd server
+          timeout 120s java -Dmixin.debug.verbose=true -Xms512M -Xmx1G -jar fabric-server-launch.jar nogui > ../verify/server.log 2>&1
+          CODE=$?
+          cd ..
+          set -e
+          tail -180 verify/server.log
+          grep -Eq 'Done \([0-9.]+s\)!' verify/server.log
+          if grep -Eiq 'Critical injection failure|InjectionError|InvalidMixinException|Mixin apply failed|MixinApplyError' verify/server.log; then exit 1; fi
+          if [ "$CODE" -ne 0 ] && [ "$CODE" -ne 124 ]; then exit "$CODE"; fi
+
+      - name: Isolated client test of AnvilScreenMixin
+        shell: bash
+        run: |
+          set +e
+          cd helper
+          timeout 300s xvfb-run -a ./gradlew runClient --no-daemon > ../verify/anvil-client.log 2>&1
+          CODE=$?
+          cd ..
+          set -e
+          tail -220 verify/anvil-client.log
+          grep -Eiq 'Render thread' verify/anvil-client.log
+          if grep -Eiq 'Critical injection failure|InjectionError|InvalidMixinException|Mixin apply failed|MixinApplyError|AnvilScreenMixin.*failed' verify/anvil-client.log; then exit 1; fi
+          if [ "$CODE" -ne 0 ] && [ "$CODE" -ne 124 ]; then exit "$CODE"; fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: limitless-anvil-consistency-fixed-jar-v3
+          path: final/*.jar
+          if-no-files-found: error
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: limitless-anvil-consistency-verification-v3
+          path: verify/
+          if-no-files-found: warn
