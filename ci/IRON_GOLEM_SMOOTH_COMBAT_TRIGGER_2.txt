@@ -1,0 +1,1 @@
+Trigger corrected shared vanilla + Extra Iron Golem smooth combat build after removing protected MoveControl.Operation dependency.
