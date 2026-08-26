@@ -1,0 +1,1 @@
+Trigger corrected smooth combat PR workflow.
