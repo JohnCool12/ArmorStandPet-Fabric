@@ -1,8 +1,6 @@
-name: Build Fabric Mod
+name: Build Extra Golems NeoForge 26.1.2
 
 on:
-  push:
-    branches: [main]
   pull_request:
   workflow_dispatch:
 
@@ -27,25 +25,40 @@ jobs:
         with:
           gradle-version: '9.5.1'
 
-      - name: Restore source project
+      - name: Fetch Extra Golems Reborn 1.21.1 NeoForge source
         shell: bash
         run: |
           set -euo pipefail
-          cat ci/asp.tar.xz.b64.part-* | base64 --decode > /tmp/asp.tar.xz
-          echo '3c3a2a9c821ef83ba5871678a59617b54800fb9c1926dcdb32de401881d45f8b  /tmp/asp.tar.xz' | sha256sum --check
-          mkdir -p /tmp/asp-src
-          tar -xJf /tmp/asp.tar.xz -C /tmp/asp-src
-          cp -a /tmp/asp-src/armorstandpet-fabric ./project
-          if [ -d ci/overrides ]; then
-            cp -a ci/overrides/. project/
-          fi
-          test -f project/build.gradle
+          git clone --depth 1 https://github.com/bigenergy/extra-golems-reborn.git project
 
-      - name: Build
+      - name: Retarget build to Minecraft 26.1.2 / NeoForge 26.1.2.82
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('project/gradle.properties')
+          s = p.read_text()
+          s = s.replace('minecraft_version=1.21.1', 'minecraft_version=26.1.2')
+          s = s.replace('minecraft_version_range=[1.21.1]', 'minecraft_version_range=[26.1.2,26.2)')
+          s = s.replace('mod_version=21.1.0.1', 'mod_version=26.1.2-0.1.0-port')
+          s = s.replace('neo_version=21.1.206', 'neo_version=26.1.2.82')
+          p.write_text(s)
+
+          p = Path('project/build.gradle')
+          s = p.read_text()
+          s = s.replace("id 'net.neoforged.moddev' version '2.0.107'", "id 'net.neoforged.moddev' version '2.0.141'")
+          s = s.replace('// Mojang ships Java 21 to end users in 1.21.1, so mods should target Java 21.\njava.toolchain.languageVersion = JavaLanguageVersion.of(21)', '// Minecraft 26.1.x uses Java 25.\njava.toolchain.languageVersion = JavaLanguageVersion.of(25)')
+          s = s.replace('''    parchment {\n        mappingsVersion = project.parchment_mappings_version\n        minecraftVersion = project.parchment_minecraft_version\n    }\n\n''', '')
+          p.write_text(s)
+          PY
+
+      - name: Build port
         working-directory: project
         run: gradle build --stacktrace --no-daemon
 
       - name: Collect production JAR
+        if: success()
         shell: bash
         run: |
           mkdir -p artifact
@@ -54,8 +67,9 @@ jobs:
           ls -lah artifact
 
       - name: Upload mod JAR
+        if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: armorstandpet-fabric-26.2
+          name: extra-golems-neoforge-26.1.2
           path: artifact/*.jar
           if-no-files-found: error
