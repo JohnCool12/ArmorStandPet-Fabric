@@ -34,6 +34,7 @@ jobs:
           python3 ci/eg_migrate_v11.py work
           python3 ci/eg_migrate_v12.py work
           python3 ci/eg_migrate_v13.py work
+          python3 ci/eg_migrate_v15_restore_client.py work
           chmod +x work/gradlew
       - name: Build exact NeoForge 26.1.2.95 target
         id: build
@@ -100,9 +101,15 @@ jobs:
           recipes=list((root/'data/golems/recipe').glob('*.json'))
           required=[
               root/'com/mcmoddev/golems/client/entity/GolemRenderer.class',
-              root/'com/mcmoddev/golems/client/entity/GolemRenderState.class',
-              root/'com/mcmoddev/golems/client/entity/GolemDynamicTextures.class',
+              root/'com/mcmoddev/golems/client/entity/GolemModel.class',
               root/'com/mcmoddev/golems/client/entity/layer/GolemLayerListLayer.class',
+              root/'com/mcmoddev/golems/client/entity/layer/GolemTextureOverrideLayer.class',
+              root/'com/mcmoddev/golems/client/entity/layer/GolemCrackinessLayer.class',
+              root/'com/mcmoddev/golems/client/entity/layer/GolemFlowerLayer.class',
+              root/'com/mcmoddev/golems/client/entity/layer/GolemKittyLayer.class',
+              root/'com/mcmoddev/golems/client/entity/layer/GolemBannerLayer.class',
+              root/'com/mcmoddev/golems/client/menu/GolemInventoryScreen.class',
+              root/'com/mcmoddev/golems/client/menu/GuideBookScreen.class',
               root/'data/golems/golems/golem/bedrock.json',
               root/'data/golems/golems/golem/diamond.json',
           ]
@@ -131,9 +138,7 @@ jobs:
           cp work/src/main/java/com/mcmoddev/golems/EGRegistry.java diagnostics/generated/EGRegistry.java || true
           cp work/src/main/java/com/mcmoddev/golems/EGEvents.java diagnostics/generated/EGEvents.java || true
           cp work/src/main/java/com/mcmoddev/golems/block/GolemHeadBlock.java diagnostics/generated/GolemHeadBlock.java || true
-          cp work/src/main/java/com/mcmoddev/golems/client/entity/GolemRenderer.java diagnostics/generated/GolemRenderer.java || true
-          cp work/src/main/java/com/mcmoddev/golems/client/entity/GolemDynamicTextures.java diagnostics/generated/GolemDynamicTextures.java || true
-          cp work/src/main/java/com/mcmoddev/golems/client/entity/layer/GolemLayerListLayer.java diagnostics/generated/GolemLayerListLayer.java || true
+          cp -r work/src/main/java/com/mcmoddev/golems/client diagnostics/generated/client || true
           cp -r work/src/main/resources/data/golems/recipe diagnostics/generated/recipe || true
       - name: Upload diagnostics
         if: always()
