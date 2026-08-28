@@ -27,6 +27,7 @@ jobs:
           python3 ci/eg_migrate_v4.py work
           python3 ci/eg_migrate_v5.py work
           python3 ci/eg_migrate_v7.py work
+          python3 ci/eg_migrate_v8.py work
           chmod +x work/gradlew
       - name: Build exact NeoForge 26.1.2.95 target
         id: build
