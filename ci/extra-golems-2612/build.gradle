@@ -41,4 +41,7 @@ var generateModMetadata = tasks.register('generateModMetadata', ProcessResources
 sourceSets.main.resources.srcDir generateModMetadata
 neoForge.ideSyncTask generateModMetadata
 jar { manifest { attributes(['Specification-Title':'Extra-Golems','Specification-Vendor':"${mod_authors}",'Specification-Version':'1','Implementation-Title':project.mod_id,'Implementation-Version':"${version}",'Implementation-Vendor':'skyjay1']) } }
-tasks.withType(JavaCompile).configureEach { options.encoding='UTF-8' }
+tasks.withType(JavaCompile).configureEach {
+    options.encoding='UTF-8'
+    options.compilerArgs.addAll(['-Xmaxerrs','1000'])
+}
