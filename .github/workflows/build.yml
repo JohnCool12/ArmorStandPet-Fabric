@@ -17,58 +17,13 @@ jobs:
         with:
           distribution: temurin
           java-version: '25'
-      - name: Prepare exact 26.1.2 NeoForge source tree
+      - name: Prepare clean upstream source and apply deterministic migration
         shell: bash
         run: |
           set -euxo pipefail
           git clone --depth 1 https://github.com/bigenergy/extra-golems-reborn.git work
-          cd work
-          python3 - <<'PY'
-          from pathlib import Path
-          import shutil
-          p=Path('build.gradle')
-          s=p.read_text()
-          s=s.replace("id 'net.neoforged.moddev' version '2.0.107'", "id 'net.neoforged.moddev' version '2.0.144'")
-          s=s.replace('java.toolchain.languageVersion = JavaLanguageVersion.of(21)', 'java.toolchain.languageVersion = JavaLanguageVersion.of(25)')
-          start=s.find('    parchment {')
-          if start >= 0:
-              end=s.find('\n    // Access Transformers', start)
-              if end < 0: raise SystemExit('Could not locate end of parchment block')
-              s=s[:start]+s[end:]
-          dep_start=s.find('dependencies {')
-          dep_end=s.find('\n}\n\n// This block of code expands', dep_start)
-          if dep_start < 0 or dep_end < 0: raise SystemExit('Could not locate dependencies block')
-          s=s[:dep_start]+'dependencies {\n}\n'+s[dep_end+2:]
-          p.write_text(s)
-
-          gp=Path('gradle.properties')
-          replacements={'minecraft_version':'26.1.2','minecraft_version_range':'[26.1.2]','neo_version':'26.1.2.95','mod_version':'26.1.2-clean-port-dev'}
-          out=[]
-          for line in gp.read_text().splitlines():
-              key=line.split('=',1)[0] if '=' in line else ''
-              if key in replacements: line=f'{key}={replacements[key]}'
-              if key in {'parchment_minecraft_version','parchment_mappings_version','top_proj','top_file','jade_proj','jade_file'}: continue
-              out.append(line)
-          gp.write_text('\n'.join(out)+'\n')
-
-          wrapper=Path('gradle/wrapper/gradle-wrapper.properties')
-          w=wrapper.read_text()
-          import re
-          w=re.sub(r'gradle-[0-9.]+-bin\.zip','gradle-9.2.1-bin.zip',w)
-          wrapper.write_text(w)
-
-          shutil.rmtree('src/main/java/com/mcmoddev/golems/integration', ignore_errors=True)
-          eg=Path('src/main/java/com/mcmoddev/golems/ExtraGolems.java')
-          e=eg.read_text()
-          for needle in ['import com.mcmoddev.golems.integration.AddonLoader;\n','import net.neoforged.fml.InterModComms;\n','import net.neoforged.fml.ModList;\n','\t\tAddonLoader.register(modEventBus);\n','\t\tmodEventBus.addListener(ExtraGolems::enqueueIMC);\n']:
-              e=e.replace(needle,'')
-          a=e.find('\n\tprivate static void enqueueIMC(')
-          if a >= 0:
-              b=e.find('\n\tprivate static void loadConfig', a)
-              e=e[:a]+e[b:]
-          eg.write_text(e)
-          PY
-          chmod +x gradlew
+          python3 ci/eg_migrate.py work
+          chmod +x work/gradlew
       - name: Compile exact NeoForge 26.1.2.95 target
         id: build
         shell: bash
