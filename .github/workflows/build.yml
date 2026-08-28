@@ -51,6 +51,12 @@ jobs:
               out.append(line)
           gp.write_text('\n'.join(out)+'\n')
 
+          wrapper=Path('gradle/wrapper/gradle-wrapper.properties')
+          w=wrapper.read_text()
+          import re
+          w=re.sub(r'gradle-[0-9.]+-bin\.zip','gradle-9.2.1-bin.zip',w)
+          wrapper.write_text(w)
+
           shutil.rmtree('src/main/java/com/mcmoddev/golems/integration', ignore_errors=True)
           eg=Path('src/main/java/com/mcmoddev/golems/ExtraGolems.java')
           e=eg.read_text()
