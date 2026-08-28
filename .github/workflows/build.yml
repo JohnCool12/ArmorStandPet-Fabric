@@ -15,7 +15,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set up Java 25
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '25'
@@ -50,7 +50,19 @@ jobs:
           s = s.replace("id 'net.neoforged.moddev' version '2.0.107'", "id 'net.neoforged.moddev' version '2.0.141'")
           s = s.replace('// Mojang ships Java 21 to end users in 1.21.1, so mods should target Java 21.\njava.toolchain.languageVersion = JavaLanguageVersion.of(21)', '// Minecraft 26.1.x uses Java 25.\njava.toolchain.languageVersion = JavaLanguageVersion.of(25)')
           s = s.replace('''    parchment {\n        mappingsVersion = project.parchment_mappings_version\n        minecraftVersion = project.parchment_minecraft_version\n    }\n\n''', '')
+          # The old 1.21.1 optional TOP/Jade artifacts are not valid compile dependencies for 26.1.2.
+          s = '\n'.join(line for line in s.splitlines() if 'curse.maven:the-one-probe' not in line and 'curse.maven:jade-' not in line) + '\n'
           p.write_text(s)
+
+          # Temporarily remove the two optional HUD integration adapters so the compiler can expose
+          # actual Minecraft/NeoForge 26.1.2 source breakages. They are restored after core porting.
+          for name in ['TOPDescriptionManager.java', 'JadeDescriptionManager.java']:
+              q = Path('project/src/main/java/com/mcmoddev/golems/integration') / name
+              if q.exists(): q.unlink()
+          q = Path('project/src/main/java/com/mcmoddev/golems/ExtraGolems.java')
+          s = q.read_text()
+          s = '\n'.join(line for line in s.splitlines() if 'TOPDescriptionManager.GetTheOneProbe' not in line) + '\n'
+          q.write_text(s)
           PY
 
       - name: Build port
