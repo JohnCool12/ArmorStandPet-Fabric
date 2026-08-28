@@ -30,6 +30,7 @@ jobs:
           python3 ci/eg_migrate_v8prep.py work
           python3 ci/eg_migrate_v8.py work
           python3 ci/eg_migrate_v9.py work
+          python3 ci/eg_migrate_v10.py work
           chmod +x work/gradlew
       - name: Build exact NeoForge 26.1.2.95 target
         id: build
@@ -50,7 +51,9 @@ jobs:
           cp work/build.gradle diagnostics/build.gradle || true
           cp work/gradle.properties diagnostics/gradle.properties || true
           cp work/src/main/java/com/mcmoddev/golems/entity/GolemBase.java diagnostics/generated/GolemBase.java || true
-          cp work/src/main/java/com/mcmoddev/golems/item/SpawnGolemItem.java diagnostics/generated/SpawnGolemItem.java || true
+          cp work/src/main/java/com/mcmoddev/golems/EGRegistry.java diagnostics/generated/EGRegistry.java || true
+          cp work/src/main/java/com/mcmoddev/golems/block/GlowBlock.java diagnostics/generated/GlowBlock.java || true
+          cp work/src/main/java/com/mcmoddev/golems/block/PowerBlock.java diagnostics/generated/PowerBlock.java || true
       - name: Upload diagnostics
         if: always()
         uses: actions/upload-artifact@v4
