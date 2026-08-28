@@ -31,13 +31,16 @@ jobs:
           set -euo pipefail
           git clone --depth 1 https://github.com/bigenergy/extra-golems-reborn.git project
 
-      - name: Retarget build to Minecraft 26.1.2 / NeoForge 26.1.2.82
+      - name: Retarget build and apply 26.1.2 API migration
         shell: bash
         run: |
           set -euo pipefail
           python - <<'PY'
           from pathlib import Path
-          p = Path('project/gradle.properties')
+          import re
+
+          root = Path('project')
+          p = root / 'gradle.properties'
           s = p.read_text()
           s = s.replace('minecraft_version=1.21.1', 'minecraft_version=26.1.2')
           s = s.replace('minecraft_version_range=[1.21.1]', 'minecraft_version_range=[26.1.2,26.2)')
@@ -45,24 +48,64 @@ jobs:
           s = s.replace('neo_version=21.1.206', 'neo_version=26.1.2.82')
           p.write_text(s)
 
-          p = Path('project/build.gradle')
+          p = root / 'build.gradle'
           s = p.read_text()
           s = s.replace("id 'net.neoforged.moddev' version '2.0.107'", "id 'net.neoforged.moddev' version '2.0.141'")
           s = s.replace('// Mojang ships Java 21 to end users in 1.21.1, so mods should target Java 21.\njava.toolchain.languageVersion = JavaLanguageVersion.of(21)', '// Minecraft 26.1.x uses Java 25.\njava.toolchain.languageVersion = JavaLanguageVersion.of(25)')
           s = s.replace('''    parchment {\n        mappingsVersion = project.parchment_mappings_version\n        minecraftVersion = project.parchment_minecraft_version\n    }\n\n''', '')
-          # The old 1.21.1 optional TOP/Jade artifacts are not valid compile dependencies for 26.1.2.
           s = '\n'.join(line for line in s.splitlines() if 'curse.maven:the-one-probe' not in line and 'curse.maven:jade-' not in line) + '\n'
+          s += "\ntasks.withType(JavaCompile).configureEach { options.compilerArgs += ['-Xmaxerrs', '500'] }\n"
           p.write_text(s)
 
-          # Temporarily remove the two optional HUD integration adapters so the compiler can expose
-          # actual Minecraft/NeoForge 26.1.2 source breakages. They are restored after core porting.
+          # Optional 1.21.1 HUD adapters are isolated while core 26.1.2 is migrated.
           for name in ['TOPDescriptionManager.java', 'JadeDescriptionManager.java']:
-              q = Path('project/src/main/java/com/mcmoddev/golems/integration') / name
+              q = root / 'src/main/java/com/mcmoddev/golems/integration' / name
               if q.exists(): q.unlink()
-          q = Path('project/src/main/java/com/mcmoddev/golems/ExtraGolems.java')
+          q = root / 'src/main/java/com/mcmoddev/golems/ExtraGolems.java'
           s = q.read_text()
           s = '\n'.join(line for line in s.splitlines() if 'TOPDescriptionManager.GetTheOneProbe' not in line) + '\n'
           q.write_text(s)
+
+          # Mojang 26.1 naming/package migration.
+          replacements = [
+              ('net.minecraft.resources.ResourceLocation', 'net.minecraft.resources.Identifier'),
+              ('ResourceLocation', 'Identifier'),
+              ('net.minecraft.IdentifierException', 'net.minecraft.resources.IdentifierException'),
+              ('ResourceLocationException', 'IdentifierException'),
+              ('net.minecraft.advancements.critereon.MinMaxBounds', 'net.minecraft.advancements.predicates.MinMaxBounds'),
+              ('net.minecraft.world.ContainerListener', 'net.minecraft.world.inventory.ContainerListener'),
+              ('net.minecraft.world.entity.animal.AbstractGolem', 'net.minecraft.world.entity.animal.golem.AbstractGolem'),
+              ('net.minecraft.world.entity.animal.IronGolem', 'net.minecraft.world.entity.animal.golem.IronGolem'),
+              ('net.minecraft.world.entity.MobSpawnType', 'net.minecraft.world.entity.EntitySpawnReason'),
+              ('MobSpawnType', 'EntitySpawnReason'),
+              ('EntitySpawnReason.SPAWN_EGG', 'EntitySpawnReason.SPAWN_ITEM_USE'),
+          ]
+          for f in (root / 'src/main/java').rglob('*.java'):
+              text = f.read_text()
+              for a,b in replacements:
+                  text = text.replace(a,b)
+              f.write_text(text)
+
+          # NeoForge removed INBTSerializable. Keep the mod's own stable behavior-data contract.
+          f = root / 'src/main/java/com/mcmoddev/golems/data/behavior/data/IBehaviorData.java'
+          f.write_text('''package com.mcmoddev.golems.data.behavior.data;\n\nimport com.mcmoddev.golems.entity.IExtraGolem;\nimport net.minecraft.core.HolderLookup;\nimport net.minecraft.nbt.CompoundTag;\n\n/**\n * Per-golem behavior data. NeoForge 26.x removed INBTSerializable, so the two\n * serialization methods used by Extra Golems are declared directly.\n * @see com.mcmoddev.golems.data.behavior.Behavior#onAttachData(IExtraGolem)\n */\npublic interface IBehaviorData {\n    CompoundTag serializeNBT(HolderLookup.Provider provider);\n    void deserializeNBT(HolderLookup.Provider provider, CompoundTag tag);\n}\n''')
+
+          # InteractionResultHolder was folded into InteractionResult in modern Minecraft.
+          f = root / 'src/main/java/com/mcmoddev/golems/item/GuideBookItem.java'
+          text = f.read_text().replace('import net.minecraft.world.InteractionResultHolder;\n', '')
+          text = text.replace('public InteractionResultHolder<ItemStack> use(Level worldIn, Player playerIn, InteractionHand handIn)',
+                              'public InteractionResult use(Level worldIn, Player playerIn, InteractionHand handIn)')
+          text = text.replace('return new InteractionResultHolder<>(InteractionResult.SUCCESS, itemstack);', 'return InteractionResult.SUCCESS;')
+          f.write_text(text)
+
+          # DeferredSpawnEggItem was removed in 26.x; entity type is now a component on Item.Properties.
+          f = root / 'src/main/java/com/mcmoddev/golems/EGRegistry.java'
+          text = f.read_text()
+          text = text.replace('import net.neoforged.neoforge.common.DeferredSpawnEggItem;', 'import net.minecraft.world.item.SpawnEggItem;')
+          text = text.replace('DeferredHolder<Item, DeferredSpawnEggItem> GOLEM_SPAWN_EGG', 'DeferredHolder<Item, SpawnEggItem> GOLEM_SPAWN_EGG')
+          text = text.replace('new DeferredSpawnEggItem(EntityReg.GOLEM, 0x9B9B9B, 0x4A7D2C, new Item.Properties())',
+                              'new SpawnEggItem(new Item.Properties().spawnEgg(EntityReg.GOLEM.get()))')
+          f.write_text(text)
           PY
 
       - name: Build port
