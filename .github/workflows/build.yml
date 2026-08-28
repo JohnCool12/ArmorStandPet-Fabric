@@ -37,7 +37,6 @@ jobs:
           set -euo pipefail
           python - <<'PY'
           from pathlib import Path
-          import re
 
           root = Path('project')
           p = root / 'gradle.properties'
@@ -57,7 +56,6 @@ jobs:
           s += "\ntasks.withType(JavaCompile).configureEach { options.compilerArgs += ['-Xmaxerrs', '500'] }\n"
           p.write_text(s)
 
-          # Optional 1.21.1 HUD adapters are isolated while core 26.1.2 is migrated.
           for name in ['TOPDescriptionManager.java', 'JadeDescriptionManager.java']:
               q = root / 'src/main/java/com/mcmoddev/golems/integration' / name
               if q.exists(): q.unlink()
@@ -66,7 +64,6 @@ jobs:
           s = '\n'.join(line for line in s.splitlines() if 'TOPDescriptionManager.GetTheOneProbe' not in line) + '\n'
           q.write_text(s)
 
-          # Mojang 26.1 naming/package migration.
           replacements = [
               ('net.minecraft.resources.ResourceLocation', 'net.minecraft.resources.Identifier'),
               ('ResourceLocation', 'Identifier'),
@@ -86,11 +83,9 @@ jobs:
                   text = text.replace(a,b)
               f.write_text(text)
 
-          # NeoForge removed INBTSerializable. Keep the mod's own stable behavior-data contract.
           f = root / 'src/main/java/com/mcmoddev/golems/data/behavior/data/IBehaviorData.java'
-          f.write_text('''package com.mcmoddev.golems.data.behavior.data;\n\nimport com.mcmoddev.golems.entity.IExtraGolem;\nimport net.minecraft.core.HolderLookup;\nimport net.minecraft.nbt.CompoundTag;\n\n/**\n * Per-golem behavior data. NeoForge 26.x removed INBTSerializable, so the two\n * serialization methods used by Extra Golems are declared directly.\n * @see com.mcmoddev.golems.data.behavior.Behavior#onAttachData(IExtraGolem)\n */\npublic interface IBehaviorData {\n    CompoundTag serializeNBT(HolderLookup.Provider provider);\n    void deserializeNBT(HolderLookup.Provider provider, CompoundTag tag);\n}\n''')
+          f.write_text('''package com.mcmoddev.golems.data.behavior.data;\n\nimport net.minecraft.core.HolderLookup;\nimport net.minecraft.nbt.CompoundTag;\n\npublic interface IBehaviorData {\n    CompoundTag serializeNBT(HolderLookup.Provider provider);\n    void deserializeNBT(HolderLookup.Provider provider, CompoundTag tag);\n}\n''')
 
-          # InteractionResultHolder was folded into InteractionResult in modern Minecraft.
           f = root / 'src/main/java/com/mcmoddev/golems/item/GuideBookItem.java'
           text = f.read_text().replace('import net.minecraft.world.InteractionResultHolder;\n', '')
           text = text.replace('public InteractionResultHolder<ItemStack> use(Level worldIn, Player playerIn, InteractionHand handIn)',
@@ -98,7 +93,6 @@ jobs:
           text = text.replace('return new InteractionResultHolder<>(InteractionResult.SUCCESS, itemstack);', 'return InteractionResult.SUCCESS;')
           f.write_text(text)
 
-          # DeferredSpawnEggItem was removed in 26.x; entity type is now a component on Item.Properties.
           f = root / 'src/main/java/com/mcmoddev/golems/EGRegistry.java'
           text = f.read_text()
           text = text.replace('import net.neoforged.neoforge.common.DeferredSpawnEggItem;', 'import net.minecraft.world.item.SpawnEggItem;')
@@ -108,7 +102,44 @@ jobs:
           f.write_text(text)
           PY
 
+      - name: Compile port and capture diagnostics
+        id: compile
+        continue-on-error: true
+        working-directory: project
+        shell: bash
+        run: |
+          set -o pipefail
+          gradle compileJava --stacktrace --no-daemon 2>&1 | tee ../compile.log
+          exit ${PIPESTATUS[0]}
+
+      - name: Extract compiler diagnostics
+        if: always()
+        shell: bash
+        run: |
+          if [ -f compile.log ]; then
+            grep -E -B2 -A4 'error:|cannot find symbol|package .* does not exist|method .* cannot be applied|does not override|incompatible types|has private access' compile.log > compile-errors.txt || true
+            tail -n 250 compile.log > compile-tail.txt || true
+          else
+            echo 'compile.log missing' > compile-errors.txt
+            cp compile-errors.txt compile-tail.txt
+          fi
+
+      - name: Upload diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: extra-golems-compile-diagnostics
+          path: |
+            compile-errors.txt
+            compile-tail.txt
+          if-no-files-found: error
+
+      - name: Fail if compile failed
+        if: steps.compile.outcome != 'success'
+        run: exit 1
+
       - name: Build port
+        if: steps.compile.outcome == 'success'
         working-directory: project
         run: gradle build --stacktrace --no-daemon
 
