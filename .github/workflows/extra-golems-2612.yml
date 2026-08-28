@@ -17,28 +17,35 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.2.1'
-      - name: Restore upstream source and overlays
+      - name: Mechanically port upstream source and apply overlays
         shell: bash
         run: |
           set -euxo pipefail
-          git clone --depth 1 https://github.com/bigenergy/extra-golems-reborn.git project
+          git clone --depth 1 https://github.com/bigenergy/extra-golems-reborn.git project-src
+          curl -fL -o /tmp/auto-porter.jar https://github.com/reqsery/mc-mod-porter/releases/download/v1.1.3-beta/auto-porter-1.1.3.jar
+          printf '%s  %s\n' 'e89ff6b09d2752309d2e5ee120892692455a2c34c305ce04012992dea728951f' /tmp/auto-porter.jar | sha256sum -c -
+          java -jar /tmp/auto-porter.jar "$PWD/project-src" 1.21.1 26.1.2 --no-build || true
+          test -d project-src-ported-26_1_2
+          mv project-src-ported-26_1_2 project
           cp ci/extra-golems-2612/build.gradle project/build.gradle
           cp ci/extra-golems-2612/gradle.properties project/gradle.properties
           cp ci/extra-golems-2612/settings.gradle project/settings.gradle
+          if [ -f ci/extra-golems-2612/postport.py ]; then python3 ci/extra-golems-2612/postport.py project; fi
           if [ -d ci/extra-golems-2612/overlay ]; then cp -a ci/extra-golems-2612/overlay/. project/; fi
       - name: Compile
         working-directory: project
         run: gradle clean build --stacktrace --no-daemon
-      - name: Collect JAR
+      - name: Collect artifacts
         if: success()
         shell: bash
         run: |
           mkdir -p artifact
           find project/build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*sources*' ! -name '*dev*' -exec cp {} artifact/ \;
+          (cd project && zip -qr ../artifact/Extra-Golems-Reborn-NeoForge-26.1.2-source.zip . -x '.git/*' '.gradle/*' 'build/*' 'run/*')
           ls -lah artifact
       - uses: actions/upload-artifact@v4
         if: success()
         with:
           name: extra-golems-neoforge-26.1.2
-          path: artifact/*.jar
+          path: artifact/*
           if-no-files-found: error
