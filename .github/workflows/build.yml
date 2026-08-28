@@ -8,10 +8,32 @@ permissions:
   contents: read
 
 jobs:
-  build:
+  transform-baseline:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build original NeoForge 1.21.1 mod
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --depth 1 https://github.com/bigenergy/extra-golems-reborn.git project
+          cd project
+          chmod +x gradlew
+          ./gradlew build --stacktrace --no-daemon
+          cd ..
+          mkdir -p input
+          find project/build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*-sources.jar' ! -name '*-dev.jar' -exec cp {} input/Extra-Golems-Reborn-NeoForge-1.21.1.jar \;
+          test -s input/Extra-Golems-Reborn-NeoForge-1.21.1.jar
 
       - name: Set up Java 25
         uses: actions/setup-java@v5
@@ -19,128 +41,34 @@ jobs:
           distribution: temurin
           java-version: '25'
 
-      - name: Set up Gradle 9.5.1
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '9.5.1'
-
-      - name: Fetch Extra Golems source
-        shell: bash
-        run: git clone --depth 1 https://github.com/bigenergy/extra-golems-reborn.git project
-
-      - name: Apply Minecraft 26.1.2 / NeoForge 26.1.2 migration pass
+      - name: Build Retromod migration CLI
         shell: bash
         run: |
           set -euo pipefail
-          python - <<'PY'
-          from pathlib import Path
+          git clone --depth 1 https://github.com/Bownlux/Retromod.git retromod
+          cd retromod
+          mvn package -q -DskipTests -Dexec.skip=true
+          cp target/*-all.jar ../retromod-all.jar
 
-          root = Path('project')
-          p = root / 'gradle.properties'
-          s = p.read_text()
-          s = s.replace('minecraft_version=1.21.1', 'minecraft_version=26.1.2')
-          s = s.replace('minecraft_version_range=[1.21.1]', 'minecraft_version_range=[26.1.2,26.2)')
-          s = s.replace('mod_version=21.1.0.1', 'mod_version=26.1.2-0.1.0-port')
-          s = s.replace('neo_version=21.1.206', 'neo_version=26.1.2.82')
-          p.write_text(s)
-
-          p = root / 'build.gradle'
-          s = p.read_text()
-          s = s.replace("id 'net.neoforged.moddev' version '2.0.107'", "id 'net.neoforged.moddev' version '2.0.141'")
-          s = s.replace('// Mojang ships Java 21 to end users in 1.21.1, so mods should target Java 21.\njava.toolchain.languageVersion = JavaLanguageVersion.of(21)', '// Minecraft 26.1.x uses Java 25.\njava.toolchain.languageVersion = JavaLanguageVersion.of(25)')
-          start = s.find('    parchment {')
-          if start >= 0:
-              end = s.find('    }\n', start) + len('    }\n')
-              s = s[:start] + s[end:]
-          s = '\n'.join(line for line in s.splitlines() if 'curse.maven:the-one-probe' not in line and 'curse.maven:jade-' not in line) + '\n'
-          s += "\ntasks.withType(JavaCompile).configureEach { options.compilerArgs += ['-Xmaxerrs', '1000'] }\n"
-          p.write_text(s)
-
-          # Temporarily isolate optional HUD adapters tied to old third-party APIs.
-          for name in ['TOPDescriptionManager.java', 'JadeDescriptionManager.java']:
-              q = root / 'src/main/java/com/mcmoddev/golems/integration' / name
-              if q.exists(): q.unlink()
-          q = root / 'src/main/java/com/mcmoddev/golems/ExtraGolems.java'
-          text = q.read_text()
-          text = '\n'.join(line for line in text.splitlines() if 'TOPDescriptionManager.GetTheOneProbe' not in line) + '\n'
-          q.write_text(text)
-
-          replacements = [
-              ('net.minecraft.resources.ResourceLocation', 'net.minecraft.resources.Identifier'),
-              ('ResourceLocation', 'Identifier'),
-              ('net.minecraft.ResourceLocationException', 'net.minecraft.resources.IdentifierException'),
-              ('ResourceLocationException', 'IdentifierException'),
-              ('net.minecraft.advancements.critereon.MinMaxBounds', 'net.minecraft.advancements.predicates.MinMaxBounds'),
-              ('net.minecraft.world.ContainerListener', 'net.minecraft.world.inventory.ContainerListener'),
-              ('net.minecraft.world.entity.animal.AbstractGolem', 'net.minecraft.world.entity.animal.golem.AbstractGolem'),
-              ('net.minecraft.world.entity.animal.IronGolem', 'net.minecraft.world.entity.animal.golem.IronGolem'),
-              ('net.minecraft.world.entity.MobSpawnType', 'net.minecraft.world.entity.EntitySpawnReason'),
-              ('MobSpawnType', 'EntitySpawnReason'),
-              ('EntitySpawnReason.SPAWN_EGG', 'EntitySpawnReason.SPAWN_ITEM_USE'),
-          ]
-          for f in (root / 'src/main/java').rglob('*.java'):
-              text = f.read_text()
-              for a, b in replacements:
-                  text = text.replace(a, b)
-              f.write_text(text)
-
-          f = root / 'src/main/java/com/mcmoddev/golems/data/behavior/data/IBehaviorData.java'
-          f.write_text('''package com.mcmoddev.golems.data.behavior.data;\n\nimport net.minecraft.core.HolderLookup;\nimport net.minecraft.nbt.CompoundTag;\n\npublic interface IBehaviorData {\n    CompoundTag serializeNBT(HolderLookup.Provider provider);\n    void deserializeNBT(HolderLookup.Provider provider, CompoundTag tag);\n}\n''')
-
-          f = root / 'src/main/java/com/mcmoddev/golems/item/GuideBookItem.java'
-          text = f.read_text().replace('import net.minecraft.world.InteractionResultHolder;\n', '')
-          text = text.replace('public InteractionResultHolder<ItemStack> use(Level worldIn, Player playerIn, InteractionHand handIn)', 'public InteractionResult use(Level worldIn, Player playerIn, InteractionHand handIn)')
-          text = text.replace('return new InteractionResultHolder<>(InteractionResult.SUCCESS, itemstack);', 'return InteractionResult.SUCCESS;')
-          f.write_text(text)
-
-          f = root / 'src/main/java/com/mcmoddev/golems/EGRegistry.java'
-          text = f.read_text()
-          text = text.replace('import net.neoforged.neoforge.common.DeferredSpawnEggItem;', 'import net.minecraft.world.item.SpawnEggItem;')
-          text = text.replace('DeferredHolder<Item, DeferredSpawnEggItem> GOLEM_SPAWN_EGG', 'DeferredHolder<Item, SpawnEggItem> GOLEM_SPAWN_EGG')
-          text = text.replace('new DeferredSpawnEggItem(EntityReg.GOLEM, 0x9B9B9B, 0x4A7D2C, new Item.Properties())', 'new SpawnEggItem(new Item.Properties().spawnEgg(EntityReg.GOLEM.get()))')
-          f.write_text(text)
-          PY
-
-      - name: Compile port
-        id: compile
+      - name: Transform NeoForge mod to Minecraft 26.1.2
         shell: bash
         run: |
-          set +e
-          cd project
-          gradle compileJava --stacktrace --no-daemon 2>&1 | tee ../compile.log
-          code=${PIPESTATUS[0]}
-          cd ..
-          grep -E '(^|:) error:|cannot find symbol|package .* does not exist|no suitable method|method .* cannot be applied|incompatible types|does not override|has private access|has protected access' compile.log > compile-errors.txt || true
-          exit $code
+          set -euo pipefail
+          java -jar retromod-all.jar transform input/Extra-Golems-Reborn-NeoForge-1.21.1.jar \
+            --target 26.1.2 --target-loader neoforge \
+            --output Extra-Golems-Reborn-NeoForge-26.1.2-baseline.jar --verify --force \
+            2>&1 | tee transform.log
+          jar tf Extra-Golems-Reborn-NeoForge-26.1.2-baseline.jar > jar-contents.txt
+          test -s Extra-Golems-Reborn-NeoForge-26.1.2-baseline.jar
+          grep -E 'META-INF/(neoforge.mods.toml|mods.toml)' jar-contents.txt
 
-      - name: Upload compile diagnostics
-        if: always()
+      - name: Upload transformed baseline
         uses: actions/upload-artifact@v4
         with:
-          name: extra-golems-compile-diagnostics
+          name: extra-golems-neoforge-26.1.2-baseline
           path: |
-            compile.log
-            compile-errors.txt
-          if-no-files-found: warn
-
-      - name: Build production JAR
-        if: success()
-        working-directory: project
-        run: gradle build --stacktrace --no-daemon
-
-      - name: Collect production JAR
-        if: success()
-        shell: bash
-        run: |
-          mkdir -p artifact
-          find project/build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*-sources.jar' ! -name '*-dev.jar' -exec cp {} artifact/ \;
-          test -n "$(find artifact -maxdepth 1 -type f -name '*.jar' -print -quit)"
-          ls -lah artifact
-
-      - name: Upload mod JAR
-        if: success()
-        uses: actions/upload-artifact@v4
-        with:
-          name: extra-golems-neoforge-26.1.2
-          path: artifact/*.jar
+            input/Extra-Golems-Reborn-NeoForge-1.21.1.jar
+            Extra-Golems-Reborn-NeoForge-26.1.2-baseline.jar
+            transform.log
+            jar-contents.txt
           if-no-files-found: error
