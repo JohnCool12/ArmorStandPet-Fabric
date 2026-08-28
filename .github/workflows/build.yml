@@ -33,6 +33,7 @@ jobs:
           python3 ci/eg_migrate_v10.py work
           python3 ci/eg_migrate_v11.py work
           python3 ci/eg_migrate_v12.py work
+          python3 ci/eg_migrate_v13.py work
           chmod +x work/gradlew
       - name: Build exact NeoForge 26.1.2.95 target
         id: build
@@ -59,7 +60,11 @@ jobs:
           cd ..
           echo "run_code=$run_code" >> "$GITHUB_OUTPUT"
           grep '\[EGPORT\]' server.log || true
-          if grep -Eq '\[EGPORT\].*golem_count=[1-9][0-9]*.*diamond_tag=true.*diamond_match=.*diamond' server.log; then
+          matcher_ok=false
+          actual_ok=false
+          if grep -Eq '\[EGPORT\].*golem_count=[1-9][0-9]*.*diamond_tag=true.*diamond_match=.*diamond' server.log; then matcher_ok=true; fi
+          if grep -Eq '\[EGPORT\].*actual_build=true.*spawned=true.*structure_consumed=true' server.log; then actual_ok=true; fi
+          if [ "$matcher_ok" = true ] && [ "$actual_ok" = true ]; then
             echo 'construction_ok=true' >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -77,6 +82,7 @@ jobs:
           cp work/src/main/java/com/mcmoddev/golems/entity/GolemBase.java diagnostics/generated/GolemBase.java || true
           cp work/src/main/java/com/mcmoddev/golems/EGRegistry.java diagnostics/generated/EGRegistry.java || true
           cp work/src/main/java/com/mcmoddev/golems/EGEvents.java diagnostics/generated/EGEvents.java || true
+          cp work/src/main/java/com/mcmoddev/golems/block/GolemHeadBlock.java diagnostics/generated/GolemHeadBlock.java || true
           cp work/src/main/java/com/mcmoddev/golems/client/entity/GolemRenderer.java diagnostics/generated/GolemRenderer.java || true
           cp work/src/main/java/com/mcmoddev/golems/client/entity/GolemDynamicTextures.java diagnostics/generated/GolemDynamicTextures.java || true
           cp work/src/main/java/com/mcmoddev/golems/client/entity/layer/GolemLayerListLayer.java diagnostics/generated/GolemLayerListLayer.java || true
