@@ -1,4 +1,4 @@
-name: Reconstruct Extra Golems V4 Source
+name: Build Verified Extra Golems NeoForge 26.1.2
 
 on:
   pull_request:
@@ -8,21 +8,26 @@ permissions:
   contents: read
 
 jobs:
-  reconstruct:
+  build-port:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Recover exact V4 carrier sources
+      - name: Set up Java 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Recover exact customized V4 Fabric source
         shell: bash
         run: |
           set -euo pipefail
           git fetch origin refs/pull/71/head:refs/heads/pr71
           git worktree add /tmp/carrier pr71
           cd /tmp/carrier
-
           cat ci/egpatch.part-* | base64 --decode > /tmp/fabric-port.patch.xz
           echo '8b5eb02294d41d7ef3af71ce280dcded9920b2ae097f73043cf60c751f94c7ba  /tmp/fabric-port.patch.xz' | sha256sum --check
           git clone -q https://github.com/bigenergy/extra-golems-reborn.git project
@@ -30,9 +35,7 @@ jobs:
           git checkout -q 6b21ec4a59ca16e8362b26e38fc63b2807042bdf
           xz -dc /tmp/fabric-port.patch.xz | patch -p4 --batch --forward >/dev/null
           cd ..
-
           cp -a project /tmp/fabric-baseline
-
           cd project
           patch -p1 --batch --forward < ../ci/eg-fix1.patch >/dev/null
           patch -p1 --batch --forward < ../ci/eg-fix2.patch >/dev/null
@@ -54,18 +57,197 @@ jobs:
           python3 ci/apply-vanilla-iron-golem-target-acquisition-parity.py >/dev/null
           python3 ci/strip-custom-target-acquisition-dead-code.py >/dev/null
 
-          cd /tmp
-          diff -ruN --exclude=.git fabric-baseline carrier/project > /tmp/v4-post-port.patch || test $? -eq 1
-          tar -C /tmp/carrier -czf /tmp/extra-golems-v4-source.tar.gz project
-          tar -C /tmp -czf /tmp/extra-golems-fabric-baseline.tar.gz fabric-baseline
-          wc -l /tmp/v4-post-port.patch
+      - name: Merge V4 behavior into native NeoForge 1.21.1 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone -q https://github.com/bigenergy/extra-golems-reborn.git /tmp/neo
+          cd /tmp/neo
+          git checkout -q 6b21ec4a59ca16e8362b26e38fc63b2807042bdf
+          cd "$GITHUB_WORKSPACE"
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib, shutil, sys
 
-      - name: Upload reconstructed source
+          final = Path('/tmp/carrier/project')
+          base = Path('/tmp/fabric-baseline')
+          neo = Path('/tmp/neo')
+
+          def data(p):
+              return p.read_bytes() if p.exists() and p.is_file() else None
+
+          changed=[]
+          for p in (final/'src/main').rglob('*'):
+              if not p.is_file():
+                  continue
+              rel=p.relative_to(final)
+              if data(p) != data(base/rel):
+                  changed.append(rel)
+
+          skip_exact={
+              Path('src/main/resources/golems.accesswidener'),
+              Path('src/main/resources/golems.mixins.json'),
+              Path('src/main/java/com/mcmoddev/golems/entity/VillageGolemSpawnHelper.java'),
+          }
+          special={
+              Path('src/main/java/com/mcmoddev/golems/entity/GolemBase.java'),
+              Path('src/main/java/com/mcmoddev/golems/item/SpawnGolemItem.java'),
+          }
+          copied=[]
+          for rel in changed:
+              if rel in skip_exact or '/mixin/' in rel.as_posix() or rel.name.endswith('.orig'):
+                  continue
+              if rel in special:
+                  continue
+              b=base/rel; n=neo/rel; f=final/rel
+              if b.exists() and n.exists():
+                  if data(b) != data(n):
+                      print('UNSAFE loader-different changed file:', rel, file=sys.stderr)
+                      sys.exit(2)
+              elif b.exists() != n.exists():
+                  print('UNSAFE asymmetric changed file:', rel, file=sys.stderr)
+                  sys.exit(3)
+              # If both baseline and NeoForge lack it, this is a new loader-neutral V4 file.
+              n.parent.mkdir(parents=True, exist_ok=True)
+              shutil.copy2(f,n)
+              copied.append(str(rel))
+
+          # GolemBase: exact V4 implementation, with only Fabric-specific compatibility reverted
+          # to the original NeoForge 1.21.1 hooks.
+          rel=Path('src/main/java/com/mcmoddev/golems/entity/GolemBase.java')
+          text=(final/rel).read_text()
+          text=text.replace('import net.fabricmc.fabric.api.item.v1.FabricItemStack;\n','')
+          text=text.replace('import net.minecraft.world.phys.Vec3;','import net.minecraft.world.phys.HitResult;\nimport net.minecraft.world.phys.Vec3;')
+          text=text.replace('public ItemStack getPickResult() {','public ItemStack getPickedResult(final HitResult ray) {')
+          text=text.replace('((FabricItemStack) (Object) stack).getRecipeRemainder()','stack.getCraftingRemainingItem()')
+          (neo/rel).write_text(text)
+
+          # Spawn item has no loader-dependent behavioral code; retain the exact V4 change.
+          rel=Path('src/main/java/com/mcmoddev/golems/item/SpawnGolemItem.java')
+          shutil.copy2(final/rel, neo/rel)
+
+          print('Transferred V4 files:', len(copied)+2)
+          for x in copied: print('  ',x)
+          PY
+
+          # Implement the two Fabric-mixin-only V4 fixes with native NeoForge events.
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('/tmp/neo/src/main/java/com/mcmoddev/golems/EGEvents.java')
+          s=p.read_text()
+          s=s.replace('import net.minecraft.world.damagesource.DamageTypes;\n',
+                      'import net.minecraft.world.Difficulty;\nimport net.minecraft.world.damagesource.DamageTypes;\n')
+          s=s.replace('import net.minecraft.world.entity.ai.memory.MemoryModuleType;\n',
+                      'import net.minecraft.world.entity.ai.memory.MemoryModuleType;\nimport net.minecraft.world.entity.animal.IronGolem;\n')
+          s=s.replace('import net.minecraft.world.entity.npc.Villager;\n',
+                      'import net.minecraft.world.entity.npc.Villager;\nimport net.minecraft.world.entity.player.Player;\n')
+
+          marker='''\t\t/**\n\t\t * Prevents mobs from targeting inert Furnace Golems\n\t\t **/'''
+          handler='''\t\t/**\n\t\t * V4 parity: scale Iron-Golem melee damage against non-player living victims\n\t\t * by world difficulty, exactly once. Player victims keep vanilla handling.\n\t\t */\n\t\t@SubscribeEvent\n\t\tpublic static void onIronGolemMeleeDifficulty(final LivingIncomingDamageEvent event) {\n\t\t\tif (event.isCanceled() || event.getEntity() instanceof Player) {\n\t\t\t\treturn;\n\t\t\t}\n\t\t\tif (event.getSource().getEntity() instanceof IronGolem attacker\n\t\t\t\t\t&& event.getSource().getDirectEntity() == attacker) {\n\t\t\t\tfloat amount = event.getAmount();\n\t\t\t\tamount = switch (event.getEntity().level().getDifficulty()) {\n\t\t\t\t\tcase PEACEFUL -> 0.0F;\n\t\t\t\t\tcase EASY -> Math.min(amount * 0.5F + 1.0F, amount);\n\t\t\t\t\tcase NORMAL -> amount;\n\t\t\t\t\tcase HARD -> amount * 1.5F;\n\t\t\t\t};\n\t\t\t\tevent.setAmount(amount);\n\t\t\t}\n\t\t}\n\n'''
+          if marker not in s: raise SystemExit('target-event marker not found')
+          s=s.replace(marker,handler+marker)
+
+          old='''\t\t\t\t\t// attempt to summon a golem\n\t\t\t\t\tGolemBase golem = GolemBase.create(event.getLevel().getLevel(), golemId);\n\t\t\t\t\tgolem.copyPosition(entity);\n\t\t\t\t\t// fire spawn position check for the new entity\n\t\t\t\t\tif (EventHooks.checkSpawnPosition(golem, event.getLevel(), MobSpawnType.MOB_SUMMONED)) {\n\t\t\t\t\t\t// cancel the original event using NeoForge 1.21+ API\n\t\t\t\t\t\tevent.setResult(MobSpawnEvent.PositionCheck.Result.FAIL);\n\t\t\t\t\t\t// add the golem entity\n\t\t\t\t\t\tevent.getLevel().addFreshEntityWithPassengers(golem);\n\t\t\t\t\t\t// finalize spawn (required to adjust current health to max health)\n\t\t\t\t\t\tgolem.finalizeSpawn(event.getLevel(), event.getLevel().getCurrentDifficultyAt(pos),\n\t\t\t\t\t\t\t\tMobSpawnType.MOB_SUMMONED, null);'''
+          new='''\t\t\t\t\t// V4 pre-tracking initialization: the material is present from the\n\t\t\t\t\t// constructor, before any world tracking/render packet can observe it.\n\t\t\t\t\tGolemBase golem;\n\t\t\t\t\tGolemBase.beginVillageSummonInitialization(golemId);\n\t\t\t\t\ttry {\n\t\t\t\t\t\tgolem = new GolemBase(EGRegistry.EntityReg.GOLEM.get(), event.getLevel().getLevel());\n\t\t\t\t\t} finally {\n\t\t\t\t\t\tGolemBase.endVillageSummonInitialization();\n\t\t\t\t\t}\n\t\t\t\t\tgolem.copyPosition(entity);\n\t\t\t\t\t// Only consume the vanilla spawn if a fully valid replacement can spawn.\n\t\t\t\t\t// Otherwise the original Iron Golem attempt continues unchanged.\n\t\t\t\t\tif (golem.getGolemId().isPresent() && golem.getContainer().isPresent()\n\t\t\t\t\t\t\t&& EventHooks.checkSpawnPosition(golem, event.getLevel(), MobSpawnType.MOB_SUMMONED)) {\n\t\t\t\t\t\tgolem.finalizeSpawn(event.getLevel(), event.getLevel().getCurrentDifficultyAt(pos),\n\t\t\t\t\t\t\t\tMobSpawnType.MOB_SUMMONED, null);\n\t\t\t\t\t\tgolem.setHealth(golem.getMaxHealth());\n\t\t\t\t\t\t// Cancel the original only after the replacement is completely initialized.\n\t\t\t\t\t\tevent.setResult(MobSpawnEvent.PositionCheck.Result.FAIL);\n\t\t\t\t\t\tevent.getLevel().addFreshEntityWithPassengers(golem);'''
+          if old not in s: raise SystemExit('village replacement block not found')
+          s=s.replace(old,new)
+          p.write_text(s)
+          PY
+
+      - name: Verify V4 invariants in NeoForge source
+        shell: bash
+        run: |
+          set -euo pipefail
+          G=/tmp/neo/src/main/java/com/mcmoddev/golems/entity/GolemBase.java
+          ! grep -q 'net.fabricmc' "$G"
+          ! grep -q 'protected void registerGoals()' "$G"
+          ! grep -q 'public void setTarget(@Nullable LivingEntity pTarget)' "$G"
+          ! grep -q 'public boolean canAttackType(final EntityType<?> type)' "$G"
+          grep -q 'this.targetSelector.removeAllGoals(goal -> true);' "$G"
+          grep -q 'Attributes.EXPLOSION_KNOCKBACK_RESISTANCE, 0.0D' "$G"
+          grep -q 'beginVillageSummonInitialization' "$G"
+          grep -q 'golem.getGolemId().isPresent() && golem.getContainer().isPresent()' /tmp/neo/src/main/java/com/mcmoddev/golems/EGEvents.java
+          grep -q 'onIronGolemMeleeDifficulty' /tmp/neo/src/main/java/com/mcmoddev/golems/EGEvents.java
+          ! grep -R --include='*.java' -n 'net.fabricmc' /tmp/neo/src/main/java
+
+      - name: Build customized native NeoForge 1.21.1 JAR
+        working-directory: /tmp/neo
+        run: |
+          chmod +x gradlew
+          ./gradlew clean build --stacktrace --no-daemon
+
+      - name: Smoke-test customized NeoForge 1.21.1 server
+        working-directory: /tmp/neo
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p run/server
+          printf 'eula=true\n' > run/server/eula.txt
+          set +e
+          timeout --signal=TERM 120s ./gradlew runServer --no-daemon > /tmp/server-1211.log 2>&1
+          status=$?
+          set -e
+          if [ "$status" -ne 0 ] && [ "$status" -ne 124 ]; then cat /tmp/server-1211.log; exit "$status"; fi
+          grep -q 'Done (' run/server/logs/latest.log
+          ! grep -Eqi 'Mixin apply failed|InjectionError|InvalidInjectionException|MixinTransformerError|Exception in server tick loop' run/server/logs/latest.log
+
+      - name: Smoke-test customized NeoForge 1.21.1 client
+        working-directory: /tmp/neo
+        shell: bash
+        run: |
+          set -euo pipefail
+          setsid env ALSOFT_DRIVERS=null LIBGL_ALWAYS_SOFTWARE=true xvfb-run -a ./gradlew runClient --no-daemon > /tmp/client-1211.log 2>&1 & pid=$!
+          ok=0
+          for i in $(seq 1 120); do
+            if [ -f run/client/logs/latest.log ] && grep -q 'minecraft:textures/atlas/blocks.png-atlas' run/client/logs/latest.log; then sleep 8; kill -0 "$pid" 2>/dev/null && ok=1; break; fi
+            kill -0 "$pid" 2>/dev/null || break
+            sleep 1
+          done
+          kill -TERM -- -"$pid" 2>/dev/null || true
+          wait "$pid" 2>/dev/null || true
+          test "$ok" -eq 1
+          ! grep -Eqi 'Mixin apply failed|InjectionError|InvalidInjectionException|MixinTransformerError' run/client/logs/latest.log
+
+      - name: Set up Java 25
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+
+      - name: Build Retromod migration CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --depth 1 https://github.com/Bownlux/Retromod.git /tmp/retromod
+          cd /tmp/retromod
+          mvn package -q -DskipTests -Dexec.skip=true
+          cp target/*-all.jar /tmp/retromod-all.jar
+
+      - name: Transform customized NeoForge build to Minecraft 26.1.2
+        shell: bash
+        run: |
+          set -euo pipefail
+          JAR=$(find /tmp/neo/build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*-sources.jar' ! -name '*-dev.jar' | head -1)
+          test -s "$JAR"
+          java -jar /tmp/retromod-all.jar transform "$JAR" \
+            --target 26.1.2 --target-loader neoforge \
+            --output /tmp/Extra-Golems-Reborn-NeoForge-26.1.2-V4-port.jar --verify --force \
+            2>&1 | tee /tmp/transform-v4.log
+          jar tf /tmp/Extra-Golems-Reborn-NeoForge-26.1.2-V4-port.jar > /tmp/jar-contents.txt
+          unzip -t /tmp/Extra-Golems-Reborn-NeoForge-26.1.2-V4-port.jar
+          grep -E 'META-INF/(neoforge.mods.toml|mods.toml)' /tmp/jar-contents.txt
+          sha256sum /tmp/Extra-Golems-Reborn-NeoForge-26.1.2-V4-port.jar | tee /tmp/final.sha256
+
+      - name: Upload migration candidate and diagnostics
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: extra-golems-v4-reconstructed-source
+          name: extra-golems-neoforge-26.1.2-v4-port-candidate
           path: |
-            /tmp/extra-golems-v4-source.tar.gz
-            /tmp/extra-golems-fabric-baseline.tar.gz
-            /tmp/v4-post-port.patch
-          if-no-files-found: error
+            /tmp/Extra-Golems-Reborn-NeoForge-26.1.2-V4-port.jar
+            /tmp/transform-v4.log
+            /tmp/jar-contents.txt
+            /tmp/final.sha256
+            /tmp/server-1211.log
+            /tmp/client-1211.log
+          if-no-files-found: warn
