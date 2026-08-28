@@ -23,6 +23,7 @@ jobs:
           set -euxo pipefail
           git clone --depth 1 https://github.com/bigenergy/extra-golems-reborn.git work
           python3 ci/eg_migrate.py work
+          python3 ci/eg_migrate_v3.py work
           chmod +x work/gradlew
       - name: Compile exact NeoForge 26.1.2.95 target
         id: build
