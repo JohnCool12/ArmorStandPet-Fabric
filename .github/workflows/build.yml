@@ -37,6 +37,7 @@ jobs:
           python3 ci/eg_migrate_v15_restore_client.py work
           python3 ci/eg_migrate_v16_renderstate_client.py work
           python3 ci/eg_migrate_v17_render_core_fixes.py work
+          python3 ci/eg_migrate_v18_reload_listener_id.py work
           chmod +x work/gradlew
       - name: Build exact NeoForge 26.1.2.95 target
         id: build
