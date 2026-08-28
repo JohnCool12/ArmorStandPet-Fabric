@@ -39,35 +39,25 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 
-/**
- * Recreates the original Extra Golems dynamic material texture system on the
- * Minecraft 26.1 texture API. Block textures are tiled through the golem UV
- * template and registered as runtime textures.
- */
+/** Recreates the original Extra Golems dynamic material texture system on 26.1. */
 public final class GolemDynamicTextures {
     private static final int TILES = 8;
     private static final Map<String, Identifier> CACHE = new HashMap<>();
-
     private GolemDynamicTextures() {}
 
     public static Identifier resolve(final Layer layer) {
-        // '#' textures in the data files are already full entity textures.
-        if (layer.getTexture().flag()) {
-            return layer.getTexture().resource();
-        }
+        if (layer.getTexture().flag()) return layer.getTexture().resource();
         final Identifier source = layer.getTexture().resource();
         final Identifier template = layer.getTemplate();
         if (template == null) {
             ExtraGolems.LOGGER.error("Missing golem texture template for {}", source);
             return source;
         }
-        final String cacheKey = source + "|" + template;
-        return CACHE.computeIfAbsent(cacheKey, key -> build(source, template));
+        return CACHE.computeIfAbsent(source + "|" + template, key -> build(source, template));
     }
 
     private static Identifier build(final Identifier source, final Identifier template) {
-        final Identifier id = Identifier.fromNamespaceAndPath(
-                ExtraGolems.MODID,
+        final Identifier id = Identifier.fromNamespaceAndPath(ExtraGolems.MODID,
                 "dynamic/" + Integer.toUnsignedString((source.toString() + "|" + template).hashCode(), 16));
         final Minecraft mc = Minecraft.getInstance();
         final Optional<Resource> sourceRes = mc.getResourceManager().getResource(source);
@@ -76,7 +66,6 @@ public final class GolemDynamicTextures {
             ExtraGolems.LOGGER.error("Unable to locate golem material {} or template {}", source, template);
             return source;
         }
-
         try (NativeImage block = NativeImage.read(sourceRes.get().open());
              NativeImage mask = NativeImage.read(templateRes.get().open())) {
             final int blockWidth = block.getWidth();
@@ -85,7 +74,6 @@ public final class GolemDynamicTextures {
             final int maskWidth = mask.getWidth();
             final int maskHeight = mask.getHeight();
             final NativeImage output = new NativeImage(outputWidth, outputHeight, true);
-
             for (int y = 0; y < outputHeight; ++y) {
                 final int my = Math.min(maskHeight - 1, (int)((long)y * maskHeight / outputHeight));
                 for (int x = 0; x < outputWidth; ++x) {
@@ -97,7 +85,6 @@ public final class GolemDynamicTextures {
                     output.setPixel(x, y, (src & 0x00FFFFFF) | (alpha << 24));
                 }
             }
-
             final DynamicTexture texture = new DynamicTexture(() -> "Extra Golems dynamic texture " + id, output);
             mc.getTextureManager().register(id, texture);
             texture.upload();
@@ -108,9 +95,7 @@ public final class GolemDynamicTextures {
         }
     }
 
-    public static void clear() {
-        CACHE.clear();
-    }
+    public static void clear() { CACHE.clear(); }
 }
 ''')
 
@@ -122,7 +107,6 @@ import com.mcmoddev.golems.data.model.Layer;
 import com.mcmoddev.golems.data.model.RenderTypes;
 import com.mojang.blaze3d.vertex.PoseStack;
 import net.minecraft.client.model.animal.golem.IronGolemModel;
-import net.minecraft.client.renderer.LightTexture;
 import net.minecraft.client.renderer.SubmitNodeCollector;
 import net.minecraft.client.renderer.entity.LivingEntityRenderer;
 import net.minecraft.client.renderer.entity.RenderLayerParent;
@@ -131,23 +115,19 @@ import net.minecraft.resources.Identifier;
 
 /** Native 26.1 render-state port of Extra Golems' material layer renderer. */
 public final class GolemLayerListLayer extends RenderLayer<GolemRenderState, IronGolemModel> {
-    public GolemLayerListLayer(RenderLayerParent<GolemRenderState, IronGolemModel> parent) {
-        super(parent);
-    }
+    private static final int FULL_BRIGHT = 0x00F000F0;
+
+    public GolemLayerListLayer(RenderLayerParent<GolemRenderState, IronGolemModel> parent) { super(parent); }
 
     @Override
     public void submit(PoseStack poseStack, SubmitNodeCollector collector, int packedLight,
                        GolemRenderState state, float yRot, float xRot) {
-        if (!state.hasGolemModel || state.golemLayers.isEmpty()) {
-            return;
-        }
+        if (!state.hasGolemModel || state.golemLayers.isEmpty()) return;
         final int overlay = LivingEntityRenderer.getOverlayCoords(state, 0.0F);
         for (Layer layer : state.golemLayers) {
-            if (!layer.isVariantInBounds(state.golemVariant)) {
-                continue;
-            }
+            if (!layer.isVariantInBounds(state.golemVariant)) continue;
             final Identifier texture = GolemDynamicTextures.resolve(layer);
-            final int light = layer.isEmissive() ? LightTexture.FULL_BRIGHT : packedLight;
+            final int light = layer.isEmissive() ? FULL_BRIGHT : packedLight;
             final int rgb = layer.useBiomeColor() ? state.golemBiomeColor : layer.getPackedColor();
             final int tint = 0xFF000000 | (rgb & 0xFFFFFF);
             final net.minecraft.client.renderer.rendertype.RenderType type =
@@ -173,38 +153,24 @@ import net.minecraft.client.renderer.entity.MobRenderer;
 import net.minecraft.client.renderer.rendertype.RenderType;
 import net.minecraft.resources.Identifier;
 import org.jetbrains.annotations.Nullable;
-
 import java.util.List;
 import java.util.Optional;
 
-/**
- * Minecraft 26.1 renderer that keeps vanilla iron-golem geometry/animation but
- * restores Extra Golems' data-driven material layers instead of drawing the
- * vanilla iron-golem skin on every material.
- */
+/** 26.1 renderer restoring the original data-driven Extra Golems material layers. */
 public final class GolemRenderer extends MobRenderer<GolemBase, GolemRenderState, IronGolemModel> {
     private static final Identifier FALLBACK = Identifier.withDefaultNamespace("textures/entity/iron_golem/iron_golem.png");
-
     public GolemRenderer(EntityRendererProvider.Context context) {
         super(context, new IronGolemModel(context.bakeLayer(ModelLayers.IRON_GOLEM)), 0.7F);
         this.addLayer(new GolemLayerListLayer(this));
     }
-
-    @Override
-    public GolemRenderState createRenderState() {
-        return new GolemRenderState();
-    }
-
-    @Override
-    public void extractRenderState(GolemBase entity, GolemRenderState state, float partialTick) {
+    @Override public GolemRenderState createRenderState() { return new GolemRenderState(); }
+    @Override public void extractRenderState(GolemBase entity, GolemRenderState state, float partialTick) {
         super.extractRenderState(entity, state, partialTick);
-        state.attackTicksRemaining = entity.getAttackAnimationTick() > 0
-                ? entity.getAttackAnimationTick() - partialTick : 0.0F;
+        state.attackTicksRemaining = entity.getAttackAnimationTick() > 0 ? entity.getAttackAnimationTick() - partialTick : 0.0F;
         state.offerFlowerTick = entity.getOfferFlowerTick();
         state.crackiness = entity.getCrackiness();
         state.golemVariant = entity.getVariant();
         state.golemBiomeColor = entity.getBiomeColor();
-
         final Optional<GolemContainer> container = entity.getContainer();
         if (container.isPresent()) {
             state.hasGolemModel = true;
@@ -214,31 +180,18 @@ public final class GolemRenderer extends MobRenderer<GolemBase, GolemRenderState
             state.golemLayers = List.of();
         }
     }
-
-    @Override
-    public Identifier getTextureLocation(GolemRenderState state) {
-        // Only a required fallback identifier. getRenderType() suppresses the base skin.
-        return FALLBACK;
-    }
-
-    @Nullable
-    @Override
-    protected RenderType getRenderType(GolemRenderState state, boolean bodyVisible,
-                                       boolean forceTransparent, boolean appearGlowing) {
-        // The visible body comes from GolemLayerListLayer, exactly as in the original mod.
+    @Override public Identifier getTextureLocation(GolemRenderState state) { return FALLBACK; }
+    @Nullable @Override protected RenderType getRenderType(GolemRenderState state, boolean bodyVisible,
+                                                            boolean forceTransparent, boolean appearGlowing) {
         return null;
     }
 }
 ''')
 
-# Add a server-start diagnostic that proves the custom datapack registry and common
-# block tag matching are actually usable by the construction code at runtime.
 events = SRC / 'com/mcmoddev/golems/EGEvents.java'
 s = events.read_text()
 old = '''\t\tpublic static void onServerStarted(final ServerStartedEvent event) {\n\t\t\tGolemContainer.populate(event.getServer().registryAccess());\n\t\t}\n'''
 new = '''\t\tpublic static void onServerStarted(final ServerStartedEvent event) {\n\t\t\tGolemContainer.populate(event.getServer().registryAccess());\n\t\t\ttry {\n\t\t\t\tlong count = event.getServer().registryAccess().lookupOrThrow(EGRegistry.Keys.GOLEM).listElements().count();\n\t\t\t\tTagKey<net.minecraft.world.level.block.Block> diamondTag = TagKey.create(\n\t\t\t\t\t\tnet.minecraft.core.registries.BuiltInRegistries.BLOCK.key(),\n\t\t\t\t\t\tIdentifier.fromNamespaceAndPath("c", "storage_blocks/diamond"));\n\t\t\t\tboolean diamondTagged = Blocks.DIAMOND_BLOCK.builtInRegistryHolder().is(diamondTag);\n\t\t\t\tResourceKey<Golem> diamondMatch = ExtraGolems.getGolemId(event.getServer().overworld(),\n\t\t\t\t\t\tBlocks.DIAMOND_BLOCK, Blocks.DIAMOND_BLOCK, Blocks.DIAMOND_BLOCK, Blocks.DIAMOND_BLOCK);\n\t\t\t\tExtraGolems.LOGGER.info("[EGPORT] golem_count={} diamond_tag={} diamond_match={}",\n\t\t\t\t\t\tcount, diamondTagged, diamondMatch == null ? "null" : diamondMatch.identifier());\n\t\t\t} catch (Throwable t) {\n\t\t\t\tExtraGolems.LOGGER.error("[EGPORT] construction self-test failed", t);\n\t\t\t}\n\t\t}\n'''
-if old not in s:
-    raise SystemExit('Unexpected onServerStarted block for runtime diagnostic')
+if old not in s: raise SystemExit('Unexpected onServerStarted block for runtime diagnostic')
 events.write_text(s.replace(old, new))
-
 print('Applied native 26.1 data-driven renderer + runtime construction diagnostic pass 11')
