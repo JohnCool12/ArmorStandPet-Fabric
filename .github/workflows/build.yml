@@ -31,6 +31,7 @@ jobs:
           python3 ci/eg_migrate_v8.py work
           python3 ci/eg_migrate_v9.py work
           python3 ci/eg_migrate_v10.py work
+          python3 ci/eg_migrate_v11.py work
           chmod +x work/gradlew
       - name: Build exact NeoForge 26.1.2.95 target
         id: build
@@ -42,18 +43,42 @@ jobs:
           code=${PIPESTATUS[0]}
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
           exit 0
+      - name: Runtime construction self-test
+        if: steps.build.outputs.exit_code == '0'
+        id: runtime
+        shell: bash
+        run: |
+          set +e
+          cd work
+          mkdir -p run
+          printf 'eula=true\n' > run/eula.txt
+          printf 'eula=true\n' > eula.txt
+          timeout 100s ./gradlew --no-daemon runServer 2>&1 | tee ../server.log
+          run_code=${PIPESTATUS[0]}
+          cd ..
+          echo "run_code=$run_code" >> "$GITHUB_OUTPUT"
+          grep '\[EGPORT\]' server.log || true
+          if grep -Eq '\[EGPORT\].*golem_count=[1-9][0-9]*.*diamond_tag=true.*diamond_match=.*diamond' server.log; then
+            echo 'construction_ok=true' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo 'construction_ok=false' >> "$GITHUB_OUTPUT"
+          exit 1
       - name: Package diagnostics
         if: always()
         shell: bash
         run: |
           mkdir -p diagnostics/generated
           cp build.log diagnostics/build.log || true
+          cp server.log diagnostics/server.log || true
           cp work/build.gradle diagnostics/build.gradle || true
           cp work/gradle.properties diagnostics/gradle.properties || true
           cp work/src/main/java/com/mcmoddev/golems/entity/GolemBase.java diagnostics/generated/GolemBase.java || true
           cp work/src/main/java/com/mcmoddev/golems/EGRegistry.java diagnostics/generated/EGRegistry.java || true
-          cp work/src/main/java/com/mcmoddev/golems/block/GlowBlock.java diagnostics/generated/GlowBlock.java || true
-          cp work/src/main/java/com/mcmoddev/golems/block/PowerBlock.java diagnostics/generated/PowerBlock.java || true
+          cp work/src/main/java/com/mcmoddev/golems/EGEvents.java diagnostics/generated/EGEvents.java || true
+          cp work/src/main/java/com/mcmoddev/golems/client/entity/GolemRenderer.java diagnostics/generated/GolemRenderer.java || true
+          cp work/src/main/java/com/mcmoddev/golems/client/entity/GolemDynamicTextures.java diagnostics/generated/GolemDynamicTextures.java || true
+          cp work/src/main/java/com/mcmoddev/golems/client/entity/layer/GolemLayerListLayer.java diagnostics/generated/GolemLayerListLayer.java || true
       - name: Upload diagnostics
         if: always()
         uses: actions/upload-artifact@v4
@@ -61,7 +86,7 @@ jobs:
           name: extra-golems-compile-probe
           path: diagnostics
       - name: Upload built mod
-        if: steps.build.outputs.exit_code == '0'
+        if: steps.build.outputs.exit_code == '0' && steps.runtime.outputs.construction_ok == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: extra-golems-neoforge-26.1.2
