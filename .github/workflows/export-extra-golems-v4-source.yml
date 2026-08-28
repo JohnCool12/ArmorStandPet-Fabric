@@ -1,0 +1,110 @@
+name: Export Extra Golems V4 Source
+on:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  export-source:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.5.1'
+
+      - name: Reconstruct exact cleaned V4 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat ci/egpatch.part-* | base64 --decode > /tmp/fabric-port.patch.xz
+          echo '8b5eb02294d41d7ef3af71ce280dcded9920b2ae097f73043cf60c751f94c7ba  /tmp/fabric-port.patch.xz' | sha256sum --check
+          git clone -q https://github.com/bigenergy/extra-golems-reborn.git project
+          cd project
+          git checkout -q 6b21ec4a59ca16e8362b26e38fc63b2807042bdf
+          xz -dc /tmp/fabric-port.patch.xz | patch -p4 --batch --forward >/dev/null
+          patch -p1 --batch --forward < ../ci/eg-fix1.patch >/dev/null
+          patch -p1 --batch --forward < ../ci/eg-fix2.patch >/dev/null
+          patch -p1 --batch --forward < ../ci/eg-bedrock-targetable.patch >/dev/null
+          patch -p1 --batch --forward < ../ci/eg-fix4.patch >/dev/null
+          patch -p1 --batch --forward < ../ci/eg-advanced-swim.patch >/dev/null
+          patch -p1 --batch --forward < ../ci/eg-surface-swim.patch >/dev/null
+          patch -p1 --batch --forward < ../ci/eg-bedrock-provocation.patch >/dev/null
+          patch -p1 --batch --forward < ../ci/eg-all-eyes-neutral.patch >/dev/null
+          cp ../ci/GolemFinalEyesLayer.java src/main/java/com/mcmoddev/golems/client/entity/layer/GolemFinalEyesLayer.java
+          cd ..
+          for s in apply-strict-neutral.py apply-legacy-neutral-migration.py apply-hybrid-village-neutral.py apply-bedrock-natural-hostility.py apply-stable-village-targeting.py apply-bedrock-true-vanilla-natural-ai.py apply-all-constructed-natural-ai.py apply-village-runtime-parity-fix.py apply-individual-player-target-provenance.py apply-minimum-iron-golem-speed.py apply-sculk-catalyst-player-blindness-exemption.py refine-sculk-catalyst-player-blindness-predicate.py apply-village-golem-pretracking-initialization.py apply-village-golem-failed-replacement-fallback.py apply-village-golem-spawn-helper.py apply-provoked-target-interruption-recovery.py; do python3 ci/$s >/dev/null; done
+          python3 ci/fix-provoked-recovery-compile.py >/dev/null
+          python3 ci/apply-no-silent-aggravation-invariant.py >/dev/null
+          python3 ci/apply-golem-mob-difficulty-scaling.py >/dev/null
+          python3 ci/apply-extra-golem-explosion-knockback-parity.py >/dev/null
+          python3 ci/apply-creative-provocation-hard-reset.py >/dev/null
+          python3 ci/normalize-setgolemid-target-rebuild.py >/dev/null
+          python3 ci/apply-vanilla-iron-golem-target-acquisition-parity.py >/dev/null
+          python3 ci/strip-custom-target-acquisition-dead-code.py
+
+          G=project/src/main/java/com/mcmoddev/golems/entity/GolemBase.java
+          ! grep -q 'protected void registerGoals()' "$G"
+          ! grep -q 'public void setTarget(@Nullable LivingEntity pTarget)' "$G"
+          ! grep -q 'public boolean canAttackType(final EntityType<?> type)' "$G"
+          for x in hardResetInvalidPlayerProvocationBeforeAiTick seedNearestNormalHostileTarget recoverInterruptedDirectPlayerProvocation sanitizeSilentAggravationState hasVanillaVillageReputationReason configureConstructedNeutralTargeting configureBedrockNaturalIronGolemTargeting configureConstructedVillageTargeting updateConstructedNeutralTargetingMode migrateLegacyPlayerCreatedConstructedGolem migrateBedrockNaturalHostilityState maintainConstructedNeutralRetaliation assigningVillageDefensePlayerTarget interruptedDirectPlayerProvoker; do ! grep -q "$x" "$G"; done
+          grep -q 'this.targetSelector.removeAllGoals(goal -> true);' "$G"
+          grep -q 'this.registerGoals();' "$G"
+          ! grep -R --include='*.java' -n 'targetSelector' project/src/main/java/com/mcmoddev/golems/data/behavior
+          grep -q 'Attributes.EXPLOSION_KNOCKBACK_RESISTANCE, 0.0D' "$G"
+          test -f project/src/main/java/com/mcmoddev/golems/mixin/IronGolemDamageDifficultyMixin.java
+
+      - name: Compile reconstructed source
+        working-directory: project
+        run: gradle clean build --stacktrace --no-daemon
+
+      - name: Verify compiled direct inheritance
+        working-directory: project
+        shell: bash
+        run: |
+          set -euo pipefail
+          javap -classpath build/classes/java/main -p com.mcmoddev.golems.entity.GolemBase > ../golembase-methods-export.txt
+          ! grep -q 'registerGoals' ../golembase-methods-export.txt
+          ! grep -q 'setTarget' ../golembase-methods-export.txt
+          ! grep -q 'canAttackType' ../golembase-methods-export.txt
+          ! grep -q 'hardResetInvalidPlayerProvocationBeforeAiTick' ../golembase-methods-export.txt
+          ! grep -q 'recoverInterruptedDirectPlayerProvocation' ../golembase-methods-export.txt
+          ! grep -q 'sanitizeSilentAggravationState' ../golembase-methods-export.txt
+          unzip -t build/libs/Extra-Golems-Reborn-Fabric-1.21.1-21.1.0.1-fabric.jar >/dev/null
+
+      - name: Package complete reconstructed source
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf source-export
+          mkdir -p source-export
+          cp -a project source-export/Extra-Golems-Reborn-Fabric-1.21.1-V4-source
+          rm -rf source-export/Extra-Golems-Reborn-Fabric-1.21.1-V4-source/.git
+          rm -rf source-export/Extra-Golems-Reborn-Fabric-1.21.1-V4-source/.gradle
+          rm -rf source-export/Extra-Golems-Reborn-Fabric-1.21.1-V4-source/build
+          rm -rf source-export/Extra-Golems-Reborn-Fabric-1.21.1-V4-source/run
+          cat > source-export/V4_BUILD_PROVENANCE.txt <<'EOF'
+          Extra Golems Reborn Fabric 1.21.1 - cleaned V4 source export
+          Final V4 JAR SHA-256: b45ef9f022073f62942a0ec508a7d27b89da3ccf626f0728db4a70dfaaaf0ed5
+          Original V4 CI head commit: 0201d119020e876df6aa26f05c37f76c6e31e8ee
+          Upstream Extra Golems commit: 6b21ec4a59ca16e8362b26e38fc63b2807042bdf
+          Fabric port patch SHA-256: 8b5eb02294d41d7ef3af71ce280dcded9920b2ae097f73043cf60c751f94c7ba
+          Original V4 workflow: .github/workflows/build-extra-golem-vanilla-target-acquisition-v4.yml
+          The source tree was reconstructed by the same ordered patch pipeline used by the final cleaned V4 build, then compiled successfully before export.
+          EOF
+          cd source-export
+          zip -qr ../Extra-Golems-Reborn-Fabric-1.21.1-V4-complete-source.zip Extra-Golems-Reborn-Fabric-1.21.1-V4-source V4_BUILD_PROVENANCE.txt
+          cd ..
+          unzip -t Extra-Golems-Reborn-Fabric-1.21.1-V4-complete-source.zip
+          sha256sum Extra-Golems-Reborn-Fabric-1.21.1-V4-complete-source.zip > Extra-Golems-Reborn-Fabric-1.21.1-V4-complete-source.zip.sha256
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: extra-golems-v4-complete-source
+          path: |
+            Extra-Golems-Reborn-Fabric-1.21.1-V4-complete-source.zip
+            Extra-Golems-Reborn-Fabric-1.21.1-V4-complete-source.zip.sha256
+          if-no-files-found: error
