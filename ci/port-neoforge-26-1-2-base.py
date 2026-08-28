@@ -10,6 +10,8 @@ s = s.replace('java.toolchain.languageVersion = JavaLanguageVersion.of(21)', 'ja
 s = re.sub(r'\n\s*parchment \{.*?\n\s*\}\n', '\n', s, flags=re.S)
 s = s.replace('implementation "curse.maven:the-one-probe-${project.top_proj}:${project.top_file}"', 'compileOnly "curse.maven:the-one-probe-${project.top_proj}:${project.top_file}"')
 s = s.replace('implementation "curse.maven:jade-${project.jade_proj}:${project.jade_file}"', 'compileOnly "curse.maven:jade-${project.jade_proj}:${project.jade_file}"')
+# The old MMD repository is offline and used to shadow CurseMaven lookups.
+s = re.sub(r'\n\s*maven \{\s*\n\s*name "MMD"\s*\n\s*url "https://maven\.mcmoddev\.com/"\s*\n\s*\}\s*', '\n', s)
 build.write_text(s)
 
 props = root / 'gradle.properties'
@@ -23,13 +25,11 @@ p = re.sub(r'^parchment_minecraft_version=.*\n?', '', p, flags=re.M)
 p = re.sub(r'^parchment_mappings_version=.*\n?', '', p, flags=re.M)
 props.write_text(p)
 
-# NeoForge 26.1 requires Gradle 9.1+ and Java 25.
 wrapper = root / 'gradle/wrapper/gradle-wrapper.properties'
 w = wrapper.read_text()
 w = re.sub(r'gradle-[0-9.]+-bin\.zip', 'gradle-9.5.1-bin.zip', w)
 wrapper.write_text(w)
 
-# Keep optional integrations optional, but update Jade's advertised range.
 tmpl = root / 'src/main/templates/META-INF/neoforge.mods.toml'
 t = tmpl.read_text().replace('versionRange="[15.0.0,)"', 'versionRange="[26.0.0,)"')
 tmpl.write_text(t)
