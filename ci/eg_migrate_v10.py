@@ -35,8 +35,8 @@ patch('com/mcmoddev/golems/EGRegistry.java', [
      '() -> new GuideBookItem(new Item.Properties().stacksTo(1).setId(' + (ITEM_KEY % 'guide_book') + '))'),
     ('() -> new GolemHeadItem(BlockReg.GOLEM_HEAD.get(), new Item.Properties())',
      '() -> new GolemHeadItem(BlockReg.GOLEM_HEAD.get(), new Item.Properties().useBlockDescriptionPrefix().setId(' + (ITEM_KEY % 'golem_head') + '))'),
-    ('() -> new DeferredSpawnEggItem(EntityReg.GOLEM, 0x9B9B9B, 0x4A7D2C, new Item.Properties())',
-     '() -> new DeferredSpawnEggItem(EntityReg.GOLEM, 0x9B9B9B, 0x4A7D2C, new Item.Properties().setId(' + (ITEM_KEY % 'golem_spawn_egg') + '))'),
+    ('() -> new SpawnEggItem(new Item.Properties().spawnEgg(EntityReg.GOLEM.get()))',
+     '() -> new SpawnEggItem(new Item.Properties().spawnEgg(EntityReg.GOLEM.get()).setId(' + (ITEM_KEY % 'golem_spawn_egg') + '))'),
 ])
 
 # These utility blocks create their Block.Properties internally, so the registry key
