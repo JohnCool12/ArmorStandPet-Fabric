@@ -1,8 +1,6 @@
-name: Build Fabric Mod
+name: Extra Golems 26.1.2 Compile Probe
 
 on:
-  push:
-    branches: [main]
   pull_request:
   workflow_dispatch:
 
@@ -10,52 +8,153 @@ permissions:
   contents: read
 
 jobs:
-  build:
+  compile-probe:
     runs-on: ubuntu-latest
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-
+      - uses: actions/checkout@v4
       - name: Set up Java 25
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '25'
-
-      - name: Set up Gradle 9.5.1
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '9.5.1'
-
-      - name: Restore source project
+      - name: Prepare clean upstream source and apply deterministic migration
         shell: bash
         run: |
-          set -euo pipefail
-          cat ci/asp.tar.xz.b64.part-* | base64 --decode > /tmp/asp.tar.xz
-          echo '3c3a2a9c821ef83ba5871678a59617b54800fb9c1926dcdb32de401881d45f8b  /tmp/asp.tar.xz' | sha256sum --check
-          mkdir -p /tmp/asp-src
-          tar -xJf /tmp/asp.tar.xz -C /tmp/asp-src
-          cp -a /tmp/asp-src/armorstandpet-fabric ./project
-          if [ -d ci/overrides ]; then
-            cp -a ci/overrides/. project/
+          set -euxo pipefail
+          git clone --depth 1 https://github.com/bigenergy/extra-golems-reborn.git work
+          python3 ci/eg_migrate.py work
+          python3 ci/eg_migrate_v3.py work
+          python3 ci/eg_migrate_v4.py work
+          python3 ci/eg_migrate_v5.py work
+          python3 ci/eg_migrate_v7.py work
+          python3 ci/eg_migrate_v8prep.py work
+          python3 ci/eg_migrate_v8.py work
+          python3 ci/eg_migrate_v9.py work
+          python3 ci/eg_migrate_v10.py work
+          python3 ci/eg_migrate_v11.py work
+          python3 ci/eg_migrate_v12.py work
+          python3 ci/eg_migrate_v13.py work
+          python3 ci/eg_migrate_v15_restore_client.py work
+          python3 ci/eg_migrate_v16_renderstate_client.py work
+          python3 ci/eg_migrate_v17_render_core_fixes.py work
+          python3 ci/eg_migrate_v18_reload_listener_id.py work
+          chmod +x work/gradlew
+      - name: Build exact NeoForge 26.1.2.95 target
+        id: build
+        shell: bash
+        run: |
+          set +e
+          cd work
+          ./gradlew --no-daemon clean build 2>&1 | tee ../build.log
+          code=${PIPESTATUS[0]}
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          exit 0
+      - name: Runtime construction self-test
+        if: steps.build.outputs.exit_code == '0'
+        id: runtime
+        shell: bash
+        run: |
+          set +e
+          cd work
+          mkdir -p run
+          printf 'eula=true\n' > run/eula.txt
+          printf 'eula=true\n' > eula.txt
+          timeout 100s ./gradlew --no-daemon runServer 2>&1 | tee ../server.log
+          run_code=${PIPESTATUS[0]}
+          cd ..
+          echo "run_code=$run_code" >> "$GITHUB_OUTPUT"
+          grep '\[EGPORT\]' server.log || true
+          matcher_ok=false
+          actual_ok=false
+          if grep -Eq '\[EGPORT\].*golem_count=[1-9][0-9]*.*diamond_tag=true.*diamond_match=.*diamond' server.log; then matcher_ok=true; fi
+          if grep -Eq '\[EGPORT\].*actual_build=true.*spawned=true.*structure_consumed=true' server.log; then actual_ok=true; fi
+          if [ "$matcher_ok" = true ] && [ "$actual_ok" = true ]; then
+            echo 'construction_ok=true' >> "$GITHUB_OUTPUT"
+            exit 0
           fi
-          test -f project/build.gradle
-
-      - name: Build
-        working-directory: project
-        run: gradle build --stacktrace --no-daemon
-
-      - name: Collect production JAR
+          echo 'construction_ok=false' >> "$GITHUB_OUTPUT"
+          exit 1
+      - name: Strip diagnostics and rebuild clean release
+        if: steps.runtime.outputs.construction_ok == 'true'
+        id: release
         shell: bash
         run: |
-          mkdir -p artifact
-          find project/build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*-sources.jar' ! -name '*-dev.jar' -exec cp {} artifact/ \;
-          test -n "$(find artifact -maxdepth 1 -type f -name '*.jar' -print -quit)"
-          ls -lah artifact
-
-      - name: Upload mod JAR
+          set -euxo pipefail
+          python3 ci/eg_migrate_v14_release_cleanup.py work
+          if grep -R -n '\[EGPORT\]\|actual_build=\|testHead' work/src/main/java; then
+            echo 'Runtime test instrumentation remains in release source' >&2
+            exit 1
+          fi
+          cd work
+          ./gradlew --no-daemon clean build 2>&1 | tee ../release-build.log
+          cd ..
+          JAR=$(find work/build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*-sources.jar' ! -name '*-javadoc.jar' | head -n 1)
+          test -n "$JAR"
+          echo "jar=$JAR" >> "$GITHUB_OUTPUT"
+          unzip -q "$JAR" -d release-audit
+          if grep -aR -n '\[EGPORT\]\|actual_build=\|testHead' release-audit; then
+            echo 'Runtime test instrumentation leaked into release JAR' >&2
+            exit 1
+          fi
+          python3 - <<'PY'
+          from pathlib import Path
+          root=Path('release-audit')
+          golems=list((root/'data/golems/golems/golem').glob('*.json'))
+          textures=list((root/'assets/golems/textures').rglob('*.png'))
+          recipes=list((root/'data/golems/recipe').glob('*.json'))
+          required=[
+              root/'com/mcmoddev/golems/client/entity/GolemRenderer.class',
+              root/'com/mcmoddev/golems/client/entity/GolemModel.class',
+              root/'com/mcmoddev/golems/client/entity/layer/GolemLayerListLayer.class',
+              root/'com/mcmoddev/golems/client/entity/layer/GolemTextureOverrideLayer.class',
+              root/'com/mcmoddev/golems/client/entity/layer/GolemCrackinessLayer.class',
+              root/'com/mcmoddev/golems/client/entity/layer/GolemFlowerLayer.class',
+              root/'com/mcmoddev/golems/client/entity/layer/GolemKittyLayer.class',
+              root/'com/mcmoddev/golems/client/entity/layer/GolemBannerLayer.class',
+              root/'com/mcmoddev/golems/client/menu/GolemInventoryScreen.class',
+              root/'com/mcmoddev/golems/client/menu/GuideBookScreen.class',
+              root/'data/golems/golems/golem/bedrock.json',
+              root/'data/golems/golems/golem/diamond.json',
+          ]
+          print(f'[RELEASE_AUDIT] golems={len(golems)} textures={len(textures)} recipes={len(recipes)}')
+          if len(golems) != 199:
+              raise SystemExit(f'Expected 199 golem definitions, found {len(golems)}')
+          if len(textures) < 99:
+              raise SystemExit(f'Expected at least 99 Extra Golems textures, found {len(textures)}')
+          if len(recipes) != 3:
+              raise SystemExit(f'Expected 3 Extra Golems recipes, found {len(recipes)}')
+          missing=[str(p) for p in required if not p.exists()]
+          if missing:
+              raise SystemExit('Missing required release resources/classes: '+', '.join(missing))
+          PY
+      - name: Package diagnostics
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p diagnostics/generated
+          cp build.log diagnostics/build.log || true
+          cp server.log diagnostics/server.log || true
+          cp release-build.log diagnostics/release-build.log || true
+          cp work/build.gradle diagnostics/build.gradle || true
+          cp work/gradle.properties diagnostics/gradle.properties || true
+          cp work/src/main/java/com/mcmoddev/golems/entity/GolemBase.java diagnostics/generated/GolemBase.java || true
+          cp work/src/main/java/com/mcmoddev/golems/EGRegistry.java diagnostics/generated/EGRegistry.java || true
+          cp work/src/main/java/com/mcmoddev/golems/EGEvents.java diagnostics/generated/EGEvents.java || true
+          cp work/src/main/java/com/mcmoddev/golems/block/GolemHeadBlock.java diagnostics/generated/GolemHeadBlock.java || true
+          cp -r work/src/main/java/com/mcmoddev/golems/client diagnostics/generated/client || true
+          cp -r work/src/main/resources/data/golems/recipe diagnostics/generated/recipe || true
+      - name: Upload diagnostics
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: armorstandpet-fabric-26.2
-          path: artifact/*.jar
-          if-no-files-found: error
+          name: extra-golems-compile-probe
+          path: diagnostics
+      - name: Upload built mod
+        if: steps.release.conclusion == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: extra-golems-neoforge-26.1.2
+          path: ${{ steps.release.outputs.jar }}
+      - name: Fail if compiler failed
+        if: steps.build.outputs.exit_code != '0'
+        run: exit 1
