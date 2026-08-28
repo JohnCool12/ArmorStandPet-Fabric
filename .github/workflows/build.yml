@@ -24,14 +24,15 @@ jobs:
           git clone --depth 1 https://github.com/bigenergy/extra-golems-reborn.git work
           python3 ci/eg_migrate.py work
           python3 ci/eg_migrate_v3.py work
+          python3 ci/eg_migrate_v4.py work
           chmod +x work/gradlew
-      - name: Compile exact NeoForge 26.1.2.95 target
+      - name: Build exact NeoForge 26.1.2.95 target
         id: build
         shell: bash
         run: |
           set +e
           cd work
-          ./gradlew --no-daemon clean compileJava 2>&1 | tee ../build.log
+          ./gradlew --no-daemon clean build 2>&1 | tee ../build.log
           code=${PIPESTATUS[0]}
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
           exit 0
@@ -39,16 +40,24 @@ jobs:
         if: always()
         shell: bash
         run: |
-          mkdir -p diagnostics
+          mkdir -p diagnostics/generated
           cp build.log diagnostics/build.log || true
           cp work/build.gradle diagnostics/build.gradle || true
           cp work/gradle.properties diagnostics/gradle.properties || true
+          cp work/src/main/java/com/mcmoddev/golems/entity/GolemBase.java diagnostics/generated/GolemBase.java || true
+          cp work/src/main/java/com/mcmoddev/golems/item/SpawnGolemItem.java diagnostics/generated/SpawnGolemItem.java || true
       - name: Upload diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: extra-golems-compile-probe
           path: diagnostics
+      - name: Upload built mod
+        if: steps.build.outputs.exit_code == '0'
+        uses: actions/upload-artifact@v4
+        with:
+          name: extra-golems-neoforge-26.1.2
+          path: work/build/libs/*.jar
       - name: Fail if compiler failed
         if: steps.build.outputs.exit_code != '0'
         run: exit 1
