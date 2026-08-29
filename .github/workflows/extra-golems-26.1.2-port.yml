@@ -64,6 +64,7 @@ jobs:
           python3 ci/extra_golems_26_transform.py
           python3 ci/extra_golems_26_transform2.py
           python3 ci/extra_golems_26_transform3.py
+          python3 ci/extra_golems_26_transform3_fix.py
 
           cat >> project/build.gradle <<'GRADLE'
 
