@@ -21,6 +21,11 @@ jobs:
           distribution: temurin
           java-version: '25'
 
+      - name: Set up Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
       - name: Set up Gradle 9.5.1
         uses: gradle/actions/setup-gradle@v4
         with:
@@ -54,7 +59,13 @@ jobs:
           for a,b in replacements.items(): s=s.replace(a,b)
           p.write_text(s)
           PY
+
+          # Apply only deterministic, target-jar-verified renames first.
+          npx --yes modforge@latest bridge --from 1.21.1 --to 26.1.2 --namespace source project/src/main/java --apply --out modforge-report.md --no-color 2>&1 | tee modforge.log
+
+          # Then apply the small set of 26.1 semantic/hotfix adaptations maintained for this port.
           python3 ci/extra_golems_26_transform.py
+
           cat >> project/build.gradle <<'GRADLE'
 
           tasks.withType(JavaCompile).configureEach {
@@ -92,6 +103,8 @@ jobs:
             compile-exit.txt
             build.log
             build-exit.txt
+            modforge.log
+            modforge-report.md
           if-no-files-found: error
 
       - name: Collect JAR if build succeeded
