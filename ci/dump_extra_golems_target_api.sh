@@ -3,7 +3,8 @@ set -euo pipefail
 out="target-api.txt"
 : > "$out"
 
-# Dump v2: choose by class content, not filename.
+# Dump v3: pin to the exact NeoForge 26.1.2.95 patched Minecraft artifact.
+# Do not scan arbitrary global caches: this runner also has unrelated 26.2 jars.
 jarfile=""
 while IFS= read -r candidate; do
   case "$candidate" in
@@ -13,12 +14,23 @@ while IFS= read -r candidate; do
     jarfile="$candidate"
     break
   fi
-done < <(find ~/.gradle/caches -type f -name '*.jar' | sort)
+done < <(
+  {
+    find ~/.gradle/caches -type f -path '*/net.neoforged/minecraft-client-patched/26.1.2.95/*' -name '*.jar' 2>/dev/null
+    find target-mdk/build -type f -name '*.jar' 2>/dev/null
+  } | sort -u
+)
 
 if [ -z "$jarfile" ]; then
-  echo 'No compiled Minecraft-containing jar found in cache.' > "$out"
-  echo 'Candidates mentioning Minecraft / NeoForge:' >> "$out"
-  find ~/.gradle/caches -type f -name '*.jar' | grep -Ei 'minecraft|neoforge|neoform' | head -200 >> "$out" || true
+  {
+    echo 'No exact compiled Minecraft 26.1.2.95-containing jar found.'
+    echo 'Exact-version candidates:'
+    find ~/.gradle/caches -type f -path '*26.1.2.95*' -name '*.jar' | sort | head -300 || true
+    echo 'target-mdk build jars:'
+    find target-mdk/build -type f -name '*.jar' | sort | head -300 || true
+    echo 'Artifact manifest:'
+    find target-mdk/build -name 'nfrt_artifact_manifest.properties' -type f -print -exec cat {} \; || true
+  } > "$out"
   exit 0
 fi
 
@@ -43,9 +55,9 @@ classes=(
   net.minecraft.world.Container
   net.minecraft.world.inventory.ContainerListener
   net.minecraft.world.inventory.AbstractContainerMenu
+  net.minecraft.world.level.storage.ValueInput
+  net.minecraft.world.level.storage.ValueOutput
   net.minecraft.nbt.CompoundTag
-  net.minecraft.nbt.ValueInput
-  net.minecraft.nbt.ValueOutput
   net.minecraft.core.Registry
   net.minecraft.core.HolderLookup
   net.minecraft.resources.ResourceKey
@@ -59,6 +71,7 @@ classes=(
   net.minecraft.world.entity.EntityReference
   net.minecraft.server.level.ServerPlayer
   net.minecraft.commands.CommandSourceStack
+  net.minecraft.commands.arguments.IdentifierArgument
   net.minecraft.commands.arguments.ResourceKeyArgument
   net.minecraft.commands.arguments.ResourceOrIdArgument
   net.minecraft.world.level.block.state.BlockBehaviour
@@ -78,6 +91,8 @@ classes=(
   net.minecraft.client.renderer.rendertype.RenderTypes
   net.minecraft.client.renderer.texture.DynamicTexture
   net.minecraft.client.renderer.texture.NativeImage
+  net.minecraft.core.particles.SpellParticleOption
+  net.minecraft.core.particles.ParticleTypes
 )
 for c in "${classes[@]}"; do
   echo >> "$out"
