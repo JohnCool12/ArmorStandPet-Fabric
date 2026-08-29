@@ -26,6 +26,7 @@ jobs:
           git checkout -q 6b21ec4a59ca16e8362b26e38fc63b2807042bdf
           cd ..
           python3 ci/port-neoforge-26-1-2-base.py
+          python3 ci/port-neoforge-26-1-2-pass2.py
       - name: Compile port
         id: build
         continue-on-error: true
