@@ -3,20 +3,21 @@ import re
 
 ROOT = Path('project/src/main/java')
 
-# These are either documented 1.21.11/26.1 renames or 26.1.2 hotfix renames.
-# ModForge runs first and applies every provable rename; these cover the later
-# unobfuscated-era package shuffles / semantic adapters that cannot be chained exactly.
-REPLACEMENTS = [
+
+def token_replace(text: str, old: str, new: str) -> str:
+    """Replace a Java identifier token only; never rewrite inside a longer renamed token."""
+    return re.sub(r'(?<![A-Za-z0-9_$])' + re.escape(old) + r'(?![A-Za-z0-9_$])', new, text)
+
+
+# Exact fully-qualified renames first. These are target-26.1.2 names, not 26.2 names.
+FQ_REPLACEMENTS = [
     ('net.minecraft.ResourceLocationException', 'net.minecraft.IdentifierException'),
-    ('ResourceLocationException', 'IdentifierException'),
     ('net.minecraft.resources.ResourceLocation', 'net.minecraft.resources.Identifier'),
-    ('ResourceLocation', 'Identifier'),
-    ('net.minecraft.advancements.critereon.MinMaxBounds', 'net.minecraft.advancements.predicates.MinMaxBounds'),
-    ('net.minecraft.advancements.criterion.MinMaxBounds', 'net.minecraft.advancements.predicates.MinMaxBounds'),
+    ('net.minecraft.advancements.critereon.MinMaxBounds', 'net.minecraft.advancements.criterion.MinMaxBounds'),
+    ('net.minecraft.advancements.predicates.MinMaxBounds', 'net.minecraft.advancements.criterion.MinMaxBounds'),
     ('net.minecraft.advancements.critereon', 'net.minecraft.advancements.criterion'),
     ('net.minecraft.Util', 'net.minecraft.util.Util'),
     ('net.minecraft.world.entity.MobSpawnType', 'net.minecraft.world.entity.EntitySpawnReason'),
-    ('MobSpawnType', 'EntitySpawnReason'),
     ('net.minecraft.world.entity.animal.AbstractGolem', 'net.minecraft.world.entity.animal.golem.AbstractGolem'),
     ('net.minecraft.world.entity.animal.IronGolem', 'net.minecraft.world.entity.animal.golem.IronGolem'),
     ('net.minecraft.world.entity.animal.SnowGolem', 'net.minecraft.world.entity.animal.golem.SnowGolem'),
@@ -29,17 +30,27 @@ REPLACEMENTS = [
     ('net.minecraft.client.renderer.RenderType', 'net.minecraft.client.renderer.rendertype.RenderType'),
     ('net.minecraft.client.renderer.RenderStateShard', 'net.minecraft.client.renderer.rendertype.RenderStateShard'),
     ('net.minecraft.client.gui.GuiGraphics', 'net.minecraft.client.gui.GuiGraphicsExtractor'),
+]
+
+TOKEN_REPLACEMENTS = [
+    ('ResourceLocationException', 'IdentifierException'),
+    ('ResourceLocation', 'Identifier'),
+    ('MobSpawnType', 'EntitySpawnReason'),
     ('GuiGraphics', 'GuiGraphicsExtractor'),
 ]
 
 for p in ROOT.rglob('*.java'):
     s = p.read_text()
-    for a, b in REPLACEMENTS:
+    for a, b in FQ_REPLACEMENTS:
         s = s.replace(a, b)
+    for a, b in TOKEN_REPLACEMENTS:
+        s = token_replace(s, a, b)
     s = s.replace('EntitySpawnReason.SPAWN_EGG', 'EntitySpawnReason.SPAWN_ITEM_USE')
+    # RegistryAccess 26.1 uses lookupOrThrow rather than registryOrThrow.
+    s = s.replace('.registryOrThrow(', '.lookupOrThrow(')
     p.write_text(s)
 
-# ContainerListener was moved to the inventory package. Keep the listener contract;
+# ContainerListener moved to the inventory package. Keep the listener contract;
 # it is part of the golem inventory/update behavior and must not be stripped.
 p = ROOT / 'com/mcmoddev/golems/entity/IExtraGolem.java'
 s = p.read_text()
@@ -82,4 +93,11 @@ for p in ROOT.rglob('*.java'):
     s = re.sub(r'^import net\.neoforged\.neoforge\.common\.util\.INBTSerializable;\n', '', s, flags=re.M)
     p.write_text(s)
 
-print('Applied Extra Golems 26.1 semantic migration pass')
+# Guard against accidental repeated migration transforms. If these ever trip, the
+# generated source is invalid and CI should fail before wasting time compiling it.
+for p in ROOT.rglob('*.java'):
+    s = p.read_text()
+    assert 'GuiGraphicsExtractorExtractor' not in s, p
+    assert 'net.minecraft.advancements.predicates.MinMaxBounds' not in s, p
+
+print('Applied idempotent Extra Golems 26.1 semantic migration pass')
