@@ -33,6 +33,7 @@ jobs:
           python3 ci/port-neoforge-26-1-2-pass5b-ui-polish.py
           python3 ci/port-neoforge-26-1-2-pass6-final-compile.py
           base64 --decode ci/neoforge26-v4-parity.patch.xz.b64 | xz -dc | patch -d project -p1 --batch --forward
+          sed -i 's/this\.getTags()/this.entityTags()/g; s/net\.minecraft\.world\.entity\.monster\.creeper\.Creeper/net.minecraft.world.entity.monster.Creeper/g' project/src/main/java/com/mcmoddev/golems/entity/GolemBase.java
       - name: Compile port
         id: build
         continue-on-error: true
