@@ -47,7 +47,6 @@ for p in ROOT.rglob('*.java'):
     s = s.replace('.getHolderOrThrow(', '.getOrThrow(')
     p.write_text(s)
 
-# ResourceKey renamed its location accessor in 26.1; TagKey still uses location().
 for rel in [
     'com/mcmoddev/golems/ExtraGolems.java',
     'com/mcmoddev/golems/EGEvents.java',
@@ -58,13 +57,10 @@ for rel in [
         s = p.read_text().replace('.location()', '.identifier()')
         p.write_text(s)
 
-# FMLEnvironment exposes dist through an accessor in this target.
 p = ROOT / 'com/mcmoddev/golems/ExtraGolems.java'
 s = p.read_text().replace('FMLEnvironment.dist', 'FMLEnvironment.getDist()')
 p.write_text(s)
 
-# Level fields became accessors. These replacements are intentionally limited to the
-# actual legacy property usages present in Extra Golems, not arbitrary Java text.
 for p in ROOT.rglob('*.java'):
     s = p.read_text()
     s = re.sub(r'\.isClientSide(?!\s*\()', '.isClientSide()', s)
@@ -72,7 +68,6 @@ for p in ROOT.rglob('*.java'):
         s = re.sub(r'\b' + var + r'\.random\b', var + '.getRandom()', s)
     p.write_text(s)
 
-# 26.1 NBT primitive getters are defaulted/optional. Preserve the same old defaults.
 p = ROOT / 'com/mcmoddev/golems/entity/IExtraGolem.java'
 s = p.read_text()
 s = s.replace('pCompound.contains(KEY_GOLEM_ID, Tag.TAG_STRING)', 'pCompound.contains(KEY_GOLEM_ID)')
@@ -106,7 +101,6 @@ for rel, replacements in {
             s = s.replace(a, b)
         p.write_text(s)
 
-# Registry APIs now distinguish holders from values.
 p = ROOT / 'com/mcmoddev/golems/data/golem/BuildingBlocks.java'
 s = p.read_text().replace('BuiltInRegistries.BLOCK.get(id)', 'BuiltInRegistries.BLOCK.getValue(id)')
 p.write_text(s)
@@ -121,14 +115,12 @@ p = ROOT / 'com/mcmoddev/golems/EGEvents.java'
 s = p.read_text().replace('registry.getOrCreateTag(VILLAGER_SUMMONABLE)', 'registry.getOrThrow(VILLAGER_SUMMONABLE)')
 p.write_text(s)
 
-# 26.1 path types collapse the old fire danger/damage pair.
 p = ROOT / 'com/mcmoddev/golems/data/golem/Attributes.java'
 s = p.read_text()
 s = s.replace('PathType.DAMAGE_FIRE', 'PathType.FIRE')
 s = s.replace('PathType.DANGER_FIRE', 'PathType.FIRE_IN_NEIGHBOR')
 p.write_text(s)
 
-# Vec3.fromRGB24 was removed. Keep the exact normalized RGB semantics.
 p = ROOT / 'com/mcmoddev/golems/data/model/Layer.java'
 s = p.read_text().replace(
     'this.colors = Vec3.fromRGB24(color);',
@@ -142,8 +134,6 @@ if p.exists():
         'new Vec3(((entity.getBiomeColor() >> 16) & 255) / 255.0D, ((entity.getBiomeColor() >> 8) & 255) / 255.0D, (entity.getBiomeColor() & 255) / 255.0D).toVector3f()')
     p.write_text(s)
 
-# Golem-head construction: EntityType#create requires an explicit spawn reason; entity
-# position snapping was renamed. Preserve player-created semantics and exact position.
 p = ROOT / 'com/mcmoddev/golems/block/GolemHeadBlock.java'
 s = p.read_text()
 s = s.replace('EntityType.IRON_GOLEM.create(level)', 'EntityType.IRON_GOLEM.create(level, EntitySpawnReason.MOB_SUMMONED)')
@@ -153,12 +143,10 @@ if 'import net.minecraft.world.entity.EntitySpawnReason;' not in s:
     s = s.replace('import net.minecraft.world.entity.EntityType;\n', 'import net.minecraft.world.entity.EntityType;\nimport net.minecraft.world.entity.EntitySpawnReason;\n')
 p.write_text(s)
 
-# ContainerListener moved to the inventory package. Keep the listener contract.
 p = ROOT / 'com/mcmoddev/golems/entity/IExtraGolem.java'
 s = p.read_text().replace('import net.minecraft.world.ContainerListener;', 'import net.minecraft.world.inventory.ContainerListener;')
 p.write_text(s)
 
-# Explicit provider-aware behavior serialization contract.
 p = ROOT / 'com/mcmoddev/golems/data/behavior/data/IBehaviorData.java'
 p.write_text('''package com.mcmoddev.golems.data.behavior.data;\n\nimport net.minecraft.core.HolderLookup;\nimport net.minecraft.nbt.CompoundTag;\n\n/** Runtime data owned by one attached golem behavior. */\npublic interface IBehaviorData {\n    CompoundTag serializeNBT(HolderLookup.Provider provider);\n    void deserializeNBT(HolderLookup.Provider provider, CompoundTag tag);\n}\n''')
 
@@ -174,7 +162,6 @@ for rel in [
     s = s.replace('public void deserializeNBT(final CompoundTag tag)', 'public void deserializeNBT(net.minecraft.core.HolderLookup.Provider provider, final CompoundTag tag)')
     p.write_text(s)
 
-# DeferredSpawnEggItem was removed. 26.1 stores the egg type in Item.Properties.
 p = ROOT / 'com/mcmoddev/golems/EGRegistry.java'
 s = p.read_text()
 s = s.replace('import net.neoforged.neoforge.common.DeferredSpawnEggItem;\n', 'import net.minecraft.world.item.SpawnEggItem;\n')
@@ -182,16 +169,15 @@ s = s.replace('DeferredHolder<Item, DeferredSpawnEggItem> GOLEM_SPAWN_EGG', 'Def
 s = s.replace('new DeferredSpawnEggItem(EntityReg.GOLEM, 0x9B9B9B, 0x4A7D2C, new Item.Properties())', 'new SpawnEggItem(new Item.Properties().spawnEgg(EntityReg.GOLEM.get()))')
 p.write_text(s)
 
-# Preserve guide-book opening behavior with the new InteractionResult return contract.
+# Preserve the native NeoForge guide-book opener while adopting the new Item#use result type.
 p = ROOT / 'com/mcmoddev/golems/item/GuideBookItem.java'
-p.write_text('''package com.mcmoddev.golems.item;\n\nimport com.mcmoddev.golems.client.ClientUtils;\nimport net.minecraft.world.InteractionHand;\nimport net.minecraft.world.InteractionResult;\nimport net.minecraft.world.entity.player.Player;\nimport net.minecraft.world.item.Item;\nimport net.minecraft.world.item.ItemStack;\nimport net.minecraft.world.level.Level;\n\npublic class GuideBookItem extends Item {\n    public GuideBookItem(final Item.Properties properties) { super(properties); }\n\n    @Override\n    public InteractionResult use(Level level, Player player, InteractionHand hand) {\n        ItemStack stack = player.getItemInHand(hand);\n        if (level.isClientSide()) ClientUtils.openGuideBook(player, stack);\n        return InteractionResult.SUCCESS;\n    }\n}\n''')
+p.write_text('''package com.mcmoddev.golems.item;\n\nimport com.mcmoddev.golems.client.EGClientEvents;\nimport net.minecraft.world.InteractionHand;\nimport net.minecraft.world.InteractionResult;\nimport net.minecraft.world.entity.player.Player;\nimport net.minecraft.world.item.Item;\nimport net.minecraft.world.item.ItemStack;\nimport net.minecraft.world.level.Level;\n\npublic class GuideBookItem extends Item {\n    public GuideBookItem(final Item.Properties properties) { super(properties); }\n\n    @Override\n    public InteractionResult use(Level level, Player player, InteractionHand hand) {\n        ItemStack stack = player.getItemInHand(hand);\n        if (player.getCommandSenderWorld().isClientSide()) {\n            EGClientEvents.ForgeHandler.loadBookGui(player, stack);\n        }\n        return InteractionResult.SUCCESS;\n    }\n}\n''')
 
 for p in ROOT.rglob('*.java'):
     s = p.read_text()
     s = re.sub(r'^import net\.neoforged\.neoforge\.common\.util\.INBTSerializable;\n', '', s, flags=re.M)
     p.write_text(s)
 
-# Guard against accidental repeat transforms.
 for p in ROOT.rglob('*.java'):
     s = p.read_text()
     assert 'GuiGraphicsExtractorExtractor' not in s, p
