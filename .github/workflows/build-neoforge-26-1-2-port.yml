@@ -30,6 +30,7 @@ jobs:
           python3 ci/port-neoforge-26-1-2-pass3.py
           python3 ci/port-neoforge-26-1-2-pass4-renderer.py
           python3 ci/port-neoforge-26-1-2-pass5-ui.py
+          python3 ci/port-neoforge-26-1-2-pass5b-ui-polish.py
       - name: Compile port
         id: build
         continue-on-error: true
