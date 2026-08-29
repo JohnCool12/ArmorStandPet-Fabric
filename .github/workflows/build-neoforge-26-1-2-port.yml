@@ -27,6 +27,7 @@ jobs:
           cd ..
           python3 ci/port-neoforge-26-1-2-base.py
           python3 ci/port-neoforge-26-1-2-pass2.py
+          python3 ci/port-neoforge-26-1-2-pass3.py
       - name: Compile port
         id: build
         continue-on-error: true
