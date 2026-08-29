@@ -1,0 +1,105 @@
+name: Extra Golems 26.1.2 Port Harness
+
+on:
+  push:
+    branches: [chatgpt-extra-golems-26.1.2-port]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compile-port:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out scratch branch
+        uses: actions/checkout@v4
+
+      - name: Set up Java 25
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+
+      - name: Set up Gradle 9.5.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.5.1'
+
+      - name: Prepare NeoForge 26.1.2 project
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/eg-mdk /tmp/eg-upstream project
+          git clone --depth 1 https://github.com/NeoForgeMDKs/MDK-26.1.2-ModDevGradle.git /tmp/eg-mdk
+          git clone https://github.com/bigenergy/extra-golems-reborn.git /tmp/eg-upstream
+          git -C /tmp/eg-upstream checkout 6b21ec4a59ca16e8362b26e38fc63b2807042bdf
+          cp -a /tmp/eg-mdk project
+          rm -rf project/.git project/src/main/java project/src/main/resources
+          mkdir -p project/src/main
+          cp -a /tmp/eg-upstream/src/main/java project/src/main/
+          cp -a /tmp/eg-upstream/src/main/resources project/src/main/
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('project/gradle.properties')
+          s=p.read_text()
+          replacements={
+              'neo_version=26.1.2.97':'neo_version=26.1.2.95',
+              'mod_id=examplemod':'mod_id=golems',
+              'mod_name=Example Mod':'mod_name=Extra Golems Reborn',
+              'mod_license=All Rights Reserved':'mod_license=MIT',
+              'mod_version=1.0.0':'mod_version=26.1.2-port-dev',
+              'mod_group_id=com.example.examplemod':'mod_group_id=com.mcmoddev.golems',
+          }
+          for a,b in replacements.items(): s=s.replace(a,b)
+          p.write_text(s)
+          PY
+          find project/src/main/java -type f -name '*.java' | wc -l
+          grep -E '^(minecraft_version|neo_version|mod_id|mod_version)=' project/gradle.properties
+
+      - name: Compile and collect diagnostics
+        id: compile
+        shell: bash
+        run: |
+          set +e
+          cd project
+          gradle compileJava --stacktrace --no-daemon --console=plain 2>&1 | tee ../compile.log
+          COMPILE_EXIT=${PIPESTATUS[0]}
+          echo "$COMPILE_EXIT" > ../compile-exit.txt
+          if [ "$COMPILE_EXIT" -eq 0 ]; then
+            gradle build --stacktrace --no-daemon --console=plain 2>&1 | tee ../build.log
+            BUILD_EXIT=${PIPESTATUS[0]}
+          else
+            BUILD_EXIT=99
+            echo 'Build skipped because compileJava failed.' > ../build.log
+          fi
+          echo "$BUILD_EXIT" > ../build-exit.txt
+          exit 0
+
+      - name: Upload diagnostics
+        uses: actions/upload-artifact@v4
+        with:
+          name: extra-golems-26.1.2-port-diagnostics
+          path: |
+            compile.log
+            compile-exit.txt
+            build.log
+            build-exit.txt
+          if-no-files-found: error
+
+      - name: Collect JAR if build succeeded
+        shell: bash
+        run: |
+          mkdir -p artifact
+          if [ -d project/build/libs ]; then
+            find project/build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*-sources.jar' ! -name '*-dev.jar' -exec cp {} artifact/ \;
+          fi
+          ls -lah artifact || true
+
+      - name: Upload candidate JAR
+        if: ${{ hashFiles('artifact/*.jar') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: extra-golems-26.1.2-candidate
+          path: artifact/*.jar
+          if-no-files-found: ignore
