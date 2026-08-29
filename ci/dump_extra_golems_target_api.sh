@@ -3,8 +3,8 @@ set -euo pipefail
 out="target-api.txt"
 : > "$out"
 
+# Dump v2: choose by class content, not filename.
 jarfile=""
-# Select an actual compiled Minecraft/NeoForge artifact, never a sources/dev/source jar.
 while IFS= read -r candidate; do
   case "$candidate" in
     *-sources.jar|*-source.jar|*-javadoc.jar) continue ;;
@@ -25,7 +25,7 @@ fi
 {
   echo "JAR=$jarfile"
   echo '=== relevant class-name searches ==='
-  jar tf "$jarfile" | grep -E 'commands/arguments/.*(Identifier|Resource|Key)|world/entity/projectile/.+(Snowball|Fireball|Arrow)|client/model/.+IronGolem|client/renderer/.+(RenderType|RenderStateShard|LightTexture)|client/gui/GuiGraphics' | sort || true
+  jar tf "$jarfile" | grep -E 'commands/arguments/.*(Identifier|Resource|Key)|world/entity/projectile/.+(Snowball|Fireball|Arrow)|client/model/.+IronGolem|client/renderer/.+(RenderType|RenderStateShard|LightTexture|LightCoords)|client/gui/GuiGraphics|ContainerListener|SimpleContainer' | sort || true
 } >> "$out"
 
 classes=(
@@ -40,7 +40,9 @@ classes=(
   net.minecraft.world.item.ItemStack
   net.minecraft.world.item.Item
   net.minecraft.world.SimpleContainer
+  net.minecraft.world.Container
   net.minecraft.world.inventory.ContainerListener
+  net.minecraft.world.inventory.AbstractContainerMenu
   net.minecraft.nbt.CompoundTag
   net.minecraft.nbt.ValueInput
   net.minecraft.nbt.ValueOutput
@@ -70,8 +72,11 @@ classes=(
   net.minecraft.client.model.animal.golem.IronGolemModel
   net.minecraft.client.renderer.entity.state.IronGolemRenderState
   net.minecraft.client.renderer.entity.IronGolemRenderer
+  net.minecraft.client.renderer.entity.MobRenderer
+  net.minecraft.client.renderer.entity.layers.RenderLayer
   net.minecraft.client.renderer.rendertype.RenderType
-  net.minecraft.client.renderer.rendertype.RenderSetup
+  net.minecraft.client.renderer.rendertype.RenderTypes
+  net.minecraft.client.renderer.texture.DynamicTexture
   net.minecraft.client.renderer.texture.NativeImage
 )
 for c in "${classes[@]}"; do
