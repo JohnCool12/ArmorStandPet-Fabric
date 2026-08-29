@@ -129,17 +129,18 @@ jobs:
           test "$ok" -eq 1
           ! grep -Eqi 'Mixin apply failed|InjectionError|InvalidInjectionException|MixinTransformerError' run/client/logs/latest.log
 
-      - name: Collect artifact
+      - name: Collect artifact and final V4 source reference
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p artifact
           cp project/build/libs/Extra-Golems-Reborn-Fabric-1.21.1-21.1.0.1-fabric.jar artifact/
+          tar -czf artifact/Extra-Golems-Reborn-Fabric-1.21.1-V4-final-source.tar.gz -C project src build.gradle gradle.properties settings.gradle
           unzip -t artifact/Extra-Golems-Reborn-Fabric-1.21.1-21.1.0.1-fabric.jar
-          sha256sum artifact/Extra-Golems-Reborn-Fabric-1.21.1-21.1.0.1-fabric.jar
+          sha256sum artifact/*
 
       - uses: actions/upload-artifact@v4
         with:
           name: extra-golems-explosion-knockback-parity
-          path: artifact/*.jar
+          path: artifact/*
           if-no-files-found: error
