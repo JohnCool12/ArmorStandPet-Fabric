@@ -62,6 +62,7 @@ jobs:
 
           npx --yes modforge@latest bridge --from 1.21.1 --to 26.1.2 --namespace source project/src/main/java --apply --out modforge-report.md --no-color 2>&1 | tee modforge.log
           python3 ci/extra_golems_26_transform.py
+          python3 ci/extra_golems_26_transform2.py
 
           cat >> project/build.gradle <<'GRADLE'
 
