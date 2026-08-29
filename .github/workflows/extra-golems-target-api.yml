@@ -1,8 +1,6 @@
 name: Extra Golems 26.1.2 Target API Dump
 
 on:
-  push:
-    branches: [chatgpt-extra-golems-26.1.2-port]
   workflow_dispatch:
 
 permissions:
