@@ -7,7 +7,7 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v5
@@ -17,7 +17,8 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.5.1'
-      - name: Prepare NeoForge 26.1.2 source
+
+      - name: Prepare final NeoForge 26.1.2 source
         shell: bash
         run: |
           set -euo pipefail
@@ -35,29 +36,121 @@ jobs:
           base64 --decode ci/neoforge26-v4-parity.patch.xz.b64 | xz -dc | patch -d project -p1 --batch --forward
           sed -i 's/this\.getTags()/this.entityTags()/g; s/net\.minecraft\.world\.entity\.monster\.creeper\.Creeper/net.minecraft.world.entity.monster.Creeper/g' project/src/main/java/com/mcmoddev/golems/entity/GolemBase.java
           base64 --decode ci/neoforge26-v4-final-eyes.patch.xz.b64 | xz -dc | patch -d project -p1 --batch --forward
-      - name: Compile port
+          python3 ci/port-neoforge-26-1-2-pass8-cleanup.py
+
+      - name: Full release build
         id: build
         continue-on-error: true
         shell: bash
         working-directory: project
         run: |
           set -o pipefail
-          gradle clean compileJava --stacktrace --no-daemon --console=plain 2>&1 | tee ../compile-neoforge-26.1.2.log
-      - name: Pack diagnostics
+          gradle clean build --stacktrace --no-daemon --console=plain 2>&1 | tee ../build-neoforge-26.1.2.log
+
+      - name: Verify packaged JAR
+        id: verify
+        if: steps.build.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        working-directory: project
+        run: |
+          set -euo pipefail
+          JAR=$(find build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*sources*' ! -name '*javadoc*' | head -n1)
+          test -n "$JAR"
+          unzip -t "$JAR"
+          unzip -l "$JAR" | grep -q 'META-INF/neoforge.mods.toml'
+          unzip -l "$JAR" | grep -q 'com/mcmoddev/golems/entity/GolemBase.class'
+          unzip -l "$JAR" | grep -q 'com/mcmoddev/golems/client/entity/GolemRenderer.class'
+          unzip -l "$JAR" | grep -q 'com/mcmoddev/golems/client/entity/layer/GolemFinalEyesLayer.class'
+          ! unzip -l "$JAR" | grep -q 'fabric.mod.json'
+          ! unzip -l "$JAR" | grep -q 'golems.mixins.json'
+          echo "Verified packaged JAR: $JAR"
+
+      - name: Dedicated server startup smoke test
+        id: server
+        if: steps.build.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        working-directory: project
+        run: |
+          set -euo pipefail
+          mkdir -p run/server
+          printf 'eula=true\n' > run/server/eula.txt
+          set +e
+          timeout --signal=TERM 120s gradle runServer --no-daemon --console=plain > ../server-neoforge-26.1.2.log 2>&1
+          status=$?
+          set -e
+          if [ "$status" -ne 0 ] && [ "$status" -ne 124 ]; then
+            cat ../server-neoforge-26.1.2.log
+            exit "$status"
+          fi
+          test -f run/server/logs/latest.log
+          grep -q 'Done (' run/server/logs/latest.log
+          ! grep -Eqi 'Exception in server tick loop|Failed to load|Mixin apply failed|InjectionError|InvalidInjectionException|MixinTransformerError|ModLoadingException' run/server/logs/latest.log
+          echo 'Dedicated server reached normal startup.'
+
+      - name: Client resource and renderer startup smoke test
+        id: client
+        if: steps.build.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        working-directory: project
+        run: |
+          set -euo pipefail
+          rm -rf run/client
+          setsid env ALSOFT_DRIVERS=null LIBGL_ALWAYS_SOFTWARE=true xvfb-run -a gradle runClient --no-daemon --console=plain > ../client-neoforge-26.1.2.log 2>&1 &
+          pid=$!
+          ok=0
+          for i in $(seq 1 150); do
+            if [ -f run/client/logs/latest.log ] && grep -q 'minecraft:textures/atlas/blocks.png-atlas' run/client/logs/latest.log; then
+              sleep 8
+              kill -0 "$pid" 2>/dev/null && ok=1
+              break
+            fi
+            kill -0 "$pid" 2>/dev/null || break
+            sleep 1
+          done
+          kill -TERM -- -"$pid" 2>/dev/null || true
+          wait "$pid" 2>/dev/null || true
+          test "$ok" -eq 1
+          test -f run/client/logs/latest.log
+          ! grep -Eqi 'Mixin apply failed|InjectionError|InvalidInjectionException|MixinTransformerError|ModLoadingException|Exception caught during firing event' run/client/logs/latest.log
+          echo 'Client reached resource/render initialization and remained alive.'
+
+      - name: Collect final release artifact and diagnostics
         if: always()
         shell: bash
         run: |
-          tar -czf ported-source.tar.gz project
-      - name: Upload diagnostics
+          set -euo pipefail
+          mkdir -p artifact
+          tar -czf artifact/Extra-Golems-Reborn-NeoForge-26.1.2-V4-Final-source.tar.gz -C project src build.gradle gradle.properties settings.gradle
+          if [ -d project/build/libs ]; then
+            JAR=$(find project/build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*sources*' ! -name '*javadoc*' | head -n1 || true)
+            if [ -n "$JAR" ]; then
+              cp "$JAR" artifact/Extra-Golems-Reborn-NeoForge-26.1.2-V4-Final.jar
+              unzip -t artifact/Extra-Golems-Reborn-NeoForge-26.1.2-V4-Final.jar
+              sha256sum artifact/Extra-Golems-Reborn-NeoForge-26.1.2-V4-Final.jar > artifact/SHA256SUMS.txt
+            fi
+          fi
+          cp build-neoforge-26.1.2.log artifact/ 2>/dev/null || true
+          cp server-neoforge-26.1.2.log artifact/ 2>/dev/null || true
+          cp client-neoforge-26.1.2.log artifact/ 2>/dev/null || true
+          [ -f project/run/server/logs/latest.log ] && cp project/run/server/logs/latest.log artifact/server-latest.log || true
+          [ -f project/run/client/logs/latest.log ] && cp project/run/client/logs/latest.log artifact/client-latest.log || true
+
+      - name: Upload final release artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: extra-golems-neoforge-26.1.2-compile-diagnostics
+          name: extra-golems-neoforge-26.1.2-V4-final
           if-no-files-found: error
-          path: |
-            compile-neoforge-26.1.2.log
-            ported-source.tar.gz
-            project/build/libs/*.jar
-      - name: Fail if compile failed
-        if: steps.build.outcome == 'failure'
-        run: exit 1
+          path: artifact/*
+
+      - name: Enforce all release gates
+        if: always()
+        shell: bash
+        run: |
+          test '${{ steps.build.outcome }}' = 'success'
+          test '${{ steps.verify.outcome }}' = 'success'
+          test '${{ steps.server.outcome }}' = 'success'
+          test '${{ steps.client.outcome }}' = 'success'
