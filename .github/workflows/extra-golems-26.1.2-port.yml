@@ -54,6 +54,13 @@ jobs:
           for a,b in replacements.items(): s=s.replace(a,b)
           p.write_text(s)
           PY
+          python3 ci/extra_golems_26_transform.py
+          cat >> project/build.gradle <<'GRADLE'
+
+          tasks.withType(JavaCompile).configureEach {
+              options.compilerArgs += ['-Xmaxerrs', '2000']
+          }
+          GRADLE
           find project/src/main/java -type f -name '*.java' | wc -l
           grep -E '^(minecraft_version|neo_version|mod_id|mod_version)=' project/gradle.properties
 
