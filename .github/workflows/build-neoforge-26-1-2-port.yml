@@ -39,6 +39,7 @@ jobs:
           python3 ci/port-neoforge-26-1-2-pass8-cleanup.py
           python3 ci/port-neoforge-26-1-2-pass9-client-bootstrap.py
           python3 ci/port-neoforge-26-1-2-pass10-registry-ids.py
+          python3 ci/port-neoforge-26-1-2-pass11-recipes.py
           ! grep -n 'ModHandler.addResources()' project/src/main/java/com/mcmoddev/golems/client/EGClientEvents.java
           ! sed -n '/public static void register(IEventBus modEventBus)/,/^\t}/p' project/src/main/java/com/mcmoddev/golems/client/EGClientEvents.java | grep -q 'Minecraft.getInstance()'
           grep -q 'AddClientReloadListenersEvent' project/src/main/java/com/mcmoddev/golems/client/EGClientEvents.java
@@ -46,6 +47,7 @@ jobs:
           grep -q '.setId(ResourceKey.create(Registries.BLOCK' project/src/main/java/com/mcmoddev/golems/EGRegistry.java
           grep -q 'Properties.ofFullCopy(copy).setId(id)' project/src/main/java/com/mcmoddev/golems/block/GlowBlock.java
           grep -q 'Properties.ofFullCopy(Blocks.GLASS).setId(id)' project/src/main/java/com/mcmoddev/golems/block/PowerBlock.java
+          ! grep -R '"item"[[:space:]]*:' project/src/main/resources/data/golems/recipe
 
       - name: Full release build
         id: build
@@ -96,8 +98,9 @@ jobs:
           fi
           test -f run/server/logs/latest.log
           grep -q 'Done (' run/server/logs/latest.log
-          ! grep -Eqi 'Exception in server tick loop|Failed to load|Mixin apply failed|InjectionError|InvalidInjectionException|MixinTransformerError|ModLoadingException|Failed to create mod instance|Block id not set|Item id not set' run/server/logs/latest.log
-          echo 'Dedicated server reached normal startup.'
+          ! grep -Eqi 'Exception in server tick loop|Mixin apply failed|InjectionError|InvalidInjectionException|MixinTransformerError|ModLoadingException|Failed to create mod instance|Block id not set|Item id not set' run/server/logs/latest.log
+          ! grep -Eqi "Couldn't parse data file 'golems:|DataResult.Error.*golems" run/server/logs/latest.log
+          echo 'Dedicated server reached normal startup with Extra Golems data resources parsed.'
 
       - name: Client bootstrap and renderer startup smoke test
         id: client
