@@ -38,9 +38,14 @@ jobs:
           base64 --decode ci/neoforge26-v4-final-eyes.patch.xz.b64 | xz -dc | patch -d project -p1 --batch --forward
           python3 ci/port-neoforge-26-1-2-pass8-cleanup.py
           python3 ci/port-neoforge-26-1-2-pass9-client-bootstrap.py
+          python3 ci/port-neoforge-26-1-2-pass10-registry-ids.py
           ! grep -n 'ModHandler.addResources()' project/src/main/java/com/mcmoddev/golems/client/EGClientEvents.java
           ! sed -n '/public static void register(IEventBus modEventBus)/,/^\t}/p' project/src/main/java/com/mcmoddev/golems/client/EGClientEvents.java | grep -q 'Minecraft.getInstance()'
           grep -q 'AddClientReloadListenersEvent' project/src/main/java/com/mcmoddev/golems/client/EGClientEvents.java
+          test "$(grep -c '.setId(ResourceKey.create(Registries.ITEM' project/src/main/java/com/mcmoddev/golems/EGRegistry.java)" -ge 5
+          grep -q '.setId(ResourceKey.create(Registries.BLOCK' project/src/main/java/com/mcmoddev/golems/EGRegistry.java
+          grep -q 'Properties.ofFullCopy(copy).setId(id)' project/src/main/java/com/mcmoddev/golems/block/GlowBlock.java
+          grep -q 'Properties.ofFullCopy(Blocks.GLASS).setId(id)' project/src/main/java/com/mcmoddev/golems/block/PowerBlock.java
 
       - name: Full release build
         id: build
@@ -91,7 +96,7 @@ jobs:
           fi
           test -f run/server/logs/latest.log
           grep -q 'Done (' run/server/logs/latest.log
-          ! grep -Eqi 'Exception in server tick loop|Failed to load|Mixin apply failed|InjectionError|InvalidInjectionException|MixinTransformerError|ModLoadingException|Failed to create mod instance' run/server/logs/latest.log
+          ! grep -Eqi 'Exception in server tick loop|Failed to load|Mixin apply failed|InjectionError|InvalidInjectionException|MixinTransformerError|ModLoadingException|Failed to create mod instance|Block id not set|Item id not set' run/server/logs/latest.log
           echo 'Dedicated server reached normal startup.'
 
       - name: Client bootstrap and renderer startup smoke test
@@ -107,21 +112,19 @@ jobs:
           pid=$!
           ok=0
           for i in $(seq 1 180); do
-            # Fail immediately on the exact bootstrap family that escaped the previous release.
-            if grep -Eqi 'Failed to create mod instance|ModLoadingException|Cannot invoke .*Minecraft\.getResourceManager\(\).*Minecraft\.getInstance\(\).*null|Exception caught during firing event|Mixin apply failed|InjectionError|InvalidInjectionException|MixinTransformerError' ../client-neoforge-26.1.2.log 2>/dev/null; then
+            if grep -Eqi 'Failed to create mod instance|ModLoadingException|Block id not set|Item id not set|Cannot invoke .*Minecraft\.getResourceManager\(\).*Minecraft\.getInstance\(\).*null|Exception caught during firing event|Mixin apply failed|InjectionError|InvalidInjectionException|MixinTransformerError' ../client-neoforge-26.1.2.log 2>/dev/null; then
               cat ../client-neoforge-26.1.2.log
               kill -TERM -- -"$pid" 2>/dev/null || true
               wait "$pid" 2>/dev/null || true
               exit 1
             fi
             if [ -f run/client/logs/latest.log ]; then
-              if grep -Eqi 'Failed to create mod instance|ModLoadingException|Exception caught during firing event|Mixin apply failed|InjectionError|InvalidInjectionException|MixinTransformerError' run/client/logs/latest.log; then
+              if grep -Eqi 'Failed to create mod instance|ModLoadingException|Block id not set|Item id not set|Exception caught during firing event|Mixin apply failed|InjectionError|InvalidInjectionException|MixinTransformerError' run/client/logs/latest.log; then
                 cat run/client/logs/latest.log
                 kill -TERM -- -"$pid" 2>/dev/null || true
                 wait "$pid" 2>/dev/null || true
                 exit 1
               fi
-              # Require the client to progress well beyond mod construction into resource/model loading.
               if grep -q 'minecraft:textures/atlas/blocks.png-atlas' run/client/logs/latest.log; then
                 sleep 12
                 kill -0 "$pid" 2>/dev/null && ok=1
@@ -132,12 +135,11 @@ jobs:
             sleep 1
           done
           test "$ok" -eq 1
-          # Re-scan after the soak period before terminating the successful smoke run.
-          ! grep -Eqi 'Failed to create mod instance|ModLoadingException|Cannot invoke .*Minecraft\.getResourceManager\(\).*Minecraft\.getInstance\(\).*null|Exception caught during firing event|Mixin apply failed|InjectionError|InvalidInjectionException|MixinTransformerError' ../client-neoforge-26.1.2.log
-          ! grep -Eqi 'Failed to create mod instance|ModLoadingException|Exception caught during firing event|Mixin apply failed|InjectionError|InvalidInjectionException|MixinTransformerError' run/client/logs/latest.log
+          ! grep -Eqi 'Failed to create mod instance|ModLoadingException|Block id not set|Item id not set|Cannot invoke .*Minecraft\.getResourceManager\(\).*Minecraft\.getInstance\(\).*null|Exception caught during firing event|Mixin apply failed|InjectionError|InvalidInjectionException|MixinTransformerError' ../client-neoforge-26.1.2.log
+          ! grep -Eqi 'Failed to create mod instance|ModLoadingException|Block id not set|Item id not set|Exception caught during firing event|Mixin apply failed|InjectionError|InvalidInjectionException|MixinTransformerError' run/client/logs/latest.log
           kill -TERM -- -"$pid" 2>/dev/null || true
           wait "$pid" 2>/dev/null || true
-          echo 'Client passed bootstrap, resource/model loading, and post-load soak without mod-loading exceptions.'
+          echo 'Client passed bootstrap, registries, resource/model loading, and post-load soak without mod-loading exceptions.'
 
       - name: Collect final release artifact and diagnostics
         if: always()
