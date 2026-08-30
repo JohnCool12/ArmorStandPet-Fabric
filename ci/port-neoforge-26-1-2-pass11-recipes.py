@@ -92,7 +92,7 @@ import java.util.List;
 
 /**
  * Spawn egg that chooses one concrete Extra Golems material on every use.
- * Internal generic_* parent/template entries are never selected.
+ * Internal generic_* parent/template entries and the Bedrock Golem are never selected.
  */
 public final class RandomGolemSpawnEggItem extends Item {
 
@@ -115,7 +115,7 @@ public final class RandomGolemSpawnEggItem extends Item {
         if (level instanceof ServerLevel serverLevel) {
             final Registry<Golem> registry = serverLevel.registryAccess().lookupOrThrow(EGRegistry.Keys.GOLEM);
             final List<Identifier> candidates = registry.keySet().stream()
-                    .filter(id -> !id.getPath().startsWith("generic_"))
+                    .filter(id -> !id.getPath().startsWith("generic_") && !id.getPath().equals("bedrock"))
                     .toList();
 
             if (candidates.isEmpty()) {
@@ -166,4 +166,5 @@ assert (items_root / 'golem_spawn_egg.json').exists()
 assert 'RandomGolemSpawnEggItem' in registry_file.read_text()
 assert 'new SpawnEggItem' not in registry_file.read_text()
 assert 'generic_' in random_item.read_text()
-print('Applied pass 11: recipes, all 26.1 client-item definitions, and randomized Golem Spawn Egg behavior.')
+assert 'equals("bedrock")' in random_item.read_text()
+print('Applied pass 11: recipes, all 26.1 client-item definitions, randomized Golem Spawn Egg behavior, and Bedrock exclusion.')
