@@ -40,6 +40,7 @@ jobs:
           python3 ci/port-neoforge-26-1-2-pass9-client-bootstrap.py
           python3 ci/port-neoforge-26-1-2-pass10-registry-ids.py
           python3 ci/port-neoforge-26-1-2-pass11-recipes.py
+          python3 ci/port-neoforge-26-1-2-pass12-baby-render-scale.py
           ! grep -n 'ModHandler.addResources()' project/src/main/java/com/mcmoddev/golems/client/EGClientEvents.java
           ! sed -n '/public static void register(IEventBus modEventBus)/,/^\t}/p' project/src/main/java/com/mcmoddev/golems/client/EGClientEvents.java | grep -q 'Minecraft.getInstance()'
           grep -q 'AddClientReloadListenersEvent' project/src/main/java/com/mcmoddev/golems/client/EGClientEvents.java
@@ -48,6 +49,9 @@ jobs:
           grep -q 'Properties.ofFullCopy(copy).setId(id)' project/src/main/java/com/mcmoddev/golems/block/GlowBlock.java
           grep -q 'Properties.ofFullCopy(Blocks.GLASS).setId(id)' project/src/main/java/com/mcmoddev/golems/block/PowerBlock.java
           ! grep -R '"item"[[:space:]]*:' project/src/main/resources/data/golems/recipe
+          grep -q 'child.setBaby(true);' project/src/main/java/com/mcmoddev/golems/data/behavior/SplitBehavior.java
+          grep -q 'final float babyScale = state.ageScale;' project/src/main/java/com/mcmoddev/golems/client/entity/GolemRenderer.java
+          grep -q 'poseStack.scale(babyScale, babyScale, babyScale);' project/src/main/java/com/mcmoddev/golems/client/entity/GolemRenderer.java
 
       - name: Full release build
         id: build
