@@ -64,3 +64,8 @@ exec(compile(pass16.read_text(), str(pass16), 'exec'))
 # empty/unshootable mode should use the underlying vanilla-style Iron Golem detection range.
 pass17 = Path('ci/port-neoforge-26-1-2-pass17-dispenser-dynamic-detection-range.py')
 exec(compile(pass17.read_text(), str(pass17), 'exec'))
+
+# Potion throws need a real hard range gate so the golem does not waste slow lobbed
+# projectiles before getting close enough for them to land reliably.
+pass18 = Path('ci/port-neoforge-26-1-2-pass18-dispenser-potion-hard-range.py')
+exec(compile(pass18.read_text(), str(pass18), 'exec'))
