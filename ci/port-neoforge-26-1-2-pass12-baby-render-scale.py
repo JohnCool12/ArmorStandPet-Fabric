@@ -51,6 +51,11 @@ exec(compile(pass13.read_text(), str(pass13), 'exec'))
 pass14 = Path('ci/port-neoforge-26-1-2-pass14-dispenser-fluid-ranged-position.py')
 exec(compile(pass14.read_text(), str(pass14), 'exec'))
 
-# Finalize the requested binary loaded-vs-empty combat mode and potion spacing.
+# Finalize the loaded ranged mode and potion spacing.
 pass15 = Path('ci/port-neoforge-26-1-2-pass15-dispenser-ranged-only-loaded.py')
 exec(compile(pass15.read_text(), str(pass15), 'exec'))
+
+# Restore instantaneous melee when a close target is actually strikeable, while
+# immediately falling back to ranged for close-but-unreachable targets.
+pass16 = Path('ci/port-neoforge-26-1-2-pass16-dispenser-instant-melee-ranged-switch.py')
+exec(compile(pass16.read_text(), str(pass16), 'exec'))
