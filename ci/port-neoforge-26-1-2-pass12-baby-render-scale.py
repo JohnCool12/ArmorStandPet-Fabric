@@ -46,3 +46,7 @@ print('Applied pass 12: restored split-child visual scaling from Minecraft baby 
 # explicitly-invoked migration stage in the release workflow.
 pass13 = Path('ci/port-neoforge-26-1-2-pass13-dispenser-warden-ranged.py')
 exec(compile(pass13.read_text(), str(pass13), 'exec'))
+
+# Apply the ranged-positioning refinement after the projectile/timing expansion.
+pass14 = Path('ci/port-neoforge-26-1-2-pass14-dispenser-fluid-ranged-position.py')
+exec(compile(pass14.read_text(), str(pass14), 'exec'))
