@@ -69,3 +69,8 @@ exec(compile(pass17.read_text(), str(pass17), 'exec'))
 # projectiles before getting close enough for them to land reliably.
 pass18 = Path('ci/port-neoforge-26-1-2-pass18-dispenser-potion-hard-range.py')
 exec(compile(pass18.read_text(), str(pass18), 'exec'))
+
+# Ranged cooldown must be global to the golem's firing cycle. Damage/retaliation can
+# retarget the golem and must never reset the last-shot timestamp or create a free shot.
+pass19 = Path('ci/port-neoforge-26-1-2-pass19-dispenser-preserve-shot-cooldown-on-retarget.py')
+exec(compile(pass19.read_text(), str(pass19), 'exec'))
