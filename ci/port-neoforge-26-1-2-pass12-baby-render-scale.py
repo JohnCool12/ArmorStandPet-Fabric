@@ -59,3 +59,8 @@ exec(compile(pass15.read_text(), str(pass15), 'exec'))
 # immediately falling back to ranged for close-but-unreachable targets.
 pass16 = Path('ci/port-neoforge-26-1-2-pass16-dispenser-instant-melee-ranged-switch.py')
 exec(compile(pass16.read_text(), str(pass16), 'exec'))
+
+# Keep the expanded ranged detection only while the dispenser has usable projectile ammo;
+# empty/unshootable mode should use the underlying vanilla-style Iron Golem detection range.
+pass17 = Path('ci/port-neoforge-26-1-2-pass17-dispenser-dynamic-detection-range.py')
+exec(compile(pass17.read_text(), str(pass17), 'exec'))
