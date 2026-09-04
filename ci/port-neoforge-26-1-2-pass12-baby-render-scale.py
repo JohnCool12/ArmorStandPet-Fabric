@@ -40,3 +40,9 @@ for required in (
         raise SystemExit(f'Missing baby render-scale invariant: {required}')
 
 print('Applied pass 12: restored split-child visual scaling from Minecraft baby ageScale to match entity dimensions.')
+
+# Keep the final workflow sequence stable while layering the dispenser AI refinement after
+# the renderer fix. This pass is intentionally chained here because pass 12 is the final
+# explicitly-invoked migration stage in the release workflow.
+pass13 = Path('ci/port-neoforge-26-1-2-pass13-dispenser-warden-ranged.py')
+exec(compile(pass13.read_text(), str(pass13), 'exec'))
