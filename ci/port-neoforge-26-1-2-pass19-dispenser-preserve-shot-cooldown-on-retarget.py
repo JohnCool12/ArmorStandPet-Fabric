@@ -37,3 +37,8 @@ for required in (
         raise SystemExit(f'Missing global firing-cooldown invariant: {required}')
 
 print('Applied pass 19: Dispenser Golem ranged cooldown now survives hurt/retarget transitions; damage cannot trigger an instant extra shot.')
+
+# Finally layer optional Mob Battle compatibility: explicit Mob Enrager / Mob Group
+# forced player targets must be accepted without weakening normal player safeguards.
+pass20 = Path('ci/port-neoforge-26-1-2-pass20-mobbattle-forced-player-targets.py')
+exec(compile(pass20.read_text(), str(pass20), 'exec'))
