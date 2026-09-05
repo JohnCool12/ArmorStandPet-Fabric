@@ -74,3 +74,8 @@ exec(compile(pass18.read_text(), str(pass18), 'exec'))
 # retarget the golem and must never reset the last-shot timestamp or create a free shot.
 pass19 = Path('ci/port-neoforge-26-1-2-pass19-dispenser-preserve-shot-cooldown-on-retarget.py')
 exec(compile(pass19.read_text(), str(pass19), 'exec'))
+
+# Allow explicit external player targets (e.g. Mob Battle Enrager control) to reach the
+# normal Mob#setTarget path instead of being vetoed before the external controller can act.
+pass20 = Path('ci/port-neoforge-26-1-2-pass20-mobbattle-player-target-compat.py')
+exec(compile(pass20.read_text(), str(pass20), 'exec'))
