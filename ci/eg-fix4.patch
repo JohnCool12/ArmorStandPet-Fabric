@@ -1,0 +1,53 @@
+--- a/src/main/java/com/mcmoddev/golems/entity/GolemBase.java
++++ b/src/main/java/com/mcmoddev/golems/entity/GolemBase.java
+@@ -775,7 +775,11 @@
+ 			final Vec3 pos = this.position();
+ 			SpawnGolemItem.spawnParticles(this.level(), pos.x, pos.y + this.getBbHeight() / 2.0D, pos.z, 0.15D,
+ 					ParticleTypes.INSTANT_EFFECT, 30);
+-			this.playSound(SoundEvents.STONE_PLACE, 0.85F, 1.1F + random.nextFloat() * 0.2F);
++			if (usesIronGolemSounds()) {
++				this.playSound(SoundEvents.IRON_GOLEM_REPAIR, 1.0F, 1.0F);
++			} else {
++				this.playSound(SoundEvents.STONE_PLACE, 0.85F, 1.1F + random.nextFloat() * 0.2F);
++			}
+ 			return true;
+ 		}
+ 		return false;
+@@ -869,19 +873,34 @@
+ 
+ 	//// SOUNDS ////
+ 
++	/**
++	 * These material golems intentionally use the vanilla Iron Golem sound profile.
++	 * Because this entity extends {@link IronGolem}, delegating to super preserves
++	 * the exact vanilla hurt/death behavior while inherited step, attack, and
++	 * crack/damage sounds remain unchanged.
++	 */
++	private boolean usesIronGolemSounds() {
++		return getGolemId().map(id -> ExtraGolems.MODID.equals(id.getNamespace()) && switch (id.getPath()) {
++			case "netherite", "emerald", "gold", "lapis", "diamond", "obsidian", "crying_obsidian",
++					"coal", "quartz", "redstone" -> true;
++			default -> false;
++		}).orElse(false);
++	}
++
+ 	@Override
+ 	protected SoundEvent getAmbientSound() {
+-		return getSoundType().getStepSound();
++		// Vanilla Iron Golems have no ambient/living sound.
++		return usesIronGolemSounds() ? super.getAmbientSound() : getSoundType().getStepSound();
+ 	}
+ 
+ 	@Override
+ 	protected SoundEvent getHurtSound(final DamageSource ignored) {
+-		return getSoundType().getHitSound();
++		return usesIronGolemSounds() ? super.getHurtSound(ignored) : getSoundType().getHitSound();
+ 	}
+ 
+ 	@Override
+ 	protected SoundEvent getDeathSound() {
+-		return getSoundType().getBreakSound();
++		return usesIronGolemSounds() ? super.getDeathSound() : getSoundType().getBreakSound();
+ 	}
+ 
+ 	/**

@@ -1,0 +1,95 @@
+--- a/src/main/java/com/mcmoddev/golems/data/golem/Attributes.java	2026-08-07 09:02:16.658720799 +0000
++++ b/src/main/java/com/mcmoddev/golems/data/golem/Attributes.java	2026-08-07 09:02:16.097868532 +0000
+@@ -298,8 +298,12 @@
+ 	 */
+ 	public void updatePathfinding(final PathfinderMob mob) {
+ 		final RegistryAccess registryAccess = mob.level().registryAccess();
+-		// water damage
+-		if(isWeakTo(registryAccess, ImmutableSet.of(DamageTypes.DROWN))) {
++		// Advanced swimmers should treat water as normal traversable terrain.
++		// Previously this method overwrote GolemBase's WATER=0 setting with 8,
++		// making the water navigator strongly avoid the very medium it needed.
++		if (getSwimAbility() == SwimAbility.SWIM) {
++			mob.setPathfindingMalus(PathType.WATER, 0.0F);
++		} else if(isWeakTo(registryAccess, ImmutableSet.of(DamageTypes.DROWN))) {
+ 			mob.setPathfindingMalus(PathType.WATER, -1.0F);
+ 		} else {
+ 			mob.setPathfindingMalus(PathType.WATER, 8.0F);
+--- a/src/main/java/com/mcmoddev/golems/entity/GolemBase.java	2026-08-07 09:02:16.659331839 +0000
++++ b/src/main/java/com/mcmoddev/golems/entity/GolemBase.java	2026-08-07 09:02:16.096137444 +0000
+@@ -1030,9 +1030,21 @@
+ 
+ 	//// SWIMMING ////
+ 
++	/**
++	 * @return true when this golem is one of the data-driven advanced swimmers.
++	 */
++	private boolean isAdvancedSwimmer() {
++		return getContainer().map(container ->
++				container.getAttributes().getSwimAbility() == SwimAbility.SWIM).orElse(false);
++	}
++
+ 	@Override
+ 	public void travel(final Vec3 vec) {
+-		if (isEffectiveAi() && isInWater() && isSwimmingUp()) {
++		// Use Drowned-style water locomotion for the entire time an advanced
++		// swimmer is submerged. The old implementation only enabled this while
++		// SwimUpGoal was active (or its target was already in water), so an idle
++		// aquatic golem immediately fell back to Iron Golem physics and sank.
++		if (isEffectiveAi() && isInWater() && isAdvancedSwimmer()) {
+ 			moveRelative(0.01F, vec);
+ 			move(MoverType.SELF, getDeltaMovement());
+ 			setDeltaMovement(getDeltaMovement().scale(0.9D));
+@@ -1043,14 +1055,14 @@
+ 
+ 	@Override
+ 	public void updateSwimming() {
+-		final Optional<GolemContainer> oContainer = getContainer();
+-		if (oContainer.isEmpty() || oContainer.get().getAttributes().getSwimAbility() != SwimAbility.SWIM) {
++		if (!isAdvancedSwimmer()) {
+ 			super.updateSwimming();
+ 			return;
+ 		}
+-		// update navigation
++		// Advanced swimmers always use 3D water navigation while submerged, and
++		// switch back to normal Iron Golem ground navigation when they leave water.
+ 		if (!this.level().isClientSide) {
+-			if (isEffectiveAi() && isInWater() && isSwimmingUp()) {
++			if (isEffectiveAi() && isInWater()) {
+ 				this.navigation = this.waterNavigator;
+ 				setSwimming(true);
+ 			} else {
+@@ -1066,17 +1078,11 @@
+ 	}
+ 
+ 	public void setSwimmingUp(boolean isSwimmingUp) {
+-		final Optional<GolemContainer> oContainer = getContainer();
+-		final boolean canSwim = oContainer.isPresent()
+-				&& oContainer.get().getAttributes().getSwimAbility() == SwimAbility.SWIM;
+-		this.swimmingUp = canSwim && isSwimmingUp;
++		this.swimmingUp = isAdvancedSwimmer() && isSwimmingUp;
+ 	}
+ 
+ 	public boolean isSwimmingUp() {
+-		final Optional<GolemContainer> oContainer = getContainer();
+-		final boolean canSwim = oContainer.isPresent()
+-				&& oContainer.get().getAttributes().getSwimAbility() == SwimAbility.SWIM;
+-		if (!canSwim) {
++		if (!isAdvancedSwimmer()) {
+ 			return false;
+ 		}
+ 		if (this.swimmingUp) {
+@@ -1098,8 +1104,11 @@
+ 
+ 		public void tick() {
+ 			LivingEntity livingentity = this.golem.getTarget();
+-			if (this.golem.isSwimmingUp() && this.golem.isInWater()) {
+-				if (livingentity != null && livingentity.getY() > this.golem.getY() || this.golem.swimmingUp) {
++			// Stay in full 3D swimming control whenever this advanced swimmer is
++			// in water. isSwimmingUp() is only an ascent preference, not a gate
++			// that decides whether the entity can swim at all.
++			if (this.golem.isAdvancedSwimmer() && this.golem.isInWater()) {
++				if ((livingentity != null && livingentity.getY() > this.golem.getY()) || this.golem.swimmingUp) {
+ 					this.golem.setDeltaMovement(this.golem.getDeltaMovement().add(0.0D, 0.002D, 0.0D));
+ 				}
+ 
