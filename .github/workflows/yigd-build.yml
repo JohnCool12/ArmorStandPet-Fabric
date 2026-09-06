@@ -8,6 +8,7 @@ on:
       - '.github/workflows/yigd-build.yml'
       - 'ci/yigd-patch.part-*'
       - 'ci/yigd-hotfix.patch'
+      - 'ci/yigd-hotfix.patch.xz'
   workflow_dispatch:
 
 permissions:
@@ -39,11 +40,13 @@ jobs:
           cat ci/yigd-patch.part-* | base64 --decode > /tmp/yigd.patch.xz
           echo '5993a1f2c914805de35cdcb008d8e2ca9fd43d6cf2e882df586c86831c873651  /tmp/yigd.patch.xz' | sha256sum --check
           xz -dc /tmp/yigd.patch.xz > /tmp/yigd.patch
+          xz -dc ci/yigd-hotfix.patch.xz > /tmp/yigd-hotfix.patch
+          echo 'a283a9afd3130078658b9fc00a69be83de642946e3011177f442102e96cfdb6b  /tmp/yigd-hotfix.patch' | sha256sum --check
           cd /tmp/yigd
           git apply --check /tmp/yigd.patch
           git apply /tmp/yigd.patch
-          git apply --check "$GITHUB_WORKSPACE/ci/yigd-hotfix.patch"
-          git apply "$GITHUB_WORKSPACE/ci/yigd-hotfix.patch"
+          git apply --check /tmp/yigd-hotfix.patch
+          git apply /tmp/yigd-hotfix.patch
           chmod +x gradlew
           grep -E 'minecraft_version|neo_version|mod_version' gradle.properties
 
