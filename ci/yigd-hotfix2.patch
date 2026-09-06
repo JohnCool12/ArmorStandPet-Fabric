@@ -1,0 +1,68 @@
+diff --git a/src/main/java/com/b1n_ry/yigd/components/GraveComponent.java b/src/main/java/com/b1n_ry/yigd/components/GraveComponent.java
+index 0d3ad5e..3ac9dbb 100644
+--- a/src/main/java/com/b1n_ry/yigd/components/GraveComponent.java
++++ b/src/main/java/com/b1n_ry/yigd/components/GraveComponent.java
+@@ -625,7 +625,7 @@ public class GraveComponent {
+             CompoundTag nbt = NbtUtils.snbtToStructure(summonNbt);
+             nbt.putString("id", config.spawnEntity);
+             Entity entity = EntityType.loadEntityRecursive(nbt, world, EntitySpawnReason.LOAD, e -> {
+-                e.moveTo(this.pos, e.getYRot(), e.getXRot());  // Make sure the entity is in the right place
++                e.snapTo(this.pos, e.getYRot(), e.getXRot());  // Make sure the entity is in the right place
+                 return e;
+             });
+ 
+diff --git a/src/main/java/com/b1n_ry/yigd/data/DeathInfoManager.java b/src/main/java/com/b1n_ry/yigd/data/DeathInfoManager.java
+index fdab497..802ca22 100644
+--- a/src/main/java/com/b1n_ry/yigd/data/DeathInfoManager.java
++++ b/src/main/java/com/b1n_ry/yigd/data/DeathInfoManager.java
+@@ -216,7 +216,7 @@ public class DeathInfoManager extends SavedData {
+ 
+                 // If the grave is still in the world, set the component
+                 ServerLevel world = component.getWorld();
+-                if (world != null && world.areEntitiesLoaded(new ChunkPos(component.getPos().getX() >> 4, component.getPos().getZ() >> 4).toLong())
++                if (world != null && world.areEntitiesLoaded(ChunkPos.pack(component.getPos()))
+                         && world.getBlockEntity(component.getPos()) instanceof GraveBlockEntity be
+                         && be.getGraveId() != null
+                         && be.getGraveId().equals(component.getGraveId())) {
+diff --git a/src/main/java/com/b1n_ry/yigd/mixin/CompassTargetInvoker.java b/src/main/java/com/b1n_ry/yigd/mixin/CompassTargetInvoker.java
+new file mode 100644
+index 0000000..40b72ee
+--- /dev/null
++++ b/src/main/java/com/b1n_ry/yigd/mixin/CompassTargetInvoker.java
+@@ -0,0 +1,15 @@
++package com.b1n_ry.yigd.mixin;
++
++import net.minecraft.client.multiplayer.ClientLevel;
++import net.minecraft.client.renderer.item.properties.numeric.CompassAngleState;
++import net.minecraft.core.GlobalPos;
++import net.minecraft.world.entity.ItemOwner;
++import net.minecraft.world.item.ItemStack;
++import org.spongepowered.asm.mixin.Mixin;
++import org.spongepowered.asm.mixin.gen.Invoker;
++
++@Mixin(CompassAngleState.CompassTarget.class)
++public interface CompassTargetInvoker {
++    @Invoker("get")
++    GlobalPos yigd$invokeGet(ClientLevel level, ItemStack stack, ItemOwner owner);
++}
+diff --git a/src/main/java/com/b1n_ry/yigd/mixin/RegistryPendingRegistrationAccessor.java b/src/main/java/com/b1n_ry/yigd/mixin/RegistryPendingRegistrationAccessor.java
+new file mode 100644
+index 0000000..52223b3
+--- /dev/null
++++ b/src/main/java/com/b1n_ry/yigd/mixin/RegistryPendingRegistrationAccessor.java
+@@ -0,0 +1,15 @@
++package com.b1n_ry.yigd.mixin;
++
++import net.minecraft.resources.ResourceKey;
++import org.spongepowered.asm.mixin.Mixin;
++import org.spongepowered.asm.mixin.gen.Accessor;
++
++/**
++ * Accesses the key of RegistryLoadTask.PendingRegistration without exposing the
++ * protected nested vanilla type in YiGD's source signature.
++ */
++@Mixin(targets = "net.minecraft.resources.RegistryLoadTask$PendingRegistration")
++public interface RegistryPendingRegistrationAccessor {
++    @Accessor("key")
++    ResourceKey<?> yigd$getKey();
++}
