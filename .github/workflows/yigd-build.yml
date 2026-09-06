@@ -7,6 +7,7 @@ on:
     paths:
       - '.github/workflows/yigd-build.yml'
       - 'ci/yigd-patch.part-*'
+      - 'ci/yigd-hotfix.patch'
   workflow_dispatch:
 
 permissions:
@@ -41,6 +42,8 @@ jobs:
           cd /tmp/yigd
           git apply --check /tmp/yigd.patch
           git apply /tmp/yigd.patch
+          git apply --check "$GITHUB_WORKSPACE/ci/yigd-hotfix.patch"
+          git apply "$GITHUB_WORKSPACE/ci/yigd-hotfix.patch"
           chmod +x gradlew
           grep -E 'minecraft_version|neo_version|mod_version' gradle.properties
 
