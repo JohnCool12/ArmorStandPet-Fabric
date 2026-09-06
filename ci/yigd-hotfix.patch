@@ -1,0 +1,12 @@
+diff --git a/build.gradle b/build.gradle
+index 47db1f9..0e385b7 100644
+--- a/build.gradle
++++ b/build.gradle
+@@ -1,6 +1,7 @@
+ import me.modmuss50.mpp.ReleaseType
+ 
+ plugins {
++    id 'idea'
+     id 'java-library'
+     id 'maven-publish'
+     id 'net.neoforged.moddev' version '2.0.146'
