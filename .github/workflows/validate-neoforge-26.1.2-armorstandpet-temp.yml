@@ -40,7 +40,11 @@ jobs:
           (cd project && patch --batch --forward -p1 < /tmp/port.patch)
           (cd project && patch --batch --forward -p1 < ../ci/armorstandpet-neoforge-26.1.2-fix-signatures.patch)
           (cd project && patch --batch --forward -p1 < ../ci/armorstandpet-neoforge-26.1.2-fix-serverlevel-import.patch)
-          cat /tmp/port.patch ci/armorstandpet-neoforge-26.1.2-fix-signatures.patch ci/armorstandpet-neoforge-26.1.2-fix-serverlevel-import.patch > artifact/ArmorStandPet-NeoForge-26.1.2-port.patch
+          (cd project && patch --batch --forward -p1 < ../ci/armorstandpet-neoforge-26.1.2-cleanup.patch)
+          find project -type f -name '*.orig' -delete
+          cat /tmp/port.patch ci/armorstandpet-neoforge-26.1.2-fix-signatures.patch ci/armorstandpet-neoforge-26.1.2-fix-serverlevel-import.patch ci/armorstandpet-neoforge-26.1.2-cleanup.patch > artifact/ArmorStandPet-NeoForge-26.1.2-port.patch
+          grep -q 'ArmorStandPet NeoForge 26.1.2 initialized.' project/src/main/java/io/github/kyzderp/armorstandpet/ASPetMod.java
+          ! find project -type f -name '*.orig' | grep -q .
           echo '--- effective gradle.properties ---'
           cat project/gradle.properties
       - name: Build production NeoForge 26.1.2 JAR
@@ -59,6 +63,8 @@ jobs:
           set -e
           cat artifact/ArmorStandPet-NeoForge-26.1.2-server-smoke.log
           grep -q 'Done (' artifact/ArmorStandPet-NeoForge-26.1.2-server-smoke.log
+          grep -q 'ArmorStandPet NeoForge 26.1.2 initialized.' artifact/ArmorStandPet-NeoForge-26.1.2-server-smoke.log
+          ! grep -q 'ArmorStandPet NeoForge 1.21.1 initialized.' artifact/ArmorStandPet-NeoForge-26.1.2-server-smoke.log
           ! grep -q 'Failed to complete lifecycle event' artifact/ArmorStandPet-NeoForge-26.1.2-server-smoke.log
           ! grep -q 'Exception caught during firing event' artifact/ArmorStandPet-NeoForge-26.1.2-server-smoke.log
           ! grep -Eiq '(^|\]) *(ERROR|FATAL) ' artifact/ArmorStandPet-NeoForge-26.1.2-server-smoke.log
@@ -79,14 +85,17 @@ jobs:
             'ArmorStandPet NeoForge 26.1.2 port' \
             '==================================' \
             'Baseline: validated NeoForge 1.21.1 2.0.3 uninterrupted-follow source' \
-            'Target: Minecraft / NeoForge 26.1.2' \
+            'Target: Minecraft 26.1.2 / NeoForge 26.1.2.104' \
             'Java: 25' \
+            'Mod version: 3.0.0+neoforge.26.1.2-uninterrupted-follow' \
             'Mod ID: armorstandpet' \
             'Entity ID: armorstandpet:pet' \
             '' \
             'Validation gates:' \
             '- exact prior source checksum verified' \
             '- audited 26.1.2 migration patches applied cleanly' \
+            '- version-specific source comments/logger cleaned for 26.1.2' \
+            '- patch backup .orig files removed from packaged source' \
             '- full production build succeeded' \
             '- dedicated NeoForge server reached Done' \
             '- no ERROR/FATAL lifecycle/event failure in smoke log' \
@@ -100,7 +109,9 @@ jobs:
             '- preserve persistence, commands, GUI, pet types and configuration semantics' \
             > artifact/VALIDATION.txt
           rm -rf project/.gradle project/build project/run
-          (cd project && zip -qr ../artifact/ArmorStandPet-NeoForge-26.1.2-uninterrupted-follow-source.zip . -x '.git/*' '.github/*' '.gradle/*' 'build/*' 'run/*')
+          (cd project && zip -qr ../artifact/ArmorStandPet-NeoForge-26.1.2-uninterrupted-follow-source.zip . -x '.git/*' '.github/*' '.gradle/*' 'build/*' 'run/*' '*.orig')
+          unzip -l artifact/ArmorStandPet-NeoForge-26.1.2-uninterrupted-follow-source.zip | grep -q 'ASPetMod.java'
+          ! unzip -l artifact/ArmorStandPet-NeoForge-26.1.2-uninterrupted-follow-source.zip | grep -q '\.orig$'
           sha256sum artifact/ArmorStandPet-NeoForge-26.1.2-uninterrupted-follow.jar artifact/ArmorStandPet-NeoForge-26.1.2-uninterrupted-follow-source.zip artifact/ArmorStandPet-NeoForge-26.1.2-port.patch artifact/ArmorStandPet-NeoForge-26.1.2-server-smoke.log artifact/VALIDATION.txt > artifact/SHA256SUMS.txt
       - name: Upload validated 26.1.2 artifact
         uses: actions/upload-artifact@v4
