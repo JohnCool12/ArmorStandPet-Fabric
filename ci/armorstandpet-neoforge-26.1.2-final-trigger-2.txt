@@ -1,0 +1,1 @@
+Forces a fresh PR synchronize event for the upgraded full NeoForge 26.1.2 validation workflow.
