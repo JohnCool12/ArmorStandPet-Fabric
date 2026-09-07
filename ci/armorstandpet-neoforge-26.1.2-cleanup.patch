@@ -1,0 +1,155 @@
+diff --git a/src/main/java/io/github/kyzderp/armorstandpet/ASPetMod.java b/src/main/java/io/github/kyzderp/armorstandpet/ASPetMod.java
+index 29afde8..9c86e70 100644
+--- a/src/main/java/io/github/kyzderp/armorstandpet/ASPetMod.java
++++ b/src/main/java/io/github/kyzderp/armorstandpet/ASPetMod.java
+@@ -1,5 +1,5 @@
+ /**
+- * ArmorStandPet - NeoForge 1.21.1 port
++ * ArmorStandPet - NeoForge 26.1.2 port
+  * Copyright (C) 2019 Kyzeragon
+  *
+  * This program is free software: you can redistribute it and/or modify
+@@ -23,7 +23,7 @@ import net.neoforged.neoforge.common.NeoForge;
+ import org.slf4j.Logger;
+ 
+-/** NeoForge 1.21.1 entry point. */
++/** NeoForge 26.1.2 entry point. */
+ @Mod(ASPetMod.MOD_ID)
+ public class ASPetMod
+ {
+@@ -41,7 +41,7 @@ public class ASPetMod
+         NeoForge.EVENT_BUS.register(new NeoForgeEventHandlers());
+ 
+-        LOGGER.info("ArmorStandPet NeoForge 1.21.1 initialized.");
++        LOGGER.info("ArmorStandPet NeoForge 26.1.2 initialized.");
+     }
+ 
+     public static void inform(CommandSourceStack sender, String message)
+diff --git a/src/main/java/io/github/kyzderp/armorstandpet/client/PetArmorStandRenderer.java b/src/main/java/io/github/kyzderp/armorstandpet/client/PetArmorStandRenderer.java
+index 7976c92..2dc56bc 100644
+--- a/src/main/java/io/github/kyzderp/armorstandpet/client/PetArmorStandRenderer.java
++++ b/src/main/java/io/github/kyzderp/armorstandpet/client/PetArmorStandRenderer.java
+@@ -1,11 +1,11 @@
+ /**
+- * ArmorStandPet - Fabric 1.21.1 port
++ * ArmorStandPet - NeoForge 26.1.2 port
+  * Copyright (C) 2019 Kyzeragon
+  */
+ package io.github.kyzderp.armorstandpet.client;
+ 
+ import net.minecraft.client.renderer.entity.ArmorStandRenderer;
+ import net.minecraft.client.renderer.entity.EntityRendererProvider;
+ 
+-/** Uses the vanilla 1.21.1 armor-stand renderer for the custom pet entity. */
++/** Uses the vanilla 26.1.2 armor-stand renderer for the custom pet entity. */
+ public final class PetArmorStandRenderer extends ArmorStandRenderer
+ {
+diff --git a/src/main/java/io/github/kyzderp/armorstandpet/combat/OwnerAttackCombatController.java b/src/main/java/io/github/kyzderp/armorstandpet/combat/OwnerAttackCombatController.java
+index 17a74b0..f9a5417 100644
+--- a/src/main/java/io/github/kyzderp/armorstandpet/combat/OwnerAttackCombatController.java
++++ b/src/main/java/io/github/kyzderp/armorstandpet/combat/OwnerAttackCombatController.java
+@@ -1,6 +1,6 @@
+ /**
+  * ArmorStandPet - Fabric port
+- * Owner-directed combat for Minecraft 1.21.1
++ * Owner-directed combat for Minecraft 26.1.2
+  */
+ package io.github.kyzderp.armorstandpet.combat;
+@@ -202,7 +202,7 @@ public final class OwnerAttackCombatController
+ 			if (damaged)
+ 			{
+-				// 1.21.1 restricts ItemStack.hurtEnemy/postHurtEnemy to Player.
++				// 26.1.2 restricts ItemStack.hurtEnemy/postHurtEnemy to Player.
+ 				// Preserve equivalent durability consumption without pretending the armor stand is a player.
+ 				weapon.hurtAndBreak(1, owner, LivingEntity.getSlotForHand(InteractionHand.MAIN_HAND));
+ 			}
+diff --git a/src/main/java/io/github/kyzderp/armorstandpet/combat/PetMortalityController.java b/src/main/java/io/github/kyzderp/armorstandpet/combat/PetMortalityController.java
+index 47b7922..4628ea8 100644
+--- a/src/main/java/io/github/kyzderp/armorstandpet/combat/PetMortalityController.java
++++ b/src/main/java/io/github/kyzderp/armorstandpet/combat/PetMortalityController.java
+@@ -1,6 +1,6 @@
+ /**
+  * ArmorStandPet - Fabric port
+- * Optional pet mortality for Minecraft 1.21.1
++ * Optional pet mortality for Minecraft 26.1.2
+  */
+ package io.github.kyzderp.armorstandpet.combat;
+diff --git a/src/main/java/io/github/kyzderp/armorstandpet/entity/ModEntities.java b/src/main/java/io/github/kyzderp/armorstandpet/entity/ModEntities.java
+index 580f998..665f6b7 100644
+--- a/src/main/java/io/github/kyzderp/armorstandpet/entity/ModEntities.java
++++ b/src/main/java/io/github/kyzderp/armorstandpet/entity/ModEntities.java
+@@ -1,5 +1,5 @@
+ /**
+- * ArmorStandPet - NeoForge 1.21.1 port
++ * ArmorStandPet - NeoForge 26.1.2 port
+  * Copyright (C) 2019 Kyzeragon
+  */
+ package io.github.kyzderp.armorstandpet.entity;
+diff --git a/src/main/java/io/github/kyzderp/armorstandpet/gui/ChooseTypeScreenHandler.java b/src/main/java/io/github/kyzderp/armorstandpet/gui/ChooseTypeScreenHandler.java
+index 580d38b..136326f 100644
+--- a/src/main/java/io/github/kyzderp/armorstandpet/gui/ChooseTypeScreenHandler.java
++++ b/src/main/java/io/github/kyzderp/armorstandpet/gui/ChooseTypeScreenHandler.java
+@@ -39,7 +39,7 @@ import net.minecraft.world.item.Items;
+ 
+ /**
+  * Type-selection menu.
+- * Minecraft 1.21.1 no longer reliably preserves legacy-formatted custom item
++ * Minecraft 26.1.2 no longer reliably preserves legacy-formatted custom item
+  * names through item JSON, so the menu uses Components directly.
+  */
+ public class ChooseTypeScreenHandler extends HopperMenu
+diff --git a/src/main/java/io/github/kyzderp/armorstandpet/hooks/BuildingCheck.java b/src/main/java/io/github/kyzderp/armorstandpet/hooks/BuildingCheck.java
+index 63d22ea..4be0338 100644
+--- a/src/main/java/io/github/kyzderp/armorstandpet/hooks/BuildingCheck.java
++++ b/src/main/java/io/github/kyzderp/armorstandpet/hooks/BuildingCheck.java
+@@ -1,5 +1,5 @@
+ /**
+- * ArmorStandPet - NeoForge 1.21.1 port
++ * ArmorStandPet - NeoForge 26.1.2 port
+  * Copyright (C) 2019 Kyzeragon
+  */
+ package io.github.kyzderp.armorstandpet.hooks;
+diff --git a/src/main/java/io/github/kyzderp/armorstandpet/neoforge/NeoForgeEventHandlers.java b/src/main/java/io/github/kyzderp/armorstandpet/neoforge/NeoForgeEventHandlers.java
+index f64d02d..1110f3d 100644
+--- a/src/main/java/io/github/kyzderp/armorstandpet/neoforge/NeoForgeEventHandlers.java
++++ b/src/main/java/io/github/kyzderp/armorstandpet/neoforge/NeoForgeEventHandlers.java
+@@ -1,5 +1,5 @@
+ /**
+- * ArmorStandPet - NeoForge event bridge for Minecraft 1.21.1
++ * ArmorStandPet - NeoForge event bridge for Minecraft 26.1.2
+  */
+ package io.github.kyzderp.armorstandpet.neoforge;
+diff --git a/src/main/java/io/github/kyzderp/armorstandpet/normalcommands/CombatCommand.java b/src/main/java/io/github/kyzderp/armorstandpet/normalcommands/CombatCommand.java
+index 0a69eed..983a1f5 100644
+--- a/src/main/java/io/github/kyzderp/armorstandpet/normalcommands/CombatCommand.java
++++ b/src/main/java/io/github/kyzderp/armorstandpet/normalcommands/CombatCommand.java
+@@ -1,6 +1,6 @@
+ /**
+  * ArmorStandPet - Fabric port
+- * Per-pet combat toggle for Minecraft 1.21.1
++ * Per-pet combat toggle for Minecraft 26.1.2
+  */
+ package io.github.kyzderp.armorstandpet.normalcommands;
+diff --git a/src/main/java/io/github/kyzderp/armorstandpet/normalcommands/InvincibleCommand.java b/src/main/java/io/github/kyzderp/armorstandpet/normalcommands/InvincibleCommand.java
+index e1c8940..de6a7a0 100644
+--- a/src/main/java/io/github/kyzderp/armorstandpet/normalcommands/InvincibleCommand.java
++++ b/src/main/java/io/github/kyzderp/armorstandpet/normalcommands/InvincibleCommand.java
+@@ -1,6 +1,6 @@
+ /**
+  * ArmorStandPet - Fabric port
+- * Per-pet invincibility toggle for Minecraft 1.21.1
++ * Per-pet invincibility toggle for Minecraft 26.1.2
+  */
+ package io.github.kyzderp.armorstandpet.normalcommands;
+diff --git a/src/main/java/io/github/kyzderp/armorstandpet/util/PermissionUtil.java b/src/main/java/io/github/kyzderp/armorstandpet/util/PermissionUtil.java
+index 58fc321..4678037 100644
+--- a/src/main/java/io/github/kyzderp/armorstandpet/util/PermissionUtil.java
++++ b/src/main/java/io/github/kyzderp/armorstandpet/util/PermissionUtil.java
+@@ -8,7 +8,7 @@ import net.minecraft.server.level.ServerPlayer;
+ 
+ import java.util.UUID;
+ 
+-/** Permission checks using vanilla operator status on Minecraft 1.21.1. */
++/** Permission checks using vanilla operator status on Minecraft 26.1.2. */
+ public final class PermissionUtil
+ {
