@@ -15,7 +15,14 @@ diff --git a/src/main/java/io/github/kyzderp/armorstandpet/gui/ChooseTypeScreenH
 index 547effa..c949b93 100644
 --- a/src/main/java/io/github/kyzderp/armorstandpet/gui/ChooseTypeScreenHandler.java
 +++ b/src/main/java/io/github/kyzderp/armorstandpet/gui/ChooseTypeScreenHandler.java
-@@ -164,7 +164,7 @@ public class ChooseTypeScreenHandler extends HopperMenu
+@@ -22,6 +22,7 @@ import io.github.kyzderp.armorstandpet.util.PermissionUtil;
+ import net.minecraft.core.component.DataComponents;
+ import net.minecraft.network.chat.Component;
++import net.minecraft.server.level.ServerLevel;
+ import net.minecraft.server.level.ServerPlayer;
+ import net.minecraft.world.MenuProvider;
+ import net.minecraft.world.SimpleContainer;
+@@ -164,7 +165,7 @@ public class ChooseTypeScreenHandler extends HopperMenu
          }
          else
          {
