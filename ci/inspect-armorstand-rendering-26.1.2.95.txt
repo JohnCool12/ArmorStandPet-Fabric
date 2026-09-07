@@ -1,0 +1,1 @@
+Trigger exact NeoForge 26.1.2.95 armor stand rendering bytecode inspection.
