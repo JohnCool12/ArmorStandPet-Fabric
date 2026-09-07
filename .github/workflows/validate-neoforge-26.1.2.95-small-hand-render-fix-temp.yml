@@ -1,0 +1,146 @@
+name: Validate ArmorStandPet 26.1.2.95 small-hand render fix
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+      - name: Download exact validated 26.1.2.95 baseline
+        uses: actions/download-artifact@v4
+        with:
+          name: armorstandpet-neoforge-26.1.2.95-uninterrupted-follow
+          path: /tmp/base-artifact
+          run-id: 34109877198
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Reconstruct narrowly patched source
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf baseline project artifact
+          mkdir baseline project artifact
+          echo 'bb58a1a6c7d45f580f492d7cb41b7dd1c4011d843a16e8fd9222f285b44401b2  /tmp/base-artifact/ArmorStandPet-NeoForge-26.1.2.95-uninterrupted-follow-source.zip' | sha256sum --check
+          unzip -q /tmp/base-artifact/ArmorStandPet-NeoForge-26.1.2.95-uninterrupted-follow-source.zip -d baseline
+          cp -a baseline/. project/
+          (cd project && patch --batch --forward -p1 < ../ci/armorstandpet-neoforge-26.1.2.95-small-hand-render-fix.patch)
+          cp ci/armorstandpet-neoforge-26.1.2.95-small-hand-render-fix.patch artifact/ArmorStandPet-NeoForge-26.1.2.95-small-hand-render-fix.patch
+          python3 - <<'PY'
+          from pathlib import Path
+          import sys
+          base=Path('baseline/src/main/java')
+          new=Path('project/src/main/java')
+          allowed={'io/github/kyzderp/armorstandpet/client/PetArmorStandRenderer.java'}
+          bad=[]
+          checked=0
+          for src in sorted(base.rglob('*.java')):
+              rel=src.relative_to(base).as_posix()
+              if rel in allowed:
+                  continue
+              dst=new/rel
+              if not dst.is_file() or src.read_bytes()!=dst.read_bytes():
+                  bad.append(rel)
+              checked += 1
+          if bad:
+              print('Unexpected production Java changes:', *bad, sep='\n - ')
+              sys.exit(1)
+          print(f'Byte-for-byte preserved {checked} production Java files outside PetArmorStandRenderer.java')
+          PY
+          grep -q '^minecraft_version=26.1.2$' project/gradle.properties
+          grep -q '^neo_version=26.1.2.95$' project/gradle.properties
+          grep -Fq 'mod_version=3.0.2+neoforge.26.1.2-uninterrupted-follow' project/gradle.properties
+          grep -Fq 'if (state.isSmall)' project/src/main/java/io/github/kyzderp/armorstandpet/client/PetArmorStandRenderer.java
+          grep -Fq 'state.entityType = EntityType.ARMOR_STAND;' project/src/main/java/io/github/kyzderp/armorstandpet/client/PetArmorStandRenderer.java
+      - name: Build production JAR against NeoForge 26.1.2.95
+        working-directory: project
+        run: ./gradlew clean build --stacktrace --no-daemon --console=plain
+      - name: Verify renderer bytecode and packaged metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          javap -classpath project/build/classes/java/main -c -p io.github.kyzderp.armorstandpet.client.PetArmorStandRenderer > artifact/PetArmorStandRenderer-javap.txt
+          cat artifact/PetArmorStandRenderer-javap.txt
+          grep -Fq 'ArmorStandRenderState.isSmall' artifact/PetArmorStandRenderer-javap.txt
+          grep -Fq 'EntityType.ARMOR_STAND' artifact/PetArmorStandRenderer-javap.txt
+          grep -Fq 'EntityRenderState.entityType' artifact/PetArmorStandRenderer-javap.txt
+          jar="$(find project/build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*-sources.jar' ! -name '*-dev.jar' -print -quit)"
+          test -n "$jar"
+          unzip -p "$jar" META-INF/neoforge.mods.toml > /tmp/neoforge.mods.toml
+          grep -Fq 'versionRange="[26.1.2.95,)"' /tmp/neoforge.mods.toml
+          cp "$jar" artifact/ArmorStandPet-NeoForge-26.1.2.95-small-hand-render-fix.jar
+      - name: Dedicated-server smoke test
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p project/run
+          printf 'eula=true\n' > project/run/eula.txt
+          printf 'online-mode=false\nserver-port=25591\n' > project/run/server.properties
+          set +e
+          (cd project && (sleep 90; echo stop) | timeout 360s ./gradlew runServer --no-daemon --console=plain) > artifact/ArmorStandPet-NeoForge-26.1.2.95-small-hand-render-fix-server-smoke.log 2>&1
+          status=$?
+          set -e
+          cat artifact/ArmorStandPet-NeoForge-26.1.2.95-small-hand-render-fix-server-smoke.log
+          grep -q 'Done (' artifact/ArmorStandPet-NeoForge-26.1.2.95-small-hand-render-fix-server-smoke.log
+          grep -q 'ArmorStandPet NeoForge 26.1.2 initialized.' artifact/ArmorStandPet-NeoForge-26.1.2.95-small-hand-render-fix-server-smoke.log
+          ! grep -Eiq '(^|\]) *(ERROR|FATAL) ' artifact/ArmorStandPet-NeoForge-26.1.2.95-small-hand-render-fix-server-smoke.log
+          if [ "$status" -ne 0 ] && [ "$status" -ne 124 ]; then exit "$status"; fi
+      - name: Package source and validation files
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > artifact/VALIDATION.txt <<'EOF'
+          ArmorStandPet NeoForge 26.1.2.95 small armor stand held-item render fix
+          ======================================================================
+          Minecraft: 26.1.2
+          NeoForge: 26.1.2.95
+          Java: 25
+          Mod version: 3.0.2+neoforge.26.1.2-uninterrupted-follow
+
+          Root cause confirmed from exact Minecraft 26.1.2 client bytecode:
+          ItemInHandLayer.useBabyOffset applies generic baby-mob held-item offsets when
+          state.isBaby is true unless state.entityType is exactly EntityType.ARMOR_STAND.
+          Small PetArmorStandEntity instances inherit ArmorStand.isBaby() == true but use
+          the custom registered entity type armorstandpet:pet, so vanilla's exception was
+          not applied and held items were displaced.
+
+          Fix:
+          PetArmorStandRenderer keeps the normal ArmorStandRenderer pipeline and, only for
+          state.isSmall, normalizes the render-only state.entityType to EntityType.ARMOR_STAND.
+          The actual entity type, networking, persistence, movement, combat and health are
+          unchanged. This makes ItemInHandLayer choose the exact vanilla armor-stand branch
+          rather than compensating with guessed coordinates.
+
+          Validation:
+          - exact validated 26.1.2.95 source checksum verified
+          - all production Java outside PetArmorStandRenderer.java byte-identical
+          - full production build against NeoForge 26.1.2.95 succeeded
+          - compiled renderer bytecode contains small-state conditional and ARMOR_STAND normalization
+          - packaged NeoForge minimum remains 26.1.2.95
+          - dedicated NeoForge 26.1.2.95 server reached Done
+          - no ERROR/FATAL server lifecycle failure
+
+          Visual placement still requires in-game client observation; CI verifies the code now
+          takes the exact vanilla ArmorStand ItemInHandLayer branch that the comparison exposed.
+          EOF
+          sed -i 's/^          //' artifact/VALIDATION.txt
+          rm -rf project/.gradle project/build project/run
+          (cd project && zip -qr ../artifact/ArmorStandPet-NeoForge-26.1.2.95-small-hand-render-fix-source.zip . -x '.git/*' '.github/*' '.gradle/*' 'build/*' 'run/*')
+          sha256sum artifact/ArmorStandPet-NeoForge-26.1.2.95-small-hand-render-fix.jar artifact/ArmorStandPet-NeoForge-26.1.2.95-small-hand-render-fix-source.zip artifact/ArmorStandPet-NeoForge-26.1.2.95-small-hand-render-fix.patch artifact/ArmorStandPet-NeoForge-26.1.2.95-small-hand-render-fix-server-smoke.log artifact/PetArmorStandRenderer-javap.txt artifact/VALIDATION.txt > artifact/SHA256SUMS.txt
+      - name: Upload validated artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: armorstandpet-neoforge-26.1.2.95-small-hand-render-fix
+          path: artifact/
+          if-no-files-found: error
