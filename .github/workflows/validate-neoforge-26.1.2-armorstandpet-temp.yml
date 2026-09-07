@@ -77,32 +77,32 @@ jobs:
           jar tf artifact/ArmorStandPet-NeoForge-26.1.2-uninterrupted-follow.jar | grep -q 'io/github/kyzderp/armorstandpet/entity/PetArmorStandEntity.class'
           jar tf artifact/ArmorStandPet-NeoForge-26.1.2-uninterrupted-follow.jar | grep -q 'io/github/kyzderp/armorstandpet/tasks/ChasePathTask.class'
           ! jar tf artifact/ArmorStandPet-NeoForge-26.1.2-uninterrupted-follow.jar | grep -q 'fabric.mod.json'
-          cat > artifact/VALIDATION.txt <<'TXT'
-ArmorStandPet NeoForge 26.1.2 port
-==================================
-Baseline: validated NeoForge 1.21.1 2.0.3 uninterrupted-follow source
-Minecraft: 26.1.2
-NeoForge: 26.1.2.104
-Java: 25
-Mod ID: armorstandpet
-Entity ID: armorstandpet:pet
-
-Validation gates:
-- exact prior source checksum verified
-- audited 26.1.2 migration patches applied cleanly
-- no Fabric Loader/API production references
-- full production build succeeded
-- dedicated NeoForge server reached Done
-- no ERROR/FATAL lifecycle/event failure in smoke log
-- production JAR metadata and required classes inspected
-
-Porting intent:
-- preserve uninterrupted diagonal follow/pathfinding behavior
-- preserve facing and walk animation behavior
-- preserve owner-directed combat behavior
-- preserve independent pet health/death/healing behavior
-- preserve persistence, commands, GUI, pet types and configuration semantics
-TXT
+          printf '%s\n' \
+            'ArmorStandPet NeoForge 26.1.2 port' \
+            '==================================' \
+            'Baseline: validated NeoForge 1.21.1 2.0.3 uninterrupted-follow source' \
+            'Minecraft: 26.1.2' \
+            'NeoForge: 26.1.2.104' \
+            'Java: 25' \
+            'Mod ID: armorstandpet' \
+            'Entity ID: armorstandpet:pet' \
+            '' \
+            'Validation gates:' \
+            '- exact prior source checksum verified' \
+            '- audited 26.1.2 migration patches applied cleanly' \
+            '- no Fabric Loader/API production references' \
+            '- full production build succeeded' \
+            '- dedicated NeoForge server reached Done' \
+            '- no ERROR/FATAL lifecycle/event failure in smoke log' \
+            '- production JAR metadata and required classes inspected' \
+            '' \
+            'Porting intent:' \
+            '- preserve uninterrupted diagonal follow/pathfinding behavior' \
+            '- preserve facing and walk animation behavior' \
+            '- preserve owner-directed combat behavior' \
+            '- preserve independent pet health/death/healing behavior' \
+            '- preserve persistence, commands, GUI, pet types and configuration semantics' \
+            > artifact/VALIDATION.txt
           rm -rf project/.gradle project/build project/run
           (cd project && zip -qr ../artifact/ArmorStandPet-NeoForge-26.1.2-uninterrupted-follow-source.zip . -x '.git/*' '.github/*' '.gradle/*' 'build/*' 'run/*')
           sha256sum artifact/ArmorStandPet-NeoForge-26.1.2-uninterrupted-follow.jar artifact/ArmorStandPet-NeoForge-26.1.2-uninterrupted-follow-source.zip artifact/ArmorStandPet-NeoForge-26.1.2-port.patch artifact/ArmorStandPet-NeoForge-26.1.2-server-smoke.log artifact/VALIDATION.txt > artifact/SHA256SUMS.txt
