@@ -1,0 +1,1 @@
+Temporary validation branch trigger for ArmorStandPet NeoForge 26.1.2.
