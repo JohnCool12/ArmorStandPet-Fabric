@@ -1,0 +1,114 @@
+name: Validate ArmorStandPet NeoForge 26.1.2 final
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+      - name: Download exact validated 1.21.1 baseline
+        uses: actions/download-artifact@v4
+        with:
+          name: armorstandpet-neoforge-1.21.1-uninterrupted-follow
+          path: /tmp/base-artifact
+          run-id: 30962742017
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Reconstruct audited 26.1.2 candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo '22c4221bc3a220f0f357f8c0e721912738ede9c2ed733235618372d713e0b370  /tmp/base-artifact/ArmorStandPet-NeoForge-1.21.1-uninterrupted-follow-source.zip' | sha256sum --check
+          rm -rf baseline project artifact
+          mkdir baseline project artifact
+          unzip -q /tmp/base-artifact/ArmorStandPet-NeoForge-1.21.1-uninterrupted-follow-source.zip -d baseline
+          cp -a baseline/. project/
+          base64 --decode ci/armorstandpet-neoforge-26.1.2-port.patch.xz.b64 > /tmp/port.patch.xz
+          xz --decompress --stdout /tmp/port.patch.xz > /tmp/port.patch
+          (cd project && patch --batch --forward -p1 < /tmp/port.patch)
+          (cd project && patch --batch --forward -p1 < ../ci/armorstandpet-neoforge-26.1.2-fix-signatures.patch)
+          cat /tmp/port.patch ci/armorstandpet-neoforge-26.1.2-fix-signatures.patch > artifact/ArmorStandPet-NeoForge-26.1.2-port.patch
+          grep -q '^minecraft_version=26.1.2$' project/gradle.properties
+          grep -q '^neo_version=26.1.2.104$' project/gradle.properties
+          grep -q '^mod_version=2.0.3+neoforge.26.1.2-uninterrupted-follow$' project/gradle.properties
+          grep -q 'JavaLanguageVersion.of(25)' project/build.gradle
+          ! grep -R --line-number 'net\.fabricmc\|fabric\.mod\.json\|fabric-loom' project/src project/build.gradle project/settings.gradle project/gradle.properties
+      - name: Build production NeoForge 26.1.2 JAR
+        working-directory: project
+        run: ./gradlew clean build --stacktrace --no-daemon --console=plain
+      - name: Dedicated-server smoke test
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p project/run
+          printf 'eula=true\n' > project/run/eula.txt
+          printf 'online-mode=false\nserver-port=25589\n' > project/run/server.properties
+          set +e
+          (cd project && (sleep 90; echo stop) | timeout 360s ./gradlew runServer --no-daemon --console=plain) > artifact/ArmorStandPet-NeoForge-26.1.2-server-smoke.log 2>&1
+          status=$?
+          set -e
+          cat artifact/ArmorStandPet-NeoForge-26.1.2-server-smoke.log
+          grep -q 'Done (' artifact/ArmorStandPet-NeoForge-26.1.2-server-smoke.log
+          ! grep -q 'Failed to complete lifecycle event' artifact/ArmorStandPet-NeoForge-26.1.2-server-smoke.log
+          ! grep -q 'Exception caught during firing event' artifact/ArmorStandPet-NeoForge-26.1.2-server-smoke.log
+          ! grep -Eiq '(^|\]) *(ERROR|FATAL) ' artifact/ArmorStandPet-NeoForge-26.1.2-server-smoke.log
+          if [ "$status" -ne 0 ] && [ "$status" -ne 124 ]; then exit "$status"; fi
+      - name: Inspect and package artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          jar="$(find project/build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*-sources.jar' ! -name '*-dev.jar' -print -quit)"
+          test -n "$jar"
+          cp "$jar" artifact/ArmorStandPet-NeoForge-26.1.2-uninterrupted-follow.jar
+          unzip -t artifact/ArmorStandPet-NeoForge-26.1.2-uninterrupted-follow.jar
+          unzip -p artifact/ArmorStandPet-NeoForge-26.1.2-uninterrupted-follow.jar META-INF/neoforge.mods.toml | grep -q 'modId="armorstandpet"'
+          jar tf artifact/ArmorStandPet-NeoForge-26.1.2-uninterrupted-follow.jar | grep -q 'io/github/kyzderp/armorstandpet/entity/PetArmorStandEntity.class'
+          jar tf artifact/ArmorStandPet-NeoForge-26.1.2-uninterrupted-follow.jar | grep -q 'io/github/kyzderp/armorstandpet/tasks/ChasePathTask.class'
+          ! jar tf artifact/ArmorStandPet-NeoForge-26.1.2-uninterrupted-follow.jar | grep -q 'fabric.mod.json'
+          cat > artifact/VALIDATION.txt <<'TXT'
+ArmorStandPet NeoForge 26.1.2 port
+==================================
+Baseline: validated NeoForge 1.21.1 2.0.3 uninterrupted-follow source
+Minecraft: 26.1.2
+NeoForge: 26.1.2.104
+Java: 25
+Mod ID: armorstandpet
+Entity ID: armorstandpet:pet
+
+Validation gates:
+- exact prior source checksum verified
+- audited 26.1.2 migration patches applied cleanly
+- no Fabric Loader/API production references
+- full production build succeeded
+- dedicated NeoForge server reached Done
+- no ERROR/FATAL lifecycle/event failure in smoke log
+- production JAR metadata and required classes inspected
+
+Porting intent:
+- preserve uninterrupted diagonal follow/pathfinding behavior
+- preserve facing and walk animation behavior
+- preserve owner-directed combat behavior
+- preserve independent pet health/death/healing behavior
+- preserve persistence, commands, GUI, pet types and configuration semantics
+TXT
+          rm -rf project/.gradle project/build project/run
+          (cd project && zip -qr ../artifact/ArmorStandPet-NeoForge-26.1.2-uninterrupted-follow-source.zip . -x '.git/*' '.github/*' '.gradle/*' 'build/*' 'run/*')
+          sha256sum artifact/ArmorStandPet-NeoForge-26.1.2-uninterrupted-follow.jar artifact/ArmorStandPet-NeoForge-26.1.2-uninterrupted-follow-source.zip artifact/ArmorStandPet-NeoForge-26.1.2-port.patch artifact/ArmorStandPet-NeoForge-26.1.2-server-smoke.log artifact/VALIDATION.txt > artifact/SHA256SUMS.txt
+      - name: Upload validated 26.1.2 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: armorstandpet-neoforge-26.1.2-uninterrupted-follow
+          path: artifact/
+          if-no-files-found: error
