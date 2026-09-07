@@ -1,0 +1,57 @@
+--- a/gradle.properties
++++ b/gradle.properties
+@@ -11,7 +11,7 @@
+ mod_id=armorstandpet
+ mod_name=ArmorStandPet
+ mod_license=All Rights Reserved
+-mod_version=3.0.2+neoforge.26.1.2-uninterrupted-follow
++mod_version=3.0.3+neoforge.26.1.2-tell-approach-fix
+ mod_group_id=io.github.kyzderp
+ mod_authors=Kyzeragon (original Bukkit plugin), NeoForge port
+ mod_description=Adopt an armor stand as a pet that follows you around, greets visitors, or just stands there being silly. NeoForge 26.1.2 port preserving the complete independent-health and uninterrupted-follow behavior set.
+--- a/src/main/java/io/github/kyzderp/armorstandpet/tasks/ChasePathTask.java
++++ b/src/main/java/io/github/kyzderp/armorstandpet/tasks/ChasePathTask.java
+@@ -142,6 +142,30 @@
+ 		}
+ 	}
+ 
++	/**
++	 * Interaction commands such as /aspet tell use an imperative player chase
++	 * with a requested speaking/interaction distance. Stop as soon as that
++	 * distance is reached instead of continuing all the way to the player's
++	 * final path node and then correcting the overlap with teleportToFrontOf.
++	 *
++	 * Normal owner-follow/return chases are non-imperative, so their existing
++	 * movement behavior is intentionally untouched.
++	 */
++	private boolean finishImperativePlayerApproachIfCloseEnough()
++	{
++		if (!this.imperative || this.player == null || this.playerDistance == null)
++			return false;
++
++		if (this.pet.distanceSq(this.player) > this.playerDistance
++				+ WAYPOINT_REACHED_EPSILON_SQUARED)
++			return false;
++
++		this.pet.facePlayer(this.player);
++		this.pet.walkFlat();
++		this.done();
++		return true;
++	}
++
+ 	private boolean finishAtDestination()
+ 	{
+ 		if (this.player != null && this.imperative
+@@ -203,6 +227,12 @@
+ 			return;
+ 		}
+ 
++		// /aspet tell/insult/hug should finish naturally at their requested
++		// interaction radius. Checking this before path.isSame and node handling
++		// prevents the old "walk too close, then tiny teleport back" correction.
++		if (this.finishImperativePlayerApproachIfCloseEnough())
++			return;
++
+ 		if (this.path.isSame)
+ 		{
+ 			if (this.player != null && this.imperative)
