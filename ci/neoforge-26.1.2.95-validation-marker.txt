@@ -1,0 +1,1 @@
+Validation trigger for ArmorStandPet NeoForge 26.1.2.95 compatibility build.
