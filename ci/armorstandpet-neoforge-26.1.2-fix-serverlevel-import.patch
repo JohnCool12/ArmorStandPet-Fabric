@@ -1,0 +1,8 @@
+diff --git a/src/main/java/io/github/kyzderp/armorstandpet/gui/ChooseTypeScreenHandler.java b/src/main/java/io/github/kyzderp/armorstandpet/gui/ChooseTypeScreenHandler.java
+--- a/src/main/java/io/github/kyzderp/armorstandpet/gui/ChooseTypeScreenHandler.java
++++ b/src/main/java/io/github/kyzderp/armorstandpet/gui/ChooseTypeScreenHandler.java
+@@ -24,3 +24,4 @@
+ import net.minecraft.core.component.DataComponents;
+ import net.minecraft.network.chat.Component;
++import net.minecraft.server.level.ServerLevel;
+ import net.minecraft.server.level.ServerPlayer;
