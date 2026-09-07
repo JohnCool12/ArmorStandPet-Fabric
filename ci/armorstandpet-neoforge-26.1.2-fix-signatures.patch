@@ -1,0 +1,72 @@
+diff --git a/src/main/java/io/github/kyzderp/armorstandpet/admincommands/TpCommand.java b/src/main/java/io/github/kyzderp/armorstandpet/admincommands/TpCommand.java
+index 3fb7a8a..205d8c4 100644
+--- a/src/main/java/io/github/kyzderp/armorstandpet/admincommands/TpCommand.java
++++ b/src/main/java/io/github/kyzderp/armorstandpet/admincommands/TpCommand.java
+@@ -44,7 +44,7 @@ public class TpCommand extends BaseAdminCommand
+ 		}
+ 
+ 		admin.teleportTo(pet.getStand().serverLevel(), pet.getStand().getX(), pet.getStand().getY(),
+-				pet.getStand().getZ(), admin.getYRot(), admin.getXRot());
++				pet.getStand().getZ(), java.util.Set.of(), admin.getYRot(), admin.getXRot(), false);
+ 		ASPetMod.inform(sender, Lang.get("aspetadmin.tp.teleporting", args[1]));
+ 	}
+ }
+diff --git a/src/main/java/io/github/kyzderp/armorstandpet/gui/ChooseTypeScreenHandler.java b/src/main/java/io/github/kyzderp/armorstandpet/gui/ChooseTypeScreenHandler.java
+index 547effa..c949b93 100644
+--- a/src/main/java/io/github/kyzderp/armorstandpet/gui/ChooseTypeScreenHandler.java
++++ b/src/main/java/io/github/kyzderp/armorstandpet/gui/ChooseTypeScreenHandler.java
+@@ -164,7 +164,7 @@ public class ChooseTypeScreenHandler extends HopperMenu
+         }
+         else
+         {
+-            petStand = StandFactory.claimFrom(this.player.serverLevel(), this.rawStand,
++            petStand = StandFactory.claimFrom((ServerLevel) this.player.level(), this.rawStand,
+                     this.player.getName().getString(), type);
+         }
+ 
+diff --git a/src/main/java/io/github/kyzderp/armorstandpet/neoforge/NeoForgeEventHandlers.java b/src/main/java/io/github/kyzderp/armorstandpet/neoforge/NeoForgeEventHandlers.java
+index 7a175fc..f64d02d 100644
+--- a/src/main/java/io/github/kyzderp/armorstandpet/neoforge/NeoForgeEventHandlers.java
++++ b/src/main/java/io/github/kyzderp/armorstandpet/neoforge/NeoForgeEventHandlers.java
+@@ -10,6 +10,7 @@ import io.github.kyzderp.armorstandpet.listeners.PetRespawnListener;
+ import io.github.kyzderp.armorstandpet.listeners.PlayerActionListener;
+ import io.github.kyzderp.armorstandpet.normalcommands.ASPetCommand;
+ import io.github.kyzderp.armorstandpet.scheduler.TickScheduler;
++import net.minecraft.server.MinecraftServer;
+ import net.minecraft.server.level.ServerLevel;
+ import net.minecraft.server.level.ServerPlayer;
+ import net.minecraft.world.InteractionResult;
+@@ -120,10 +121,13 @@ public final class NeoForgeEventHandlers
+     @SubscribeEvent
+     public void onChangedDimension(PlayerEvent.PlayerChangedDimensionEvent event)
+     {
+-        if (!(event.getEntity() instanceof ServerPlayer player) || player.getServer() == null)
++        if (!(event.getEntity() instanceof ServerPlayer player))
+             return;
+-        ServerLevel origin = player.getServer().getLevel(event.getFrom());
+-        ServerLevel destination = player.getServer().getLevel(event.getTo());
++        MinecraftServer server = player.level().getServer();
++        if (server == null)
++            return;
++        ServerLevel origin = server.getLevel(event.getFrom());
++        ServerLevel destination = server.getLevel(event.getTo());
+         if (origin != null && destination != null)
+             PetRespawnListener.onPlayerChangeWorld(player, origin, destination);
+     }
+diff --git a/src/main/java/io/github/kyzderp/armorstandpet/types/Pet.java b/src/main/java/io/github/kyzderp/armorstandpet/types/Pet.java
+index be53e98..2904b76 100644
+--- a/src/main/java/io/github/kyzderp/armorstandpet/types/Pet.java
++++ b/src/main/java/io/github/kyzderp/armorstandpet/types/Pet.java
+@@ -488,8 +488,10 @@ public abstract class Pet
+ 	{
+ 		if (!this.stand.serverLevel().equals(pos.world))
+ 		{
+-			this.stand.teleportTo(pos.world, pos.x, pos.y, pos.z, java.util.Set.<Relative>of(),
+-					pos.yaw, pos.pitch, false);
++			if (!this.stand.teleportTo(pos.world, pos.x, pos.y, pos.z,
++					java.util.Set.<net.minecraft.world.entity.Relative>of(),
++					pos.yaw, pos.pitch, false))
++				return;
+ 		}
+ 		else
+ 		{
