@@ -39,7 +39,8 @@ jobs:
           xz --decompress --stdout /tmp/port.patch.xz > /tmp/port.patch
           (cd project && patch --batch --forward -p1 < /tmp/port.patch)
           (cd project && patch --batch --forward -p1 < ../ci/armorstandpet-neoforge-26.1.2-fix-signatures.patch)
-          cat /tmp/port.patch ci/armorstandpet-neoforge-26.1.2-fix-signatures.patch > artifact/ArmorStandPet-NeoForge-26.1.2-port.patch
+          (cd project && patch --batch --forward -p1 < ../ci/armorstandpet-neoforge-26.1.2-fix-serverlevel-import.patch)
+          cat /tmp/port.patch ci/armorstandpet-neoforge-26.1.2-fix-signatures.patch ci/armorstandpet-neoforge-26.1.2-fix-serverlevel-import.patch > artifact/ArmorStandPet-NeoForge-26.1.2-port.patch
           echo '--- effective gradle.properties ---'
           cat project/gradle.properties
       - name: Build production NeoForge 26.1.2 JAR
