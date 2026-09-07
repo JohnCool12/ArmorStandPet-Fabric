@@ -1,0 +1,1 @@
+Trigger final NeoForge 26.1.2 validation after version-text cleanup.
