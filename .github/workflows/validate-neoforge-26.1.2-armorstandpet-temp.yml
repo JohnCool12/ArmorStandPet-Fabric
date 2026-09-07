@@ -19,6 +19,7 @@ jobs:
         with:
           distribution: temurin
           java-version: '25'
+
       - name: Download exact validated 1.21.1 baseline
         uses: actions/download-artifact@v4
         with:
@@ -26,6 +27,7 @@ jobs:
           path: /tmp/base-artifact
           run-id: 30962742017
           github-token: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Reconstruct audited 26.1.2 candidate
         shell: bash
         run: |
@@ -40,16 +42,39 @@ jobs:
           (cd project && patch --batch --forward -p1 < /tmp/port.patch)
           (cd project && patch --batch --forward -p1 < ../ci/armorstandpet-neoforge-26.1.2-fix-signatures.patch)
           (cd project && patch --batch --forward -p1 < ../ci/armorstandpet-neoforge-26.1.2-fix-serverlevel-import.patch)
-          (cd project && patch --batch --forward -p1 < ../ci/armorstandpet-neoforge-26.1.2-cleanup.patch)
+          python3 - <<'PY'
+          from pathlib import Path
+          root = Path('project/src/main/java')
+          replacements = (
+              ('NeoForge 1.21.1', 'NeoForge 26.1.2'),
+              ('Minecraft 1.21.1', 'Minecraft 26.1.2'),
+              ('vanilla 1.21.1', 'vanilla 26.1.2'),
+              ('Fabric 1.21.1 port', 'NeoForge 26.1.2 port'),
+              ('1.21.1 restricts', '26.1.2 restricts'),
+          )
+          for path in root.rglob('*.java'):
+              text = path.read_text()
+              updated = text
+              for old, new in replacements:
+                  updated = updated.replace(old, new)
+              if updated != text:
+                  path.write_text(updated)
+          PY
           find project -type f -name '*.orig' -delete
-          cat /tmp/port.patch ci/armorstandpet-neoforge-26.1.2-fix-signatures.patch ci/armorstandpet-neoforge-26.1.2-fix-serverlevel-import.patch ci/armorstandpet-neoforge-26.1.2-cleanup.patch > artifact/ArmorStandPet-NeoForge-26.1.2-port.patch
           grep -q 'ArmorStandPet NeoForge 26.1.2 initialized.' project/src/main/java/io/github/kyzderp/armorstandpet/ASPetMod.java
           ! find project -type f -name '*.orig' | grep -q .
+          set +e
+          diff -ruN --exclude='.git' --exclude='.gradle' --exclude='build' --exclude='run' baseline project > artifact/ArmorStandPet-NeoForge-26.1.2-port.patch
+          diff_status=$?
+          set -e
+          if [ "$diff_status" -ne 0 ] && [ "$diff_status" -ne 1 ]; then exit "$diff_status"; fi
           echo '--- effective gradle.properties ---'
           cat project/gradle.properties
+
       - name: Build production NeoForge 26.1.2 JAR
         working-directory: project
         run: ./gradlew clean build --stacktrace --no-daemon --console=plain
+
       - name: Dedicated-server smoke test
         shell: bash
         run: |
@@ -69,6 +94,7 @@ jobs:
           ! grep -q 'Exception caught during firing event' artifact/ArmorStandPet-NeoForge-26.1.2-server-smoke.log
           ! grep -Eiq '(^|\]) *(ERROR|FATAL) ' artifact/ArmorStandPet-NeoForge-26.1.2-server-smoke.log
           if [ "$status" -ne 0 ] && [ "$status" -ne 124 ]; then exit "$status"; fi
+
       - name: Inspect and package artifact
         shell: bash
         run: |
@@ -85,7 +111,7 @@ jobs:
             'ArmorStandPet NeoForge 26.1.2 port' \
             '==================================' \
             'Baseline: validated NeoForge 1.21.1 2.0.3 uninterrupted-follow source' \
-            'Target: Minecraft 26.1.2 / NeoForge 26.1.2.104' \
+            'Target: Minecraft / NeoForge 26.1.2' \
             'Java: 25' \
             'Mod version: 3.0.0+neoforge.26.1.2-uninterrupted-follow' \
             'Mod ID: armorstandpet' \
@@ -93,9 +119,8 @@ jobs:
             '' \
             'Validation gates:' \
             '- exact prior source checksum verified' \
-            '- audited 26.1.2 migration patches applied cleanly' \
-            '- version-specific source comments/logger cleaned for 26.1.2' \
-            '- patch backup .orig files removed from packaged source' \
+            '- audited 26.1.2 migration applied cleanly' \
+            '- version-facing source/logger text normalized to 26.1.2' \
             '- full production build succeeded' \
             '- dedicated NeoForge server reached Done' \
             '- no ERROR/FATAL lifecycle/event failure in smoke log' \
@@ -113,9 +138,10 @@ jobs:
           unzip -l artifact/ArmorStandPet-NeoForge-26.1.2-uninterrupted-follow-source.zip | grep -q 'ASPetMod.java'
           ! unzip -l artifact/ArmorStandPet-NeoForge-26.1.2-uninterrupted-follow-source.zip | grep -q '\.orig$'
           sha256sum artifact/ArmorStandPet-NeoForge-26.1.2-uninterrupted-follow.jar artifact/ArmorStandPet-NeoForge-26.1.2-uninterrupted-follow-source.zip artifact/ArmorStandPet-NeoForge-26.1.2-port.patch artifact/ArmorStandPet-NeoForge-26.1.2-server-smoke.log artifact/VALIDATION.txt > artifact/SHA256SUMS.txt
+
       - name: Upload validated 26.1.2 artifact
         uses: actions/upload-artifact@v4
         with:
-          name: armorstandpet-neoforge-26.1.2-uninterrupted-follow
+          name: armorstandpet-neoforge-26.1.2-uninterrupted-follow-clean
           path: artifact/
           if-no-files-found: error
