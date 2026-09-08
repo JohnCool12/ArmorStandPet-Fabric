@@ -1,0 +1,50 @@
+--- a/src/main/java/com/mcmoddev/golems/entity/GolemBase.java
++++ b/src/main/java/com/mcmoddev/golems/entity/GolemBase.java
+@@ -229,7 +229,10 @@
+ 		}
+ 		// container was loaded successfully
+ 		final GolemContainer container = oContainer.get();
+-		this.setInvulnerable(container.getAttributes().isInvulnerable());
++		// Keep the vanilla global invulnerability flag disabled so hostile mob AI can
++		// still consider invulnerable golems (notably bedrock) valid attack targets.
++		// Actual immunity is enforced in isInvulnerableTo(), before hurt effects.
++		this.setInvulnerable(false);
+ 		// update server data
+ 		if (!this.level().isClientSide()) {
+ 			// update attribute base values
+@@ -383,7 +386,7 @@
+ 		}
+ 		this.setHealth(this.getMaxHealth());
+ 		getContainer(serverLevel.registryAccess())
+-				.ifPresent(c -> this.setInvulnerable(c.getAttributes().isInvulnerable()));
++				.ifPresent(c -> this.setInvulnerable(false));
+ 		return super.finalizeSpawn(serverLevel, difficulty, mobSpawnType, spawnGroupData);
+ 	}
+ 
+@@ -582,6 +585,13 @@
+ 			return false;
+ 		}
+ 		final RegistryAccess registryAccess = level().registryAccess();
++		// Do not use Entity#setInvulnerable for data-driven invulnerability: vanilla
++		// targeting logic filters globally-invulnerable living entities out. Returning
++		// true here keeps the golem targetable while rejecting damage before health,
++		// hurt-time, sounds, or the red damage flash are applied.
++		if (oContainer.get().getAttributes().isInvulnerable()) {
++			return true;
++		}
+ 		final Optional<ResourceKey<DamageType>> oTypeKey = pSource.typeHolder().unwrapKey();
+ 		if (oTypeKey.isPresent()
+ 				&& oContainer.get().getAttributes().isImmuneTo(registryAccess, ImmutableSet.of(oTypeKey.get()))) {
+--- a/src/main/java/com/mcmoddev/golems/item/SpawnGolemItem.java
++++ b/src/main/java/com/mcmoddev/golems/item/SpawnGolemItem.java
+@@ -63,7 +63,9 @@
+ 			entity.moveTo(spawnPos.getX(), spawnPos.getY(), spawnPos.getZ());
+ 			level.addFreshEntity(entity);
+ 			entity.finalizeSpawn((ServerLevel) level, level.getCurrentDifficultyAt(spawnPos), MobSpawnType.SPAWN_EGG, null);
+-			entity.setInvulnerable(true);
++			// Damage immunity is handled by GolemBase#isInvulnerableTo so mobs can
++			// still target and attack the bedrock golem normally.
++			entity.setInvulnerable(false);
+ 		}
+ 		// spawn the entity!
+ 		if (!context.getPlayer().isCreative()) {

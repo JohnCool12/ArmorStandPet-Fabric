@@ -1,0 +1,1 @@
+Village reputation canAttackType fix validation branch.

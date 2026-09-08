@@ -1,0 +1,1 @@
+Validates removal of the Extra Golem Villager canAttackType exclusion so vanilla DefendVillageTargetGoal can see villagers and evaluate reputation.

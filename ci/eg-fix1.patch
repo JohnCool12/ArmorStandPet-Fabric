@@ -1,0 +1,116 @@
+--- a/src/main/resources/golems.accesswidener
++++ b/src/main/resources/golems.accesswidener
+@@ -1,2 +1,4 @@
+ accessWidener v2 named
+ accessible class net/minecraft/client/renderer/RenderType$OutlineProperty
++accessible field net/minecraft/world/entity/Mob goalSelector Lnet/minecraft/world/entity/ai/goal/GoalSelector;
++accessible method net/minecraft/world/entity/player/Player closeContainer ()V
+--- a/src/main/java/com/mcmoddev/golems/block/GolemHeadBlock.java
++++ b/src/main/java/com/mcmoddev/golems/block/GolemHeadBlock.java
+@@ -32,7 +32,6 @@
+ import net.minecraft.world.level.block.state.BlockState;
+ import net.minecraft.world.level.block.state.StateDefinition;
+ import net.minecraft.world.level.gameevent.GameEvent;
+-import net.minecraft.world.level.material.PushReaction;
+ 
+ import javax.annotation.Nullable;
+ 
+@@ -51,11 +50,6 @@
+ 	}
+ 
+ 	@Override
+-	public PushReaction getPistonPushReaction(BlockState blockState) {
+-		return PushReaction.NORMAL;
+-	}
+-
+-	@Override
+ 	public BlockState getStateForPlacement(BlockPlaceContext context) {
+ 		return this.defaultBlockState().setValue(FACING, context.getHorizontalDirection().getOpposite());
+ 	}
+--- a/src/main/java/com/mcmoddev/golems/client/menu/button/CyclingItemButton.java
++++ b/src/main/java/com/mcmoddev/golems/client/menu/button/CyclingItemButton.java
+@@ -24,12 +24,12 @@
+ 	private ItemStack itemStack;
+ 	private int index;
+ 
+-	public CyclingItemButton(Button.Builder builder, Ingredient ingredient, float scale) {
+-		this(builder, ImmutableList.copyOf(ingredient.getItems()), scale);
++	public CyclingItemButton(int x, int y, Ingredient ingredient, float scale) {
++		this(x, y, ImmutableList.copyOf(ingredient.getItems()), scale);
+ 	}
+ 
+-	public CyclingItemButton(Button.Builder builder, List<ItemStack> list, float scale) {
+-		super(builder.size((int) (16.0F * scale), (int) (16.0F * scale)));
++	public CyclingItemButton(int x, int y, List<ItemStack> list, float scale) {
++		super(x, y, (int) (16.0F * scale), (int) (16.0F * scale), Component.empty(), b -> {}, DEFAULT_NARRATION);
+ 		this.items = new ArrayList<>(list);
+ 		this.scale = scale;
+ 		this.itemStack = ItemStack.EMPTY;
+--- a/src/main/java/com/mcmoddev/golems/client/menu/button/ScrollButton.java
++++ b/src/main/java/com/mcmoddev/golems/client/menu/button/ScrollButton.java
+@@ -2,6 +2,7 @@
+ 
+ import net.minecraft.client.gui.GuiGraphics;
+ import net.minecraft.client.gui.components.Button;
++import net.minecraft.network.chat.Component;
+ import net.minecraft.resources.ResourceLocation;
+ import net.minecraft.util.Mth;
+ 
+@@ -22,10 +23,10 @@
+     protected float scrollPercent;
+     protected boolean dragging;
+ 
+-	public ScrollButton(Button.Builder builder, ResourceLocation resourceLocation,
++	public ScrollButton(int x, int y, int width, int height, ResourceLocation resourceLocation,
+ 						int iconU, int iconV, int iconWidth, int iconHeight, int iconDeltaV,
+ 						boolean isVertical, final float scrollAmountMultiplier, final IScrollListener listener) {
+-		super(builder);
++		super(x, y, width, height, Component.empty(), b -> {}, DEFAULT_NARRATION);
+ 		this.resourceLocation = resourceLocation;
+ 		this.iconU = iconU;
+ 		this.iconV = iconV;
+--- a/src/main/java/com/mcmoddev/golems/client/menu/guide_book/page/CraftingRecipePage.java
++++ b/src/main/java/com/mcmoddev/golems/client/menu/guide_book/page/CraftingRecipePage.java
+@@ -120,14 +120,12 @@
+ 			final List<CyclingItemButton> itemButtons = new ArrayList<>();
+ 			// add at most four ingredient buttons to the list
+ 			for(int i = 0, n = Math.min(ingredients.size(), 4); i < n; i++) {
+-				itemButtons.add(parent.addButton(new CyclingItemButton(new Button.Builder(Component.empty(), b -> {})
+-						.pos(bx + (i % 2) * 18, by + (i / 2) * 18), ingredients.get(i), 1.0F)));
++				itemButtons.add(parent.addButton(new CyclingItemButton(bx + (i % 2) * 18, by + (i / 2) * 18, ingredients.get(i), 1.0F)));
+ 			}
+ 			// add result to the list
+ 			// TODO figure out xy position
+ 			final ItemStack result = recipe.getResultItem(Minecraft.getInstance().level.registryAccess());
+-			itemButtons.add(parent.addButton(new CyclingItemButton(new Button.Builder(Component.empty(), b -> {})
+-					.pos(bx + 56, by + 10), ImmutableList.of(result), 1.0F)));
++			itemButtons.add(parent.addButton(new CyclingItemButton(bx + 56, by + 10, ImmutableList.of(result), 1.0F)));
+ 			// build the page
+ 			return new CraftingRecipePage(font, page, x, y, width, height, padding, title, body, texture, textureWidth, textureHeight, textureU, textureV, itemButtons);
+ 		}
+--- a/src/main/java/com/mcmoddev/golems/client/menu/guide_book/page/GolemDescriptionPage.java
++++ b/src/main/java/com/mcmoddev/golems/client/menu/guide_book/page/GolemDescriptionPage.java
+@@ -134,9 +134,7 @@
+ 
+ 		@Override
+ 		public GolemDescriptionPage build() {
+-			final CyclingItemButton button = parent.addButton(new CyclingItemButton(Button
+-					.builder(Component.empty(), b -> {})
+-					.pos(x + padding, y + padding), group.getItems(), this.itemScale));
++			final CyclingItemButton button = parent.addButton(new CyclingItemButton(x + padding, y + padding, group.getItems(), this.itemScale));
+ 			return new GolemDescriptionPage(group, font, page, x, y, width, height, padding, button);
+ 		}
+ 	}
+--- a/src/main/java/com/mcmoddev/golems/client/menu/guide_book/page/TableOfContentsPage.java
++++ b/src/main/java/com/mcmoddev/golems/client/menu/guide_book/page/TableOfContentsPage.java
+@@ -183,9 +183,7 @@
+ 			// build page
+ 			final TableOfContentsPage tableOfContentsPage = new TableOfContentsPage(font, page, x, y, width, height, padding, title, texture, tableU, tableV, entries);
+ 			// add scroll button
+-			final ScrollButton scrollButton = parent.addButton(new ScrollButton(Button.builder(Component.empty(), b -> {})
+-					.pos(x + padding + buttonWidth + 5, y + padding * 2 + 1)
+-					.size(12, buttonHeight * buttonCount),
++			final ScrollButton scrollButton = parent.addButton(new ScrollButton(x + padding + buttonWidth + 5, y + padding * 2 + 1, 12, buttonHeight * buttonCount,
+ 					texture, scrollU, scrollV, 12, 15, 15, true,
+ 					1.0F / Math.max(1, entries.size()), tableOfContentsPage));
+ 			// add table of contents buttons

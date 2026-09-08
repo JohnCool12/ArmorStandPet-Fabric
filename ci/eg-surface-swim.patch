@@ -1,0 +1,194 @@
+--- a/src/main/java/com/mcmoddev/golems/entity/GolemBase.java
++++ b/src/main/java/com/mcmoddev/golems/entity/GolemBase.java
+@@ -262,13 +262,11 @@
+ 					goalSelector.addGoal(0, new FloatGoal(this));
+ 					break;
+ 				case SWIM:
+-					// advanced swimming AI
+-					this.getAttribute(Attributes.STEP_HEIGHT).setBaseValue(1.0);
+-					moveControl = new SwimmingMovementController(this);
++					// Surface swimming AI: behave like an ordinary land mob that can swim.
++					// FloatGoal makes the golem paddle upward and stay at the water surface,
++					// while normal ground navigation/movement remains in control.
++					goalSelector.addGoal(0, new FloatGoal(this));
+ 					setPathfindingMalus(PathType.WATER, 0.0F);
+-					goalSelector.addGoal(1, new GoToWaterGoal(this, 14, 1.0D));
+-					goalSelector.addGoal(4, new RandomSwimmingGoal(this, 0.8F, 200));
+-					goalSelector.addGoal(5, new SwimUpGoal(this, 1.0D, level().getSeaLevel() + 1));
+ 					break;
+ 				case SINK:
+ 				default:
+@@ -1031,65 +1029,35 @@
+ 	//// SWIMMING ////
+ 
+ 	/**
+-	 * @return true when this golem is one of the data-driven advanced swimmers.
++	 * Advanced-swimmer materials intentionally use ordinary surface-swimming
++	 * mechanics. Their FloatGoal keeps them afloat; normal Mob/IronGolem
++	 * travel, fluid pushing, navigation, and swimming-state handling remain intact.
+ 	 */
+ 	private boolean isAdvancedSwimmer() {
+-		return getContainer().map(container ->
+-				container.getAttributes().getSwimAbility() == SwimAbility.SWIM).orElse(false);
++		return false;
+ 	}
+ 
+ 	@Override
+ 	public void travel(final Vec3 vec) {
+-		// Use Drowned-style water locomotion for the entire time an advanced
+-		// swimmer is submerged. The old implementation only enabled this while
+-		// SwimUpGoal was active (or its target was already in water), so an idle
+-		// aquatic golem immediately fell back to Iron Golem physics and sank.
+-		if (isEffectiveAi() && isInWater() && isAdvancedSwimmer()) {
+-			moveRelative(0.01F, vec);
+-			move(MoverType.SELF, getDeltaMovement());
+-			setDeltaMovement(getDeltaMovement().scale(0.9D));
+-		} else {
+-			super.travel(vec);
+-		}
++		super.travel(vec);
+ 	}
+ 
+ 	@Override
+ 	public void updateSwimming() {
+-		if (!isAdvancedSwimmer()) {
+-			super.updateSwimming();
+-			return;
+-		}
+-		// Advanced swimmers always use 3D water navigation while submerged, and
+-		// switch back to normal Iron Golem ground navigation when they leave water.
+-		if (!this.level().isClientSide) {
+-			if (isEffectiveAi() && isInWater()) {
+-				this.navigation = this.waterNavigator;
+-				setSwimming(true);
+-			} else {
+-				this.navigation = this.groundNavigator;
+-				setSwimming(false);
+-			}
+-		}
++		super.updateSwimming();
+ 	}
+ 
+ 	@Override
+ 	public boolean isPushedByFluid() {
+-		return !isSwimming();
++		return super.isPushedByFluid();
+ 	}
+ 
+ 	public void setSwimmingUp(boolean isSwimmingUp) {
+-		this.swimmingUp = isAdvancedSwimmer() && isSwimmingUp;
++		this.swimmingUp = false;
+ 	}
+ 
+ 	public boolean isSwimmingUp() {
+-		if (!isAdvancedSwimmer()) {
+-			return false;
+-		}
+-		if (this.swimmingUp) {
+-			return true;
+-		}
+-		LivingEntity e = getTarget();
+-		return e != null && e.isInWater();
++		return false;
+ 	}
+ 
+ 	//// MOVE CONTROLLER ////
+diff --git a/src/main/java/com/mcmoddev/golems/client/entity/GolemRenderer.java b/src/main/java/com/mcmoddev/golems/client/entity/GolemRenderer.java
+index 22eef48..398c517 100644
+--- a/src/main/java/com/mcmoddev/golems/client/entity/GolemRenderer.java
++++ b/src/main/java/com/mcmoddev/golems/client/entity/GolemRenderer.java
+@@ -5,6 +5,7 @@ import com.mcmoddev.golems.data.GolemContainer;
+ import com.mcmoddev.golems.entity.GolemBase;
+ import com.mcmoddev.golems.client.entity.layer.GolemBannerLayer;
+ import com.mcmoddev.golems.client.entity.layer.GolemCrackinessLayer;
++import com.mcmoddev.golems.client.entity.layer.GolemBedrockEyesLayer;
+ import com.mcmoddev.golems.client.entity.layer.GolemFlowerLayer;
+ import com.mcmoddev.golems.client.entity.layer.GolemKittyLayer;
+ import com.mcmoddev.golems.client.entity.layer.GolemLayerListLayer;
+@@ -38,6 +39,8 @@ public class GolemRenderer<T extends GolemBase> extends MobRenderer<T, GolemMode
+ 		this.addLayer(new GolemFlowerLayer<>(this));
+ 		this.addLayer(new GolemKittyLayer<>(this));
+ 		this.addLayer(new GolemBannerLayer<>(this));
++		// Keep Bedrock Golem eyes as the final pass so texture-overlay mods cannot bury them.
++		this.addLayer(new GolemBedrockEyesLayer<>(this));
+ 	}
+ 
+ 	@Override
+diff --git a/src/main/java/com/mcmoddev/golems/client/entity/layer/GolemBedrockEyesLayer.java b/src/main/java/com/mcmoddev/golems/client/entity/layer/GolemBedrockEyesLayer.java
+new file mode 100644
+index 0000000..34d158e
+--- /dev/null
++++ b/src/main/java/com/mcmoddev/golems/client/entity/layer/GolemBedrockEyesLayer.java
+@@ -0,0 +1,50 @@
++package com.mcmoddev.golems.client.entity.layer;
++
++import com.mcmoddev.golems.ExtraGolems;
++import com.mcmoddev.golems.client.entity.GolemModel;
++import com.mcmoddev.golems.entity.GolemBase;
++import com.mojang.blaze3d.vertex.PoseStack;
++import net.minecraft.client.Minecraft;
++import net.minecraft.client.renderer.MultiBufferSource;
++import net.minecraft.client.renderer.entity.RenderLayerParent;
++import net.minecraft.client.renderer.entity.layers.RenderLayer;
++import net.minecraft.resources.ResourceLocation;
++
++/**
++ * Final, Bedrock-only eye pass.
++ *
++ * The normal model system renders several textures on exactly the same mesh.
++ * Some texture/shader mods can make those coplanar passes fight for depth and
++ * hide the Bedrock Golem's eyes. Rendering the eyes last and expanding the
++ * model by a tiny amount keeps them visible without making them emissive.
++ */
++public class GolemBedrockEyesLayer<T extends GolemBase> extends RenderLayer<T, GolemModel<T>> {
++
++    private static final ResourceLocation BEDROCK = ResourceLocation.fromNamespaceAndPath(ExtraGolems.MODID, "bedrock");
++    private static final ResourceLocation EYES = ResourceLocation.fromNamespaceAndPath(ExtraGolems.MODID, "textures/entity/golem/eyes.png");
++    private static final float EYE_SURFACE_SCALE = 1.0015F;
++
++    public GolemBedrockEyesLayer(RenderLayerParent<T, GolemModel<T>> renderParent) {
++        super(renderParent);
++    }
++
++    @Override
++    public void render(PoseStack poseStack, MultiBufferSource bufferSource, int packedLight, T entity,
++                       float limbSwing, float limbSwingAmount, float partialTicks, float ageInTicks,
++                       float netHeadYaw, float headPitch) {
++        if (entity.getGolemId().filter(BEDROCK::equals).isEmpty()) {
++            return;
++        }
++
++        final Minecraft minecraft = Minecraft.getInstance();
++        if (minecraft.player != null && entity.isInvisibleTo(minecraft.player)) {
++            return;
++        }
++
++        poseStack.pushPose();
++        poseStack.scale(EYE_SURFACE_SCALE, EYE_SURFACE_SCALE, EYE_SURFACE_SCALE);
++        getParentModel().resetColor();
++        renderColoredCutoutModel(getParentModel(), EYES, poseStack, bufferSource, packedLight, entity, 0xFFFFFFFF);
++        poseStack.popPose();
++    }
++}
+--- a/src/main/resources/data/golems/golems/golem/diamond.json
++++ b/src/main/resources/data/golems/golems/golem/diamond.json
+@@ -2,7 +2,7 @@
+   "attributes": {
+     "health": 220.0,
+     "attack": 22.0,
+-    "knockback_resistance": 0.8,
++    "knockback_resistance": 1.0,
+ 	"armor": 4.0
+   },
+   "blocks": {
+--- a/src/main/resources/data/golems/golems/golem/emerald.json
++++ b/src/main/resources/data/golems/golems/golem/emerald.json
+@@ -2,7 +2,7 @@
+   "attributes": {
+     "health": 190.0,
+     "attack": 20.0,
+-    "knockback_resistance": 0.8,
++    "knockback_resistance": 1.0,
+ 	"armor": 3.5
+   },
+   "blocks": {
