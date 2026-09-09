@@ -1,0 +1,170 @@
+diff --git a/gradle.properties b/gradle.properties
+index 33460a2..c1a1bb3 100644
+--- a/gradle.properties
++++ b/gradle.properties
+@@ -11,7 +11,7 @@ neo_version=26.1.2.95
+ mod_id=armorstandpet
+ mod_name=ArmorStandPet
+ mod_license=All Rights Reserved
+-mod_version=3.0.4+neoforge.26.1.2-look-modes
++mod_version=3.0.5+neoforge.26.1.2-combat-look
+ mod_group_id=io.github.kyzderp
+ mod_authors=Kyzeragon (original Bukkit plugin), NeoForge port
+ mod_description=Adopt an armor stand as a pet that follows you around, greets visitors, or just stands there being silly. NeoForge 26.1.2 port preserving the complete independent-health and uninterrupted-follow behavior set.
+diff --git a/src/main/java/io/github/kyzderp/armorstandpet/combat/OwnerAttackCombatController.java b/src/main/java/io/github/kyzderp/armorstandpet/combat/OwnerAttackCombatController.java
+index b3fdc9b..0931efa 100644
+--- a/src/main/java/io/github/kyzderp/armorstandpet/combat/OwnerAttackCombatController.java
++++ b/src/main/java/io/github/kyzderp/armorstandpet/combat/OwnerAttackCombatController.java
+@@ -89,6 +89,7 @@ public final class OwnerAttackCombatController
+ 		long now = level.getGameTime();
+ 		ACTIVE_ATTACKS.put(stand.getUUID(),
+ 				new AttackState(pet, target, now, now));
++		pet.beginCombatLookAt(target);
+ 	}
+ 
+ 	/** Cancels an active pursuit when /aspet combat off is used. */
+@@ -240,6 +241,7 @@ public final class OwnerAttackCombatController
+ 
+ 	private static void release(AttackState state)
+ 	{
++		state.pet.clearCombatLookTarget();
+ 		state.pet.isBusy = false;
+ 		if (state.pet.getStand() != null && !state.pet.getStand().isDeadOrDying())
+ 			state.pet.walkFlat();
+@@ -248,7 +250,10 @@ public final class OwnerAttackCombatController
+ 	public static void clearAll()
+ 	{
+ 		for (AttackState state : ACTIVE_ATTACKS.values())
++		{
++			state.pet.clearCombatLookTarget();
+ 			state.pet.isBusy = false;
++		}
+ 		ACTIVE_ATTACKS.clear();
+ 	}
+ 
+diff --git a/src/main/java/io/github/kyzderp/armorstandpet/types/Pet.java b/src/main/java/io/github/kyzderp/armorstandpet/types/Pet.java
+index fff9f8d..4c3c201 100644
+--- a/src/main/java/io/github/kyzderp/armorstandpet/types/Pet.java
++++ b/src/main/java/io/github/kyzderp/armorstandpet/types/Pet.java
+@@ -28,6 +28,7 @@ import net.minecraft.server.MinecraftServer;
+ import net.minecraft.server.level.ServerLevel;
+ import net.minecraft.server.level.ServerPlayer;
+ import net.minecraft.util.Mth;
++import net.minecraft.world.entity.LivingEntity;
+ import net.minecraft.world.phys.Vec3;
+ 
+ public abstract class Pet
+@@ -57,6 +58,7 @@ public abstract class Pet
+ 	public float health;
+ 	private LookMode lookMode;
+ 	private String walkingLookTarget;
++	private LivingEntity combatLookTarget;
+ 
+ 	// Which stage of the walking animation is this armorstand in?
+ 	protected int walkStage;
+@@ -94,6 +96,7 @@ public abstract class Pet
+ 		this.health = 20.0F;
+ 		this.lookMode = LookMode.OFF;
+ 		this.walkingLookTarget = null;
++		this.combatLookTarget = null;
+ 
+ 		this.name = "";
+ 
+@@ -280,27 +283,44 @@ public abstract class Pet
+ 				|| this.stand.isDeadOrDying() || this.mortalDead)
+ 			return;
+ 
+-		ServerPlayer target;
++		LivingEntity target;
+ 		if (this.lookMode == LookMode.ON)
++		{
+ 			target = server.getPlayerList().getPlayerByName(this.owner);
++		}
+ 		else
+ 		{
+-			if (this.walkingLookTarget == null)
+-				return;
+-			target = server.getPlayerList().getPlayerByName(this.walkingLookTarget);
++			// Combat takes priority over the ordinary WALKING player target so the
++			// pet naturally watches the mob it is actively pursuing/attacking.
++			if (this.combatLookTarget != null)
++			{
++				if (!this.combatLookTarget.isAlive() || this.combatLookTarget.isRemoved()
++						|| !this.stand.level().equals(this.combatLookTarget.level()))
++					this.combatLookTarget = null;
++			}
++
++			if (this.combatLookTarget != null)
++				target = this.combatLookTarget;
++			else
++			{
++				if (this.walkingLookTarget == null)
++					return;
++				target = server.getPlayerList().getPlayerByName(this.walkingLookTarget);
++			}
+ 		}
+ 
+-		if (target == null || target.connection == null || !target.isAlive()
+-				|| !this.stand.level().equals(target.level()))
++		if (target == null
++				|| (target instanceof ServerPlayer playerTarget && playerTarget.connection == null)
++				|| !target.isAlive() || !this.stand.level().equals(target.level()))
+ 			return;
+ 
+-		this.smoothLookAtPlayer(target);
++		this.smoothLookAtEntity(target);
+ 	}
+ 
+-	private void smoothLookAtPlayer(ServerPlayer player)
++	private void smoothLookAtEntity(LivingEntity target)
+ 	{
+-		double dx = player.getX() - this.stand.getX();
+-		double dz = player.getZ() - this.stand.getZ();
++		double dx = target.getX() - this.stand.getX();
++		double dz = target.getZ() - this.stand.getZ();
+ 		double horizontal = Math.sqrt(dx * dx + dz * dz);
+ 		if (horizontal < 1.0E-6D)
+ 			horizontal = 1.0E-6D;
+@@ -320,7 +340,7 @@ public abstract class Pet
+ 		}
+ 
+ 		float desiredHeadYaw = clamp(relativeYaw, -LOOK_HEAD_YAW_LIMIT_DEGREES, LOOK_HEAD_YAW_LIMIT_DEGREES);
+-		double dy = player.getEyeY() - this.stand.getEyeY();
++		double dy = target.getEyeY() - this.stand.getEyeY();
+ 		float desiredPitch = clamp((float) -Math.toDegrees(Math.atan2(dy, horizontal)),
+ 				-LOOK_HEAD_PITCH_LIMIT_DEGREES, LOOK_HEAD_PITCH_LIMIT_DEGREES);
+ 
+@@ -364,7 +384,19 @@ public abstract class Pet
+ 	public void clearWalkingLookTarget()
+ 	{
+ 		this.walkingLookTarget = null;
+-		if (this.lookMode == LookMode.WALKING)
++		if (this.lookMode == LookMode.WALKING && this.combatLookTarget == null)
++			this.resetTrackedHeadPose();
++	}
++
++	public void beginCombatLookAt(LivingEntity target)
++	{
++		this.combatLookTarget = target;
++	}
++
++	public void clearCombatLookTarget()
++	{
++		this.combatLookTarget = null;
++		if (this.lookMode == LookMode.WALKING && this.walkingLookTarget == null)
+ 			this.resetTrackedHeadPose();
+ 	}
+ 
+@@ -379,9 +411,11 @@ public abstract class Pet
+ 		if (this.lookMode == LookMode.OFF)
+ 		{
+ 			this.walkingLookTarget = null;
++			this.combatLookTarget = null;
+ 			this.resetTrackedHeadPose();
+ 		}
+-		else if (this.lookMode == LookMode.WALKING && this.walkingLookTarget == null)
++		else if (this.lookMode == LookMode.WALKING && this.walkingLookTarget == null
++				&& this.combatLookTarget == null)
+ 		{
+ 			this.resetTrackedHeadPose();
+ 		}
