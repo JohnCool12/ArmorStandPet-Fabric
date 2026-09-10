@@ -21,12 +21,29 @@ jobs:
           curl --fail --location --retry 4 --retry-delay 2 \
             'https://cdn.modrinth.com/data/LbrJcAlI/versions/alNL2wP0/mobbattle-1.21.1-2.8.0-fabric.jar' \
             -o artifact/mobbattle-1.21.1-2.8.0-fabric.jar
-          test -s artifact/mobbattle-1.21.1-2.8.0-fabric.jar
           unzip -t artifact/mobbattle-1.21.1-2.8.0-fabric.jar
           sha256sum artifact/mobbattle-1.21.1-2.8.0-fabric.jar
-      - name: Upload exact baseline
+      - name: Clone exact matching upstream source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --branch 1.21 --single-branch https://github.com/Flemmli97/MobBattle.git upstream
+          cd upstream
+          git checkout --detach 9c6dd22bed88dbf918595844407e99c2a76c1032
+          git status --short
+          git rev-parse HEAD
+          cd ..
+          tar --exclude='.git' -cJf artifact/MobBattle-1.21.1-2.8.0-upstream-source.tar.xz upstream
+          sha256sum artifact/MobBattle-1.21.1-2.8.0-upstream-source.tar.xz
+      - name: Upload exact baseline JAR
         uses: actions/upload-artifact@v4
         with:
           name: mobbattle-fabric-1.21.1-official-baseline
           path: artifact/mobbattle-1.21.1-2.8.0-fabric.jar
+          if-no-files-found: error
+      - name: Upload exact source baseline
+        uses: actions/upload-artifact@v4
+        with:
+          name: mobbattle-1.21.1-2.8.0-upstream-source
+          path: artifact/MobBattle-1.21.1-2.8.0-upstream-source.tar.xz
           if-no-files-found: error
