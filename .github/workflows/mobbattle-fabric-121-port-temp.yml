@@ -31,36 +31,19 @@ jobs:
           test "$(grep '^minecraft_version=' gradle.properties)" = 'minecraft_version=1.21.1'
           test "$(grep '^mod_version=' gradle.properties)" = 'mod_version=2.8.0'
 
-      - name: Apply full-parity 1.21.1 source overlay
+      - name: Reconstruct and apply full-parity 1.21.1 source overlay
         shell: bash
         run: |
           set -euo pipefail
-          base64 --decode ci/mobbattle-fabric-121-overrides.tar.gz.b64 > /tmp/mobbattle-overrides.tar.gz
-          echo 'ca36501f9d1192c0a060fdc11327e820e7517afea8f7b951f1d09c0fc2e86317  /tmp/mobbattle-overrides.tar.gz' | sha256sum --check
-          tar -xzf /tmp/mobbattle-overrides.tar.gz -C upstream
-
-          # Minecraft 1.21.1 IronGolem does not override canAttack(LivingEntity).
-          # The generic LivingMixin already hooks the inherited LivingEntity method,
-          # so the later-version IronGolem-specific mixin is redundant and invalid here.
-          rm -f upstream/common/src/main/java/io/github/flemmli97/mobbattle/mixin/IronGolemMixin.java
-          python3 - <<'PY'
-          import json
-          p = 'upstream/common/src/main/resources/mobbattle.mixins.json'
-          with open(p, encoding='utf-8') as f:
-              data = json.load(f)
-          for key in ('mixins', 'server', 'client'):
-              if key in data and isinstance(data[key], list):
-                  data[key] = [x for x in data[key] if x != 'IronGolemMixin']
-          with open(p, 'w', encoding='utf-8') as f:
-              json.dump(data, f, indent=2)
-              f.write('\n')
-          PY
-
+          cat mobbattle-port/overlay.part0.b64 mobbattle-port/overlay.part1.b64 mobbattle-port/overlay.part2.b64 mobbattle-port/overlay.part3.b64 mobbattle-port/overlay.part4.b64 > /tmp/mobbattle-overlay.b64
+          base64 --decode /tmp/mobbattle-overlay.b64 > /tmp/mobbattle-overlay.zip
+          echo '39d51d3a842abaf416a5ca3067babca6e5d87f520af0c1d006275e8a7a6fc85a  /tmp/mobbattle-overlay.zip' | sha256sum --check
+          unzip -o /tmp/mobbattle-overlay.zip -d upstream
+          sed -i 's/^mod_version=.*/mod_version=2.8.0-full-parity.1/' upstream/gradle.properties
           grep -q '^mod_version=2.8.0-full-parity.1$' upstream/gradle.properties
           grep -q 'MobStickOneWay' upstream/common/src/main/java/io/github/flemmli97/mobbattle/common/registry/MobBattleItems.java
           grep -q 'ActiveBattlePersistenceCompat' upstream/common/src/main/java/io/github/flemmli97/mobbattle/mixin/MobSelectionPersistenceMixin.java
           grep -q 'PiglinAiMixin' upstream/common/src/main/resources/mobbattle.mixins.json
-          ! grep -q 'IronGolemMixin' upstream/common/src/main/resources/mobbattle.mixins.json
 
       - name: Build real Fabric Loom JAR
         working-directory: upstream
