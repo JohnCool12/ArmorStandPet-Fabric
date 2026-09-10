@@ -17,7 +17,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p artifact
+          mkdir -p artifact tools
           curl --fail --location --retry 4 --retry-delay 2 \
             'https://cdn.modrinth.com/data/LbrJcAlI/versions/alNL2wP0/mobbattle-1.21.1-2.8.0-fabric.jar' \
             -o artifact/mobbattle-1.21.1-2.8.0-fabric.jar
@@ -36,6 +36,15 @@ jobs:
           cd ..
           tar --exclude='.git' -cJf artifact/MobBattle-1.21.1-2.8.0-upstream-source.tar.xz upstream
           sha256sum artifact/MobBattle-1.21.1-2.8.0-upstream-source.tar.xz
+      - name: Fetch CFR decompiler
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 4 --retry-delay 2 \
+            'https://repo1.maven.org/maven2/org/benf/cfr/0.152/cfr-0.152.jar' \
+            -o tools/cfr-0.152.jar
+          test -s tools/cfr-0.152.jar
+          sha256sum tools/cfr-0.152.jar
       - name: Upload exact baseline JAR
         uses: actions/upload-artifact@v4
         with:
@@ -47,4 +56,10 @@ jobs:
         with:
           name: mobbattle-1.21.1-2.8.0-upstream-source
           path: artifact/MobBattle-1.21.1-2.8.0-upstream-source.tar.xz
+          if-no-files-found: error
+      - name: Upload CFR
+        uses: actions/upload-artifact@v4
+        with:
+          name: cfr-0.152
+          path: tools/cfr-0.152.jar
           if-no-files-found: error
