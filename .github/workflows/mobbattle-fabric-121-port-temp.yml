@@ -27,11 +27,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          git clone --branch 1.21 --single-branch https://github.com/Flemmli97/MobBattle.git upstream
+          git clone https://github.com/Flemmli97/MobBattle.git upstream
           cd upstream
+          git fetch origin 9c6dd22bed88dbf918595844407e99c2a76c1032
           git checkout --detach 9c6dd22bed88dbf918595844407e99c2a76c1032
-          git status --short
-          git rev-parse HEAD
+          test "$(git rev-parse HEAD)" = '9c6dd22bed88dbf918595844407e99c2a76c1032'
           cd ..
           tar --exclude='.git' -cJf artifact/MobBattle-1.21.1-2.8.0-upstream-source.tar.xz upstream
           sha256sum artifact/MobBattle-1.21.1-2.8.0-upstream-source.tar.xz
