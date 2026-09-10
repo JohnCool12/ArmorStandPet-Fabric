@@ -36,10 +36,16 @@ jobs:
           echo '779f458c8bab95a9415ecdac0229d338b01bf9f5766dadaadd2020bb3e4debd8  mobbattle-port/overlay.part1.b64' | sha256sum -c
           echo '6107594b972765496f527b458e301e2ae61372c118f776b201250da835398856  mobbattle-port/overlay.part2.b64' | sha256sum -c
           echo 'c048abdc499b0f0b66340d92f333b6807c9131ac13c77eae498a8cbb43e8710e  mobbattle-port/overlay.part3a.b64' | sha256sum -c
-          echo 'c5022462aa698f3da053e3a2744a42f3a0b05ee27431aa601d89841af8506218  mobbattle-port/overlay.part3b0.b64' | sha256sum -c
-          echo '84f4858f1f7102063939dca836d38d5e575600938fc72248d73e6ee4a952d815  mobbattle-port/overlay.part3b1.b64' | sha256sum -c
+          echo '49ce669fe1c25178c61c30352a60a458198a21974c78056de0a7e8937f6297b0  mobbattle-port/overlay.part3c0.b64' | sha256sum -c
+          echo '366dd56f98d766b81540f18a5a712b5a5a0912e92de49de436a2374fbb44c686  mobbattle-port/overlay.part3c1.b64' | sha256sum -c
+          echo '4a3fd0b83ccacb560c36e00eada6ef5f2631b53d8a07053d28db282d7aa4271e  mobbattle-port/overlay.part3c2.b64' | sha256sum -c
+          echo '82bdfbb5876067ebbd70042c0df71f653faa32af7e1a3a6a36a5fdfdaeff13c7  mobbattle-port/overlay.part3c3.b64' | sha256sum -c
+          echo '909db4fb3fad34aea7e9478d03329b2f66c43b012e5965fd9cc7c20005966967  mobbattle-port/overlay.part3c4.b64' | sha256sum -c
+          echo '30d98f3ca4450aa7335607a1ba7e5a1271b1468c3378a8f1e467be2dd698d3ab  mobbattle-port/overlay.part3c5.b64' | sha256sum -c
+          echo '4ebb0e8ae2dda9a2bdef000b1a94b7397f500b2d29d7275051e73c71cf7de660  mobbattle-port/overlay.part3c6.b64' | sha256sum -c
+          echo 'f2f0fcaf551c966156b39bd505b609bb39078772ba6d53b51da9db2e7c51f488  mobbattle-port/overlay.part3c7.b64' | sha256sum -c
           echo 'f7089048e17f43d155d2d6d6783503262ff3f56eb2c70cc2eb0840728084b930  mobbattle-port/overlay.part4.b64' | sha256sum -c
-          cat mobbattle-port/overlay.part0.b64 mobbattle-port/overlay.part1.b64 mobbattle-port/overlay.part2.b64 mobbattle-port/overlay.part3a.b64 mobbattle-port/overlay.part3b0.b64 mobbattle-port/overlay.part3b1.b64 mobbattle-port/overlay.part4.b64 > /tmp/mobbattle-overlay.b64
+          cat mobbattle-port/overlay.part0.b64 mobbattle-port/overlay.part1.b64 mobbattle-port/overlay.part2.b64 mobbattle-port/overlay.part3a.b64 mobbattle-port/overlay.part3c{0,1,2,3,4,5,6,7}.b64 mobbattle-port/overlay.part4.b64 > /tmp/mobbattle-overlay.b64
           base64 --decode /tmp/mobbattle-overlay.b64 > /tmp/mobbattle-overlay.zip
           echo '39d51d3a842abaf416a5ca3067babca6e5d87f520af0c1d006275e8a7a6fc85a  /tmp/mobbattle-overlay.zip' | sha256sum -c
           unzip -t /tmp/mobbattle-overlay.zip
