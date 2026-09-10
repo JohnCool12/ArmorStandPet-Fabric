@@ -1,0 +1,32 @@
+name: MobBattle Fabric 1.21.1 Full Parity Temp
+
+on:
+  push:
+    branches: [mobbattle-fabric-121-full-parity]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  baseline:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download exact official Fabric 1.21.1 baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifact
+          curl --fail --location --retry 4 --retry-delay 2 \
+            'https://cdn.modrinth.com/data/LbrJcAlI/versions/alNL2wP0/mobbattle-1.21.1-2.8.0-fabric.jar' \
+            -o artifact/mobbattle-1.21.1-2.8.0-fabric.jar
+          test -s artifact/mobbattle-1.21.1-2.8.0-fabric.jar
+          unzip -t artifact/mobbattle-1.21.1-2.8.0-fabric.jar
+          sha256sum artifact/mobbattle-1.21.1-2.8.0-fabric.jar
+      - name: Upload exact baseline
+        uses: actions/upload-artifact@v4
+        with:
+          name: mobbattle-fabric-1.21.1-official-baseline
+          path: artifact/mobbattle-1.21.1-2.8.0-fabric.jar
+          if-no-files-found: error
