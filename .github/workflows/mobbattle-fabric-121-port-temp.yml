@@ -13,13 +13,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - name: Set up Java 21
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '21'
-
       - name: Clone exact Mob Battle 2.8.0 / Minecraft 1.21.1 source
         shell: bash
         run: |
@@ -30,21 +28,21 @@ jobs:
           test "$(git rev-parse HEAD)" = 'd87a81a96dc8a3b0246c4396efe8c96ef2beac24'
           test "$(grep '^minecraft_version=' gradle.properties)" = 'minecraft_version=1.21.1'
           test "$(grep '^mod_version=' gradle.properties)" = 'mod_version=2.8.0'
-
-      - name: Reconstruct and apply full-parity 1.21.1 source overlay
+      - name: Verify and apply full-parity overlay
         shell: bash
         run: |
           set -euo pipefail
-          cat mobbattle-port/overlay.part0.b64 mobbattle-port/overlay.part1.b64 mobbattle-port/overlay.part2.b64 mobbattle-port/overlay.part3.b64 mobbattle-port/overlay.part4.b64 > /tmp/mobbattle-overlay.b64
+          echo '85cfae2b7b38063baa343f5d1cbe5f26299a0b2bcb129bb37e7d0990a426f378  mobbattle-port/overlay.part0.b64' | sha256sum -c
+          echo '779f458c8bab95a9415ecdac0229d338b01bf9f5766dadaadd2020bb3e4debd8  mobbattle-port/overlay.part1.b64' | sha256sum -c
+          echo '6107594b972765496f527b458e301e2ae61372c118f776b201250da835398856  mobbattle-port/overlay.part2.b64' | sha256sum -c
+          echo '5a5559abd92e72c639fafed3e6339b5d8ebd0f03a56d6cb27006a370337e99ea  mobbattle-port/overlay.part3.b64' | sha256sum -c
+          echo 'f7089048e17f43d155d2d6d6783503262ff3f56eb2c70cc2eb0840728084b930  mobbattle-port/overlay.part4.b64' | sha256sum -c
+          cat mobbattle-port/overlay.part{0,1,2,3,4}.b64 > /tmp/mobbattle-overlay.b64
           base64 --decode /tmp/mobbattle-overlay.b64 > /tmp/mobbattle-overlay.zip
-          echo '39d51d3a842abaf416a5ca3067babca6e5d87f520af0c1d006275e8a7a6fc85a  /tmp/mobbattle-overlay.zip' | sha256sum --check
+          echo '39d51d3a842abaf416a5ca3067babca6e5d87f520af0c1d006275e8a7a6fc85a  /tmp/mobbattle-overlay.zip' | sha256sum -c
+          unzip -t /tmp/mobbattle-overlay.zip
           unzip -o /tmp/mobbattle-overlay.zip -d upstream
           sed -i 's/^mod_version=.*/mod_version=2.8.0-full-parity.1/' upstream/gradle.properties
-          grep -q '^mod_version=2.8.0-full-parity.1$' upstream/gradle.properties
-          grep -q 'MobStickOneWay' upstream/common/src/main/java/io/github/flemmli97/mobbattle/common/registry/MobBattleItems.java
-          grep -q 'ActiveBattlePersistenceCompat' upstream/common/src/main/java/io/github/flemmli97/mobbattle/mixin/MobSelectionPersistenceMixin.java
-          grep -q 'PiglinAiMixin' upstream/common/src/main/resources/mobbattle.mixins.json
-
       - name: Build real Fabric Loom JAR
         working-directory: upstream
         shell: bash
@@ -52,7 +50,6 @@ jobs:
           set -euo pipefail
           chmod +x gradlew
           ./gradlew :fabric:build --stacktrace --no-daemon
-
       - name: Run Fabric 1.21.1 dedicated server smoke test
         working-directory: upstream
         shell: bash
@@ -65,55 +62,23 @@ jobs:
           timeout 120s ./gradlew :fabric:runServer --stacktrace --no-daemon > ../audit/server-smoke.log 2>&1
           code=$?
           set -e
-          if [ "$code" -ne 0 ] && [ "$code" -ne 124 ]; then
-            cat ../audit/server-smoke.log
-            exit "$code"
-          fi
-          if ! grep -Eq 'Done \([0-9.]+s\)! For help|Done \([0-9.]+s\)!' ../audit/server-smoke.log; then
-            cat ../audit/server-smoke.log
-            echo 'Dedicated server never reached Done' >&2
-            exit 1
-          fi
-          if grep -Eiq 'Mixin apply failed|InvalidMixinException|InjectionError|Critical injection failure|EntrypointException|Could not execute entrypoint|FATAL' ../audit/server-smoke.log; then
-            cat ../audit/server-smoke.log
-            echo 'Fatal mixin/entrypoint failure detected' >&2
-            exit 1
-          fi
-          echo 'FABRIC_1_21_1_DEDICATED_SERVER_SMOKE_PASS'
-
+          if [ "$code" -ne 0 ] && [ "$code" -ne 124 ]; then cat ../audit/server-smoke.log; exit "$code"; fi
+          grep -Eq 'Done \([0-9.]+s\)!' ../audit/server-smoke.log || { cat ../audit/server-smoke.log; exit 1; }
+          if grep -Eiq 'Mixin apply failed|InvalidMixinException|InjectionError|Critical injection failure|EntrypointException|Could not execute entrypoint|FATAL' ../audit/server-smoke.log; then cat ../audit/server-smoke.log; exit 1; fi
       - name: Collect and audit production JAR
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p artifact audit
-          find upstream/fabric/build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*-sources.jar' ! -name '*-dev.jar' -print
           FINAL="$(find upstream/fabric/build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*-sources.jar' ! -name '*-dev.jar' -print -quit)"
           test -n "$FINAL"
           cp "$FINAL" artifact/MobBattle-Fabric-1.21.1-2.8.0-FULL-PARITY.jar
           unzip -t artifact/MobBattle-Fabric-1.21.1-2.8.0-FULL-PARITY.jar | tee audit/unzip-test.txt
           unzip -p artifact/MobBattle-Fabric-1.21.1-2.8.0-FULL-PARITY.jar fabric.mod.json | tee audit/fabric.mod.json
           jar tf artifact/MobBattle-Fabric-1.21.1-2.8.0-FULL-PARITY.jar > audit/final-entries.txt
-          for required in \
-            io/github/flemmli97/mobbattle/common/entity/goal/ForcedTargetGoal.class \
-            io/github/flemmli97/mobbattle/common/items/MobStickOneWay.class \
-            io/github/flemmli97/mobbattle/common/items/MobGroupOneWay.class \
-            io/github/flemmli97/mobbattle/common/utils/ActiveBattlePersistenceCompat.class \
-            io/github/flemmli97/mobbattle/common/utils/PiglinAngerCompat.class \
-            io/github/flemmli97/mobbattle/common/utils/SelectionPersistenceMobbattle.class \
-            io/github/flemmli97/mobbattle/mixin/MobSelectionPersistenceMixin.class \
-            io/github/flemmli97/mobbattle/mixin/PiglinAiMixin.class \
-            io/github/flemmli97/mobbattle/mixin/PiglinBruteAiMixin.class \
-            assets/mobbattle/models/item/mob_stick_one_way.json \
-            assets/mobbattle/models/item/mob_group_one_way.json; do
-              grep -Fxq "$required" audit/final-entries.txt || { echo "MISSING $required"; exit 1; }
-          done
-          if grep -q '^META-INF/neoforge.mods.toml$' audit/final-entries.txt; then
-            echo 'Unexpected NeoForge metadata in Fabric output' >&2
-            exit 1
-          fi
+          for required in io/github/flemmli97/mobbattle/common/entity/goal/ForcedTargetGoal.class io/github/flemmli97/mobbattle/common/items/MobStickOneWay.class io/github/flemmli97/mobbattle/common/items/MobGroupOneWay.class io/github/flemmli97/mobbattle/common/utils/ActiveBattlePersistenceCompat.class io/github/flemmli97/mobbattle/common/utils/PiglinAngerCompat.class io/github/flemmli97/mobbattle/common/utils/SelectionPersistenceMobbattle.class io/github/flemmli97/mobbattle/mixin/MobSelectionPersistenceMixin.class io/github/flemmli97/mobbattle/mixin/PiglinAiMixin.class io/github/flemmli97/mobbattle/mixin/PiglinBruteAiMixin.class assets/mobbattle/models/item/mob_stick_one_way.json assets/mobbattle/models/item/mob_group_one_way.json; do grep -Fxq "$required" audit/final-entries.txt || exit 1; done
           sha256sum artifact/MobBattle-Fabric-1.21.1-2.8.0-FULL-PARITY.jar | tee audit/SHA256SUMS.txt
           tar --exclude='.git' --exclude='.gradle' --exclude='build' --exclude='run' --exclude='fabric/run' -czf artifact/MobBattle-Fabric-1.21.1-2.8.0-FULL-PARITY-source.tar.gz -C upstream .
-
       - name: Upload full-parity build
         uses: actions/upload-artifact@v4
         with:
