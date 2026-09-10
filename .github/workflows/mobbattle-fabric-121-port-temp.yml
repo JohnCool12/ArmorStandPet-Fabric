@@ -9,21 +9,18 @@ permissions:
   contents: read
 
 jobs:
-  baseline:
+  build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Download exact official Fabric 1.21.1 baseline
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p artifact tools
-          curl --fail --location --retry 4 --retry-delay 2 \
-            'https://cdn.modrinth.com/data/LbrJcAlI/versions/alNL2wP0/mobbattle-1.21.1-2.8.0-fabric.jar' \
-            -o artifact/mobbattle-1.21.1-2.8.0-fabric.jar
-          unzip -t artifact/mobbattle-1.21.1-2.8.0-fabric.jar
-          sha256sum artifact/mobbattle-1.21.1-2.8.0-fabric.jar
-      - name: Clone exact matching upstream source
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Clone exact Mob Battle 2.8.0 / Minecraft 1.21.1 source
         shell: bash
         run: |
           set -euo pipefail
@@ -33,33 +30,67 @@ jobs:
           test "$(git rev-parse HEAD)" = 'd87a81a96dc8a3b0246c4396efe8c96ef2beac24'
           test "$(grep '^minecraft_version=' gradle.properties)" = 'minecraft_version=1.21.1'
           test "$(grep '^mod_version=' gradle.properties)" = 'mod_version=2.8.0'
-          cd ..
-          tar --exclude='.git' -cJf artifact/MobBattle-1.21.1-2.8.0-upstream-source.tar.xz upstream
-          sha256sum artifact/MobBattle-1.21.1-2.8.0-upstream-source.tar.xz
-      - name: Fetch CFR decompiler
+
+      - name: Apply full-parity 1.21.1 source overlay
         shell: bash
         run: |
           set -euo pipefail
-          curl --fail --location --retry 4 --retry-delay 2 \
-            'https://repo1.maven.org/maven2/org/benf/cfr/0.152/cfr-0.152.jar' \
-            -o tools/cfr-0.152.jar
-          test -s tools/cfr-0.152.jar
-          sha256sum tools/cfr-0.152.jar
-      - name: Upload exact baseline JAR
+          base64 --decode ci/mobbattle-fabric-121-overrides.tar.gz.b64 > /tmp/mobbattle-overrides.tar.gz
+          echo 'ca36501f9d1192c0a060fdc11327e820e7517afea8f7b951f1d09c0fc2e86317  /tmp/mobbattle-overrides.tar.gz' | sha256sum --check
+          tar -xzf /tmp/mobbattle-overrides.tar.gz -C upstream
+          grep -q '^mod_version=2.8.0-full-parity.1$' upstream/gradle.properties
+          grep -q 'MobStickOneWay' upstream/common/src/main/java/io/github/flemmli97/mobbattle/common/registry/MobBattleItems.java
+          grep -q 'ActiveBattlePersistenceCompat' upstream/common/src/main/java/io/github/flemmli97/mobbattle/mixin/MobSelectionPersistenceMixin.java
+          grep -q 'PiglinAiMixin' upstream/common/src/main/resources/mobbattle.mixins.json
+
+      - name: Build real Fabric Loom JAR
+        working-directory: upstream
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew :fabric:build --stacktrace --no-daemon
+
+      - name: Collect and audit production JAR
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifact audit
+          find upstream/fabric/build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*-sources.jar' ! -name '*-dev.jar' -print
+          FINAL="$(find upstream/fabric/build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*-sources.jar' ! -name '*-dev.jar' -print -quit)"
+          test -n "$FINAL"
+          cp "$FINAL" artifact/MobBattle-Fabric-1.21.1-2.8.0-FULL-PARITY.jar
+          unzip -t artifact/MobBattle-Fabric-1.21.1-2.8.0-FULL-PARITY.jar | tee audit/unzip-test.txt
+          unzip -p artifact/MobBattle-Fabric-1.21.1-2.8.0-FULL-PARITY.jar fabric.mod.json | tee audit/fabric.mod.json
+          jar tf artifact/MobBattle-Fabric-1.21.1-2.8.0-FULL-PARITY.jar > audit/final-entries.txt
+          for required in \
+            io/github/flemmli97/mobbattle/common/entity/goal/ForcedTargetGoal.class \
+            io/github/flemmli97/mobbattle/common/items/MobStickOneWay.class \
+            io/github/flemmli97/mobbattle/common/items/MobGroupOneWay.class \
+            io/github/flemmli97/mobbattle/common/utils/ActiveBattlePersistenceCompat.class \
+            io/github/flemmli97/mobbattle/common/utils/PiglinAngerCompat.class \
+            io/github/flemmli97/mobbattle/common/utils/SelectionPersistenceMobbattle.class \
+            io/github/flemmli97/mobbattle/mixin/IronGolemMixin.class \
+            io/github/flemmli97/mobbattle/mixin/MobSelectionPersistenceMixin.class \
+            io/github/flemmli97/mobbattle/mixin/PiglinAiMixin.class \
+            io/github/flemmli97/mobbattle/mixin/PiglinBruteAiMixin.class \
+            assets/mobbattle/models/item/mob_stick_one_way.json \
+            assets/mobbattle/models/item/mob_group_one_way.json; do
+              grep -Fxq "$required" audit/final-entries.txt || { echo "MISSING $required"; exit 1; }
+          done
+          if grep -q '^META-INF/neoforge.mods.toml$' audit/final-entries.txt; then
+            echo 'Unexpected NeoForge metadata in Fabric output' >&2
+            exit 1
+          fi
+          sha256sum artifact/MobBattle-Fabric-1.21.1-2.8.0-FULL-PARITY.jar | tee audit/SHA256SUMS.txt
+          tar --exclude='.git' --exclude='.gradle' --exclude='build' -czf artifact/MobBattle-Fabric-1.21.1-2.8.0-FULL-PARITY-source.tar.gz -C upstream .
+
+      - name: Upload full-parity build
         uses: actions/upload-artifact@v4
         with:
-          name: mobbattle-fabric-1.21.1-official-baseline
-          path: artifact/mobbattle-1.21.1-2.8.0-fabric.jar
-          if-no-files-found: error
-      - name: Upload exact source baseline
-        uses: actions/upload-artifact@v4
-        with:
-          name: mobbattle-1.21.1-2.8.0-upstream-source
-          path: artifact/MobBattle-1.21.1-2.8.0-upstream-source.tar.xz
-          if-no-files-found: error
-      - name: Upload CFR
-        uses: actions/upload-artifact@v4
-        with:
-          name: cfr-0.152
-          path: tools/cfr-0.152.jar
+          name: mobbattle-fabric-1.21.1-full-parity
+          path: |
+            artifact/MobBattle-Fabric-1.21.1-2.8.0-FULL-PARITY.jar
+            artifact/MobBattle-Fabric-1.21.1-2.8.0-FULL-PARITY-source.tar.gz
+            audit/*
           if-no-files-found: error
