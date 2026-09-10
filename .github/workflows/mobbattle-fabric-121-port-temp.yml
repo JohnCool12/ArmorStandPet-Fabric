@@ -29,9 +29,10 @@ jobs:
           set -euo pipefail
           git clone https://github.com/Flemmli97/MobBattle.git upstream
           cd upstream
-          git fetch origin 9c6dd22bed88dbf918595844407e99c2a76c1032
-          git checkout --detach 9c6dd22bed88dbf918595844407e99c2a76c1032
-          test "$(git rev-parse HEAD)" = '9c6dd22bed88dbf918595844407e99c2a76c1032'
+          git checkout --detach d87a81a96dc8a3b0246c4396efe8c96ef2beac24
+          test "$(git rev-parse HEAD)" = 'd87a81a96dc8a3b0246c4396efe8c96ef2beac24'
+          test "$(grep '^minecraft_version=' gradle.properties)" = 'minecraft_version=1.21.1'
+          test "$(grep '^mod_version=' gradle.properties)" = 'mod_version=2.8.0'
           cd ..
           tar --exclude='.git' -cJf artifact/MobBattle-1.21.1-2.8.0-upstream-source.tar.xz upstream
           sha256sum artifact/MobBattle-1.21.1-2.8.0-upstream-source.tar.xz
