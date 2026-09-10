@@ -129,7 +129,7 @@ jobs:
             exit 1
           fi
           sha256sum artifact/MobBattle-Fabric-1.21.1-2.8.0-FULL-PARITY.jar | tee audit/SHA256SUMS.txt
-          tar --exclude='.git' --exclude='.gradle' --exclude='build' -czf artifact/MobBattle-Fabric-1.21.1-2.8.0-FULL-PARITY-source.tar.gz -C upstream .
+          tar --exclude='.git' --exclude='.gradle' --exclude='build' --exclude='run' --exclude='fabric/run' -czf artifact/MobBattle-Fabric-1.21.1-2.8.0-FULL-PARITY-source.tar.gz -C upstream .
 
       - name: Upload full-parity build
         uses: actions/upload-artifact@v4
