@@ -36,9 +36,10 @@ jobs:
           echo '779f458c8bab95a9415ecdac0229d338b01bf9f5766dadaadd2020bb3e4debd8  mobbattle-port/overlay.part1.b64' | sha256sum -c
           echo '6107594b972765496f527b458e301e2ae61372c118f776b201250da835398856  mobbattle-port/overlay.part2.b64' | sha256sum -c
           echo 'c048abdc499b0f0b66340d92f333b6807c9131ac13c77eae498a8cbb43e8710e  mobbattle-port/overlay.part3a.b64' | sha256sum -c
-          echo 'bd144b84b262a749558044dde1c2d3eccc11fe6e98504d3dbafd4f627b8756e6  mobbattle-port/overlay.part3b.b64' | sha256sum -c
+          echo 'c5022462aa698f3da053e3a2744a42f3a0b05ee27431aa601d89841af8506218  mobbattle-port/overlay.part3b0.b64' | sha256sum -c
+          echo '84f4858f1f7102063939dca836d38d5e575600938fc72248d73e6ee4a952d815  mobbattle-port/overlay.part3b1.b64' | sha256sum -c
           echo 'f7089048e17f43d155d2d6d6783503262ff3f56eb2c70cc2eb0840728084b930  mobbattle-port/overlay.part4.b64' | sha256sum -c
-          cat mobbattle-port/overlay.part0.b64 mobbattle-port/overlay.part1.b64 mobbattle-port/overlay.part2.b64 mobbattle-port/overlay.part3a.b64 mobbattle-port/overlay.part3b.b64 mobbattle-port/overlay.part4.b64 > /tmp/mobbattle-overlay.b64
+          cat mobbattle-port/overlay.part0.b64 mobbattle-port/overlay.part1.b64 mobbattle-port/overlay.part2.b64 mobbattle-port/overlay.part3a.b64 mobbattle-port/overlay.part3b0.b64 mobbattle-port/overlay.part3b1.b64 mobbattle-port/overlay.part4.b64 > /tmp/mobbattle-overlay.b64
           base64 --decode /tmp/mobbattle-overlay.b64 > /tmp/mobbattle-overlay.zip
           echo '39d51d3a842abaf416a5ca3067babca6e5d87f520af0c1d006275e8a7a6fc85a  /tmp/mobbattle-overlay.zip' | sha256sum -c
           unzip -t /tmp/mobbattle-overlay.zip
