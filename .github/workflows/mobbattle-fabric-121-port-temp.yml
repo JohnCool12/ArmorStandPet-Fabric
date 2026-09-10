@@ -51,6 +51,34 @@ jobs:
           chmod +x gradlew
           ./gradlew :fabric:build --stacktrace --no-daemon
 
+      - name: Run Fabric 1.21.1 dedicated server smoke test
+        working-directory: upstream
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ../audit run fabric/run
+          printf 'eula=true\n' > run/eula.txt
+          printf 'eula=true\n' > fabric/run/eula.txt
+          set +e
+          timeout 120s ./gradlew :fabric:runServer --stacktrace --no-daemon > ../audit/server-smoke.log 2>&1
+          code=$?
+          set -e
+          if [ "$code" -ne 0 ] && [ "$code" -ne 124 ]; then
+            cat ../audit/server-smoke.log
+            exit "$code"
+          fi
+          if ! grep -Eq 'Done \([0-9.]+s\)! For help|Done \([0-9.]+s\)!' ../audit/server-smoke.log; then
+            cat ../audit/server-smoke.log
+            echo 'Dedicated server never reached Done' >&2
+            exit 1
+          fi
+          if grep -Eiq 'Mixin apply failed|InvalidMixinException|InjectionError|Critical injection failure|EntrypointException|Could not execute entrypoint|FATAL' ../audit/server-smoke.log; then
+            cat ../audit/server-smoke.log
+            echo 'Fatal mixin/entrypoint failure detected' >&2
+            exit 1
+          fi
+          echo 'FABRIC_1_21_1_DEDICATED_SERVER_SMOKE_PASS'
+
       - name: Collect and audit production JAR
         shell: bash
         run: |
