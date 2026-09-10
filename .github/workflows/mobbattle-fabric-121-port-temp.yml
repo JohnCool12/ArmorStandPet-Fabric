@@ -38,10 +38,29 @@ jobs:
           base64 --decode ci/mobbattle-fabric-121-overrides.tar.gz.b64 > /tmp/mobbattle-overrides.tar.gz
           echo 'ca36501f9d1192c0a060fdc11327e820e7517afea8f7b951f1d09c0fc2e86317  /tmp/mobbattle-overrides.tar.gz' | sha256sum --check
           tar -xzf /tmp/mobbattle-overrides.tar.gz -C upstream
+
+          # Minecraft 1.21.1 IronGolem does not override canAttack(LivingEntity).
+          # The generic LivingMixin already hooks the inherited LivingEntity method,
+          # so the later-version IronGolem-specific mixin is redundant and invalid here.
+          rm -f upstream/common/src/main/java/io/github/flemmli97/mobbattle/mixin/IronGolemMixin.java
+          python3 - <<'PY'
+          import json
+          p = 'upstream/common/src/main/resources/mobbattle.mixins.json'
+          with open(p, encoding='utf-8') as f:
+              data = json.load(f)
+          for key in ('mixins', 'server', 'client'):
+              if key in data and isinstance(data[key], list):
+                  data[key] = [x for x in data[key] if x != 'IronGolemMixin']
+          with open(p, 'w', encoding='utf-8') as f:
+              json.dump(data, f, indent=2)
+              f.write('\n')
+          PY
+
           grep -q '^mod_version=2.8.0-full-parity.1$' upstream/gradle.properties
           grep -q 'MobStickOneWay' upstream/common/src/main/java/io/github/flemmli97/mobbattle/common/registry/MobBattleItems.java
           grep -q 'ActiveBattlePersistenceCompat' upstream/common/src/main/java/io/github/flemmli97/mobbattle/mixin/MobSelectionPersistenceMixin.java
           grep -q 'PiglinAiMixin' upstream/common/src/main/resources/mobbattle.mixins.json
+          ! grep -q 'IronGolemMixin' upstream/common/src/main/resources/mobbattle.mixins.json
 
       - name: Build real Fabric Loom JAR
         working-directory: upstream
@@ -98,7 +117,6 @@ jobs:
             io/github/flemmli97/mobbattle/common/utils/ActiveBattlePersistenceCompat.class \
             io/github/flemmli97/mobbattle/common/utils/PiglinAngerCompat.class \
             io/github/flemmli97/mobbattle/common/utils/SelectionPersistenceMobbattle.class \
-            io/github/flemmli97/mobbattle/mixin/IronGolemMixin.class \
             io/github/flemmli97/mobbattle/mixin/MobSelectionPersistenceMixin.class \
             io/github/flemmli97/mobbattle/mixin/PiglinAiMixin.class \
             io/github/flemmli97/mobbattle/mixin/PiglinBruteAiMixin.class \
