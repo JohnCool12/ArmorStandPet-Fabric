@@ -1,0 +1,116 @@
+name: MobBattle Fabric 1.21.1 Full Parity Build V2
+
+on:
+  push:
+    branches: [mobbattle-fabric-121-full-parity]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Reconstruct exact parity overlay
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat \
+            mobbattle-port/overlay.part0.b64 \
+            mobbattle-port/overlay.part1.b64 \
+            mobbattle-port/overlay.part2.b64 \
+            mobbattle-port/overlay.part3a.b64 \
+            mobbattle-port/overlay.part3c0.b64 \
+            mobbattle-port/overlay.part3c1.b64 \
+            mobbattle-port/overlay.part3c2.b64 \
+            mobbattle-port/overlay.part3c3.b64 \
+            mobbattle-port/overlay.part3c4.b64 \
+            mobbattle-port/overlay.part3c5.b64 \
+            mobbattle-port/overlay.part3c6.b64 \
+            mobbattle-port/overlay.part3c7.b64 \
+            mobbattle-port/overlay.part4a0.b64 \
+            mobbattle-port/overlay.part4a1.b64 \
+            mobbattle-port/overlay.part4a2.b64 > /tmp/overlay.b64
+          base64 --decode /tmp/overlay.b64 > /tmp/overlay.zip
+          echo '39d51d3a842abaf416a5ca3067babca6e5d87f520af0c1d006275e8a7a6fc85a  /tmp/overlay.zip' | sha256sum -c
+          unzip -t /tmp/overlay.zip
+
+      - name: Clone exact upstream and apply port
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone https://github.com/Flemmli97/MobBattle.git upstream
+          cd upstream
+          git checkout --detach d87a81a96dc8a3b0246c4396efe8c96ef2beac24
+          test "$(grep '^minecraft_version=' gradle.properties)" = 'minecraft_version=1.21.1'
+          test "$(grep '^mod_version=' gradle.properties)" = 'mod_version=2.8.0'
+          cd ..
+          unzip -o /tmp/overlay.zip -d upstream
+          sed -i 's/^mod_version=.*/mod_version=2.8.0-full-parity.1/' upstream/gradle.properties
+
+      - name: Build Fabric 1.21.1
+        working-directory: upstream
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew :fabric:build --stacktrace --no-daemon
+
+      - name: Dedicated server smoke test
+        working-directory: upstream
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ../audit run fabric/run
+          printf 'eula=true\n' > run/eula.txt
+          printf 'eula=true\n' > fabric/run/eula.txt
+          set +e
+          timeout 120s ./gradlew :fabric:runServer --stacktrace --no-daemon > ../audit/server-smoke.log 2>&1
+          code=$?
+          set -e
+          if [ "$code" -ne 0 ] && [ "$code" -ne 124 ]; then cat ../audit/server-smoke.log; exit "$code"; fi
+          grep -Eq 'Done \([0-9.]+s\)!' ../audit/server-smoke.log || { cat ../audit/server-smoke.log; exit 1; }
+          if grep -Eiq 'Mixin apply failed|InvalidMixinException|InjectionError|Critical injection failure|EntrypointException|Could not execute entrypoint|FATAL' ../audit/server-smoke.log; then cat ../audit/server-smoke.log; exit 1; fi
+
+      - name: Audit and package
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifact audit
+          FINAL="$(find upstream/fabric/build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*-sources.jar' ! -name '*-dev.jar' -print -quit)"
+          test -n "$FINAL"
+          cp "$FINAL" artifact/MobBattle-Fabric-1.21.1-2.8.0-FULL-PARITY.jar
+          unzip -t artifact/MobBattle-Fabric-1.21.1-2.8.0-FULL-PARITY.jar | tee audit/unzip-test.txt
+          unzip -p artifact/MobBattle-Fabric-1.21.1-2.8.0-FULL-PARITY.jar fabric.mod.json | tee audit/fabric.mod.json
+          jar tf artifact/MobBattle-Fabric-1.21.1-2.8.0-FULL-PARITY.jar > audit/final-entries.txt
+          for x in \
+            io/github/flemmli97/mobbattle/common/entity/goal/ForcedTargetGoal.class \
+            io/github/flemmli97/mobbattle/common/items/MobStickOneWay.class \
+            io/github/flemmli97/mobbattle/common/items/MobGroupOneWay.class \
+            io/github/flemmli97/mobbattle/common/utils/ActiveBattlePersistenceCompat.class \
+            io/github/flemmli97/mobbattle/common/utils/PiglinAngerCompat.class \
+            io/github/flemmli97/mobbattle/common/utils/SelectionPersistenceMobbattle.class \
+            io/github/flemmli97/mobbattle/mixin/MobSelectionPersistenceMixin.class \
+            io/github/flemmli97/mobbattle/mixin/PiglinAiMixin.class \
+            io/github/flemmli97/mobbattle/mixin/PiglinBruteAiMixin.class \
+            assets/mobbattle/models/item/mob_stick_one_way.json \
+            assets/mobbattle/models/item/mob_group_one_way.json; do
+              grep -Fxq "$x" audit/final-entries.txt || { echo "MISSING $x"; exit 1; }
+          done
+          sha256sum artifact/MobBattle-Fabric-1.21.1-2.8.0-FULL-PARITY.jar | tee audit/SHA256SUMS.txt
+          tar --exclude='.git' --exclude='.gradle' --exclude='build' --exclude='run' --exclude='fabric/run' -czf artifact/MobBattle-Fabric-1.21.1-2.8.0-FULL-PARITY-source.tar.gz -C upstream .
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mobbattle-fabric-1.21.1-full-parity-v2
+          path: |
+            artifact/*
+            audit/*
+          if-no-files-found: error
