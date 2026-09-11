@@ -42,14 +42,6 @@ jobs:
           echo '39d51d3a842abaf416a5ca3067babca6e5d87f520af0c1d006275e8a7a6fc85a  /tmp/full-parity.zip' | sha256sum -c
           unzip -t /tmp/full-parity.zip
 
-      - name: Reconstruct targeted compatibility overlay
-        shell: bash
-        run: |
-          set -euo pipefail
-          base64 --decode mobbattle-port/targeted-compat.b64 > /tmp/targeted-compat.zip
-          unzip -t /tmp/targeted-compat.zip
-          sha256sum /tmp/targeted-compat.zip
-
       - name: Clone exact upstream and apply stable port plus targeted adapters
         shell: bash
         run: |
@@ -61,8 +53,10 @@ jobs:
           test "$(grep '^mod_version=' gradle.properties)" = 'mod_version=2.8.0'
           cd ..
           unzip -o /tmp/full-parity.zip -d upstream
-          unzip -o /tmp/targeted-compat.zip -d upstream
-          sed -i 's/^mod_version=.*/mod_version=2.8.0-full-parity-targeted-compat.1/' upstream/gradle.properties
+          cp mobbattle-port/targeted/GuardVillagersCompatMixin.java upstream/common/src/main/java/io/github/flemmli97/mobbattle/mixin/GuardVillagersCompatMixin.java
+          cp mobbattle-port/targeted/BetterNetherSkullCompatMixin.java upstream/common/src/main/java/io/github/flemmli97/mobbattle/mixin/BetterNetherSkullCompatMixin.java
+          cp mobbattle-port/targeted/mobbattle.mixins.json upstream/common/src/main/resources/mobbattle.mixins.json
+          sed -i 's/^mod_version=.*/mod_version=2.8.0-full-parity-targeted-compat.2-guard-real-combat/' upstream/gradle.properties
 
       - name: Build Fabric 1.21.1
         working-directory: upstream
@@ -72,14 +66,27 @@ jobs:
           chmod +x gradlew
           ./gradlew :fabric:build --stacktrace --no-daemon
 
-      - name: Dedicated server smoke test
+      - name: Dedicated server smoke test with exact Guard Villagers 2.1.2
         working-directory: upstream
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p ../audit run fabric/run
+          mkdir -p ../audit run fabric/run fabric/run/mods
           printf 'eula=true\n' > run/eula.txt
           printf 'eula=true\n' > fabric/run/eula.txt
+
+          python3 - <<'PY' > /tmp/guard.url
+          import json, urllib.request
+          with urllib.request.urlopen('https://api.modrinth.com/v2/version/ea8J4gbH') as r:
+              data = json.load(r)
+          files = [f for f in data['files'] if f.get('primary')]
+          if not files:
+              files = data['files']
+          print(files[0]['url'])
+          PY
+          curl --fail --location --retry 4 --retry-delay 2 "$(cat /tmp/guard.url)" -o fabric/run/mods/guardvillagers-2.1.2-1.21.1.jar
+          echo 'b7a2683564635186a37c1ab6def07cecab7505bd054357d0aa9bbc8f889345c8  fabric/run/mods/guardvillagers-2.1.2-1.21.1.jar' | sha256sum -c
+
           set +e
           timeout 120s ./gradlew :fabric:runServer --stacktrace --no-daemon > ../audit/server-smoke.log 2>&1
           code=$?
@@ -87,6 +94,7 @@ jobs:
           if [ "$code" -ne 0 ] && [ "$code" -ne 124 ]; then cat ../audit/server-smoke.log; exit "$code"; fi
           grep -Eq 'Done \([0-9.]+s\)!' ../audit/server-smoke.log || { cat ../audit/server-smoke.log; exit 1; }
           if grep -Eiq 'Mixin apply failed|InvalidMixinException|InjectionError|Critical injection failure|EntrypointException|Could not execute entrypoint|FATAL' ../audit/server-smoke.log; then cat ../audit/server-smoke.log; exit 1; fi
+          cp fabric/run/mods/guardvillagers-2.1.2-1.21.1.jar ../audit/guardvillagers-tested.jar
 
       - name: Audit and package
         shell: bash
@@ -95,10 +103,11 @@ jobs:
           mkdir -p artifact audit
           FINAL="$(find upstream/fabric/build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*-sources.jar' ! -name '*-dev.jar' -print -quit)"
           test -n "$FINAL"
-          OUT=artifact/MobBattle-Fabric-1.21.1-2.8.0-FULL-PARITY-TARGETED-MOD-COMPAT.jar
+          OUT=artifact/MobBattle-Fabric-1.21.1-2.8.0-FULL-PARITY-GUARD-REAL-COMBAT-FIX.jar
           cp "$FINAL" "$OUT"
           unzip -t "$OUT" | tee audit/unzip-test.txt
           unzip -p "$OUT" fabric.mod.json | tee audit/fabric.mod.json
+          unzip -p "$OUT" mobbattle.mixins.json | tee audit/mobbattle.mixins.json
           jar tf "$OUT" | sort > audit/final-entries.txt
 
           for x in \
@@ -116,6 +125,9 @@ jobs:
               grep -Fxq "$x" audit/final-entries.txt || { echo "MISSING $x"; exit 1; }
           done
 
+          grep -q 'GuardVillagersCompatMixin' audit/mobbattle.mixins.json
+          grep -q 'BetterNetherSkullCompatMixin' audit/mobbattle.mixins.json
+
           curl --fail --location --retry 4 --retry-delay 2 \
             'https://cdn.modrinth.com/data/LbrJcAlI/versions/alNL2wP0/mobbattle-1.21.1-2.8.0-fabric.jar' \
             -o /tmp/official.jar
@@ -128,11 +140,11 @@ jobs:
           fi
 
           sha256sum "$OUT" | tee audit/SHA256SUMS.txt
-          tar --exclude='.git' --exclude='.gradle' --exclude='build' --exclude='run' --exclude='fabric/run' -czf artifact/MobBattle-Fabric-1.21.1-2.8.0-FULL-PARITY-TARGETED-MOD-COMPAT-source.tar.gz -C upstream .
+          tar --exclude='.git' --exclude='.gradle' --exclude='build' --exclude='run' --exclude='fabric/run' -czf artifact/MobBattle-Fabric-1.21.1-2.8.0-FULL-PARITY-GUARD-REAL-COMBAT-FIX-source.tar.gz -C upstream .
 
       - uses: actions/upload-artifact@v4
         with:
-          name: mobbattle-fabric-1.21.1-targeted-mod-compat
+          name: mobbattle-fabric-1.21.1-guard-real-combat-fix
           path: |
             artifact/*
             audit/*
