@@ -46,7 +46,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cat mobbattle-port/modded-compat.part00.b64 mobbattle-port/modded-compat.part01a.b64 mobbattle-port/modded-compat.part01b.b64 mobbattle-port/modded-compat.part02.b64 > /tmp/modded-compat.b64
+          cat mobbattle-port/modded-compat.clean0.b64 mobbattle-port/modded-compat.clean1.b64 mobbattle-port/modded-compat.part01a.b64 mobbattle-port/modded-compat.part01b.b64 mobbattle-port/modded-compat.clean4.b64 > /tmp/modded-compat.b64
           base64 --decode /tmp/modded-compat.b64 > /tmp/modded-compat.zip
           echo '813c97b98d4ed486a0b0d901c1aa125726e9773844099d506b94739bb83bedf5  /tmp/modded-compat.zip' | sha256sum -c
           unzip -t /tmp/modded-compat.zip
