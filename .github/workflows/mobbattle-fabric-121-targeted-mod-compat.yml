@@ -66,35 +66,54 @@ jobs:
           chmod +x gradlew
           ./gradlew :fabric:build --stacktrace --no-daemon
 
-      - name: Dedicated server smoke test with exact Guard Villagers 2.1.2
-        working-directory: upstream
+      - name: Production Fabric server smoke test with exact Guard Villagers 2.1.2
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p ../audit run fabric/run fabric/run/mods
-          printf 'eula=true\n' > run/eula.txt
-          printf 'eula=true\n' > fabric/run/eula.txt
+          mkdir -p audit prodserver/mods
+          printf 'eula=true\n' > prodserver/eula.txt
+          printf 'online-mode=false\nserver-port=25575\n' > prodserver/server.properties
+
+          FINAL="$(find upstream/fabric/build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*-sources.jar' ! -name '*-dev.jar' -print -quit)"
+          test -n "$FINAL"
+          cp "$FINAL" prodserver/mods/mobbattle.jar
 
           python3 - <<'PY' > /tmp/guard.url
           import json, urllib.request
           with urllib.request.urlopen('https://api.modrinth.com/v2/version/ea8J4gbH') as r:
               data = json.load(r)
-          files = [f for f in data['files'] if f.get('primary')]
-          if not files:
-              files = data['files']
+          files = [f for f in data['files'] if f.get('primary')] or data['files']
           print(files[0]['url'])
           PY
-          curl --fail --location --retry 4 --retry-delay 2 "$(cat /tmp/guard.url)" -o fabric/run/mods/guardvillagers-2.1.2-1.21.1.jar
-          echo 'b7a2683564635186a37c1ab6def07cecab7505bd054357d0aa9bbc8f889345c8  fabric/run/mods/guardvillagers-2.1.2-1.21.1.jar' | sha256sum -c
+          curl --fail --location --retry 4 --retry-delay 2 "$(cat /tmp/guard.url)" -o prodserver/mods/guardvillagers-2.1.2-1.21.1.jar
+          echo 'b7a2683564635186a37c1ab6def07cecab7505bd054357d0aa9bbc8f889345c8  prodserver/mods/guardvillagers-2.1.2-1.21.1.jar' | sha256sum -c
+
+          python3 - <<'PY' > /tmp/fapi.url
+          import json, urllib.parse, urllib.request
+          q = urllib.parse.urlencode({'loaders':'["fabric"]','game_versions':'["1.21.1"]'})
+          with urllib.request.urlopen('https://api.modrinth.com/v2/project/P7dR8mSH/version?' + q) as r:
+              versions = json.load(r)
+          exact = [v for v in versions if v.get('version_number') == '0.116.4+1.21.1']
+          if not exact:
+              raise SystemExit('Fabric API 0.116.4+1.21.1 not found')
+          files = [f for f in exact[0]['files'] if f.get('primary')] or exact[0]['files']
+          print(files[0]['url'])
+          PY
+          curl --fail --location --retry 4 --retry-delay 2 "$(cat /tmp/fapi.url)" -o prodserver/mods/fabric-api.jar
+
+          curl --fail --location --retry 4 --retry-delay 2 \
+            'https://meta.fabricmc.net/v2/versions/loader/1.21.1/0.16.14/1.0.3/server/jar' \
+            -o prodserver/fabric-server.jar
 
           set +e
-          timeout 120s ./gradlew :fabric:runServer --stacktrace --no-daemon > ../audit/server-smoke.log 2>&1
+          (cd prodserver && timeout 120s java -Xms512M -Xmx1536M -jar fabric-server.jar nogui) > audit/server-smoke.log 2>&1
           code=$?
           set -e
-          if [ "$code" -ne 0 ] && [ "$code" -ne 124 ]; then cat ../audit/server-smoke.log; exit "$code"; fi
-          grep -Eq 'Done \([0-9.]+s\)!' ../audit/server-smoke.log || { cat ../audit/server-smoke.log; exit 1; }
-          if grep -Eiq 'Mixin apply failed|InvalidMixinException|InjectionError|Critical injection failure|EntrypointException|Could not execute entrypoint|FATAL' ../audit/server-smoke.log; then cat ../audit/server-smoke.log; exit 1; fi
-          cp fabric/run/mods/guardvillagers-2.1.2-1.21.1.jar ../audit/guardvillagers-tested.jar
+          if [ "$code" -ne 0 ] && [ "$code" -ne 124 ]; then cat audit/server-smoke.log; exit "$code"; fi
+          grep -Eq 'Done \([0-9.]+s\)!' audit/server-smoke.log || { cat audit/server-smoke.log; exit 1; }
+          grep -q 'guardvillagers 2.1.2-1.21.1' audit/server-smoke.log || { cat audit/server-smoke.log; exit 1; }
+          grep -q 'mobbattle ' audit/server-smoke.log || { cat audit/server-smoke.log; exit 1; }
+          if grep -Eiq 'Mixin apply failed|InvalidMixinException|InjectionError|Critical injection failure|EntrypointException|Could not execute entrypoint|FATAL' audit/server-smoke.log; then cat audit/server-smoke.log; exit 1; fi
 
       - name: Audit and package
         shell: bash
