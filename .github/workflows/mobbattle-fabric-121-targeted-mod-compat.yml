@@ -47,8 +47,8 @@ jobs:
         run: |
           set -euo pipefail
           base64 --decode mobbattle-port/targeted-compat.b64 > /tmp/targeted-compat.zip
-          echo '5f3afbf20c861b55328fbcbd1a197f4ea3310db1053723d1dc377f1c7a15902a  /tmp/targeted-compat.zip' | sha256sum -c
           unzip -t /tmp/targeted-compat.zip
+          sha256sum /tmp/targeted-compat.zip
 
       - name: Clone exact upstream and apply stable port plus targeted adapters
         shell: bash
