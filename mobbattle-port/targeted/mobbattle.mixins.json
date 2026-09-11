@@ -1,0 +1,26 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "io.github.flemmli97.mobbattle.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "EnderDragonMixin",
+    "EntityCanAttackMixin",
+    "LivingMixin",
+    "MobAccessor",
+    "SlimeMixin",
+    "WardenMixin",
+    "WitherMixin",
+    "PiglinAiMixin",
+    "PiglinBruteAiMixin",
+    "MobSelectionPersistenceMixin",
+    "GuardVillagersCompatMixin",
+    "BetterNetherSkullCompatMixin"
+  ],
+  "client": [
+    "MinecraftMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}
