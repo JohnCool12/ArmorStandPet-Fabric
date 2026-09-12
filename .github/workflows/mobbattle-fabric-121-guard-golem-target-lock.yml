@@ -99,7 +99,8 @@ jobs:
           done
 
           javap -classpath "$OUT" -c -p io.github.flemmli97.mobbattle.common.entity.goal.ForcedTargetGoal > audit/ForcedTargetGoal.javap.txt
-          grep -q 'Goal\$Flag.TARGET' audit/ForcedTargetGoal.javap.txt || { cat audit/ForcedTargetGoal.javap.txt; exit 1; }
+          # Production Fabric JAR is intermediary-remapped. Goal.Control.TARGET = field_18408.
+          grep -q 'field_18408' audit/ForcedTargetGoal.javap.txt || { cat audit/ForcedTargetGoal.javap.txt; exit 1; }
 
           curl --fail --location --retry 5 --retry-all-errors --retry-delay 2 \
             'https://cdn.modrinth.com/data/LbrJcAlI/versions/alNL2wP0/mobbattle-1.21.1-2.8.0-fabric.jar' \
