@@ -54,9 +54,10 @@ jobs:
           cd ..
           unzip -o /tmp/full-parity.zip -d upstream
           cp mobbattle-port/targeted/GuardVillagersCompatMixin.java upstream/common/src/main/java/io/github/flemmli97/mobbattle/mixin/GuardVillagersCompatMixin.java
+          cp mobbattle-port/targeted/ExtraGolemsCompatMixin.java upstream/common/src/main/java/io/github/flemmli97/mobbattle/mixin/ExtraGolemsCompatMixin.java
           cp mobbattle-port/targeted/BetterNetherSkullCompatMixin.java upstream/common/src/main/java/io/github/flemmli97/mobbattle/mixin/BetterNetherSkullCompatMixin.java
           cp mobbattle-port/targeted/mobbattle.mixins.json upstream/common/src/main/resources/mobbattle.mixins.json
-          sed -i 's/^mod_version=.*/mod_version=2.8.0-full-parity-targeted-compat.2-guard-real-combat/' upstream/gradle.properties
+          sed -i 's/^mod_version=.*/mod_version=2.8.0-full-parity-targeted-compat.3-guard-native-extragolems/' upstream/gradle.properties
 
       - name: Build Fabric 1.21.1
         working-directory: upstream
@@ -122,7 +123,7 @@ jobs:
           mkdir -p artifact audit
           FINAL="$(find upstream/fabric/build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*-sources.jar' ! -name '*-dev.jar' -print -quit)"
           test -n "$FINAL"
-          OUT=artifact/MobBattle-Fabric-1.21.1-2.8.0-FULL-PARITY-GUARD-REAL-COMBAT-FIX.jar
+          OUT=artifact/MobBattle-Fabric-1.21.1-2.8.0-FULL-PARITY-GUARD-NATIVE-EXTRAGOLEMS-FIX.jar
           cp "$FINAL" "$OUT"
           unzip -t "$OUT" | tee audit/unzip-test.txt
           unzip -p "$OUT" fabric.mod.json | tee audit/fabric.mod.json
@@ -137,6 +138,7 @@ jobs:
             io/github/flemmli97/mobbattle/common/utils/PiglinAngerCompat.class \
             io/github/flemmli97/mobbattle/common/utils/SelectionPersistenceMobbattle.class \
             io/github/flemmli97/mobbattle/mixin/GuardVillagersCompatMixin.class \
+            io/github/flemmli97/mobbattle/mixin/ExtraGolemsCompatMixin.class \
             io/github/flemmli97/mobbattle/mixin/BetterNetherSkullCompatMixin.class \
             io/github/flemmli97/mobbattle/mixin/MobSelectionPersistenceMixin.class \
             io/github/flemmli97/mobbattle/mixin/PiglinAiMixin.class \
@@ -145,6 +147,7 @@ jobs:
           done
 
           grep -q 'GuardVillagersCompatMixin' audit/mobbattle.mixins.json
+          grep -q 'ExtraGolemsCompatMixin' audit/mobbattle.mixins.json
           grep -q 'BetterNetherSkullCompatMixin' audit/mobbattle.mixins.json
 
           curl --fail --location --retry 4 --retry-delay 2 \
@@ -159,11 +162,11 @@ jobs:
           fi
 
           sha256sum "$OUT" | tee audit/SHA256SUMS.txt
-          tar --exclude='.git' --exclude='.gradle' --exclude='build' --exclude='run' --exclude='fabric/run' -czf artifact/MobBattle-Fabric-1.21.1-2.8.0-FULL-PARITY-GUARD-REAL-COMBAT-FIX-source.tar.gz -C upstream .
+          tar --exclude='.git' --exclude='.gradle' --exclude='build' --exclude='run' --exclude='fabric/run' -czf artifact/MobBattle-Fabric-1.21.1-2.8.0-FULL-PARITY-GUARD-NATIVE-EXTRAGOLEMS-FIX-source.tar.gz -C upstream .
 
       - uses: actions/upload-artifact@v4
         with:
-          name: mobbattle-fabric-1.21.1-guard-real-combat-fix
+          name: mobbattle-fabric-1.21.1-guard-native-extragolems-fix
           path: |
             artifact/*
             audit/*
