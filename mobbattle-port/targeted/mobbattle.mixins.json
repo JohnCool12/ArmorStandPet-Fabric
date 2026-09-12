@@ -15,6 +15,7 @@
     "PiglinBruteAiMixin",
     "MobSelectionPersistenceMixin",
     "GuardVillagersCompatMixin",
+    "ExtraGolemsCompatMixin",
     "BetterNetherSkullCompatMixin"
   ],
   "client": [
