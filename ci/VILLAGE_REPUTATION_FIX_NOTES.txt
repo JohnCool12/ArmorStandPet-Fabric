@@ -1,0 +1,4 @@
+T-built Extra Golems now use the permanent natural Iron Golem target stack everywhere.
+The extra ServerLevel.isVillage(golem.blockPosition()) gate is intentionally removed.
+Vanilla DefendVillageTargetGoal itself searches nearby villagers and reads their player gossip/reputation.
+CI GameTest compares an Obsidian Extra Golem against a vanilla natural Iron Golem at reputation <= -100.

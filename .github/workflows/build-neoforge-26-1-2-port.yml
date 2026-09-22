@@ -1,0 +1,187 @@
+name: Build NeoForge 26.1.2 Port Final
+on:
+  pull_request:
+  workflow_dispatch: {}
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.5.1'
+
+      - name: Prepare final NeoForge 26.1.2 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone -q https://github.com/bigenergy/extra-golems-reborn.git project
+          cd project
+          git checkout -q 6b21ec4a59ca16e8362b26e38fc63b2807042bdf
+          cd ..
+          python3 ci/port-neoforge-26-1-2-base.py
+          python3 ci/port-neoforge-26-1-2-pass2.py
+          python3 ci/port-neoforge-26-1-2-pass3.py
+          python3 ci/port-neoforge-26-1-2-pass4-renderer.py
+          python3 ci/port-neoforge-26-1-2-pass5-ui.py
+          python3 ci/port-neoforge-26-1-2-pass5b-ui-polish.py
+          python3 ci/port-neoforge-26-1-2-pass6-final-compile.py
+          base64 --decode ci/neoforge26-v4-parity.patch.xz.b64 | xz -dc | patch -d project -p1 --batch --forward
+          sed -i 's/this\.getTags()/this.entityTags()/g; s/net\.minecraft\.world\.entity\.monster\.creeper\.Creeper/net.minecraft.world.entity.monster.Creeper/g' project/src/main/java/com/mcmoddev/golems/entity/GolemBase.java
+          base64 --decode ci/neoforge26-v4-final-eyes.patch.xz.b64 | xz -dc | patch -d project -p1 --batch --forward
+          python3 ci/port-neoforge-26-1-2-pass8-cleanup.py
+          python3 ci/port-neoforge-26-1-2-pass9-client-bootstrap.py
+          python3 ci/port-neoforge-26-1-2-pass10-registry-ids.py
+          python3 ci/port-neoforge-26-1-2-pass11-recipes.py
+          python3 ci/port-neoforge-26-1-2-pass12-baby-render-scale.py
+          ! grep -n 'ModHandler.addResources()' project/src/main/java/com/mcmoddev/golems/client/EGClientEvents.java
+          ! sed -n '/public static void register(IEventBus modEventBus)/,/^\t}/p' project/src/main/java/com/mcmoddev/golems/client/EGClientEvents.java | grep -q 'Minecraft.getInstance()'
+          grep -q 'AddClientReloadListenersEvent' project/src/main/java/com/mcmoddev/golems/client/EGClientEvents.java
+          test "$(grep -c '.setId(ResourceKey.create(Registries.ITEM' project/src/main/java/com/mcmoddev/golems/EGRegistry.java)" -ge 5
+          grep -q '.setId(ResourceKey.create(Registries.BLOCK' project/src/main/java/com/mcmoddev/golems/EGRegistry.java
+          grep -q 'Properties.ofFullCopy(copy).setId(id)' project/src/main/java/com/mcmoddev/golems/block/GlowBlock.java
+          grep -q 'Properties.ofFullCopy(Blocks.GLASS).setId(id)' project/src/main/java/com/mcmoddev/golems/block/PowerBlock.java
+          ! grep -R '"item"[[:space:]]*:' project/src/main/resources/data/golems/recipe
+          grep -q 'child.setBaby(true);' project/src/main/java/com/mcmoddev/golems/data/behavior/SplitBehavior.java
+          grep -q 'final float babyScale = state.ageScale;' project/src/main/java/com/mcmoddev/golems/client/entity/GolemRenderer.java
+          grep -q 'poseStack.scale(babyScale, babyScale, babyScale);' project/src/main/java/com/mcmoddev/golems/client/entity/GolemRenderer.java
+
+      - name: Full release build
+        id: build
+        continue-on-error: true
+        shell: bash
+        working-directory: project
+        run: |
+          set -o pipefail
+          gradle clean build --stacktrace --no-daemon --console=plain 2>&1 | tee ../build-neoforge-26.1.2.log
+
+      - name: Verify packaged JAR
+        id: verify
+        if: steps.build.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        working-directory: project
+        run: |
+          set -euo pipefail
+          JAR=$(find build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*sources*' ! -name '*javadoc*' | head -n1)
+          test -n "$JAR"
+          unzip -t "$JAR"
+          unzip -l "$JAR" | grep -q 'META-INF/neoforge.mods.toml'
+          unzip -l "$JAR" | grep -q 'com/mcmoddev/golems/entity/GolemBase.class'
+          unzip -l "$JAR" | grep -q 'com/mcmoddev/golems/client/entity/GolemRenderer.class'
+          unzip -l "$JAR" | grep -q 'com/mcmoddev/golems/client/entity/layer/GolemFinalEyesLayer.class'
+          unzip -l "$JAR" | grep -q 'com/mcmoddev/golems/client/EGClientEvents.class'
+          ! unzip -l "$JAR" | grep -q 'fabric.mod.json'
+          ! unzip -l "$JAR" | grep -q 'golems.mixins.json'
+          echo "Verified packaged JAR: $JAR"
+
+      - name: Dedicated server startup smoke test
+        id: server
+        if: steps.build.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        working-directory: project
+        run: |
+          set -euo pipefail
+          mkdir -p run/server
+          printf 'eula=true\n' > run/server/eula.txt
+          set +e
+          timeout --signal=TERM 120s gradle runServer --no-daemon --console=plain > ../server-neoforge-26.1.2.log 2>&1
+          status=$?
+          set -e
+          if [ "$status" -ne 0 ] && [ "$status" -ne 124 ]; then
+            cat ../server-neoforge-26.1.2.log
+            exit "$status"
+          fi
+          test -f run/server/logs/latest.log
+          grep -q 'Done (' run/server/logs/latest.log
+          ! grep -Eqi 'Exception in server tick loop|Mixin apply failed|InjectionError|InvalidInjectionException|MixinTransformerError|ModLoadingException|Failed to create mod instance|Block id not set|Item id not set' run/server/logs/latest.log
+          ! grep -Eqi "Couldn't parse data file 'golems:|DataResult.Error.*golems" run/server/logs/latest.log
+          echo 'Dedicated server reached normal startup with Extra Golems data resources parsed.'
+
+      - name: Client bootstrap and renderer startup smoke test
+        id: client
+        if: steps.build.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        working-directory: project
+        run: |
+          set -euo pipefail
+          rm -rf run/client
+          setsid env ALSOFT_DRIVERS=null LIBGL_ALWAYS_SOFTWARE=true xvfb-run -a gradle runClient --no-daemon --console=plain > ../client-neoforge-26.1.2.log 2>&1 &
+          pid=$!
+          ok=0
+          for i in $(seq 1 180); do
+            if grep -Eqi 'Failed to create mod instance|ModLoadingException|Block id not set|Item id not set|Cannot invoke .*Minecraft\.getResourceManager\(\).*Minecraft\.getInstance\(\).*null|Exception caught during firing event|Mixin apply failed|InjectionError|InvalidInjectionException|MixinTransformerError' ../client-neoforge-26.1.2.log 2>/dev/null; then
+              cat ../client-neoforge-26.1.2.log
+              kill -TERM -- -"$pid" 2>/dev/null || true
+              wait "$pid" 2>/dev/null || true
+              exit 1
+            fi
+            if [ -f run/client/logs/latest.log ]; then
+              if grep -Eqi 'Failed to create mod instance|ModLoadingException|Block id not set|Item id not set|Exception caught during firing event|Mixin apply failed|InjectionError|InvalidInjectionException|MixinTransformerError' run/client/logs/latest.log; then
+                cat run/client/logs/latest.log
+                kill -TERM -- -"$pid" 2>/dev/null || true
+                wait "$pid" 2>/dev/null || true
+                exit 1
+              fi
+              if grep -q 'minecraft:textures/atlas/blocks.png-atlas' run/client/logs/latest.log; then
+                sleep 12
+                kill -0 "$pid" 2>/dev/null && ok=1
+                break
+              fi
+            fi
+            kill -0 "$pid" 2>/dev/null || break
+            sleep 1
+          done
+          test "$ok" -eq 1
+          ! grep -Eqi 'Failed to create mod instance|ModLoadingException|Block id not set|Item id not set|Cannot invoke .*Minecraft\.getResourceManager\(\).*Minecraft\.getInstance\(\).*null|Exception caught during firing event|Mixin apply failed|InjectionError|InvalidInjectionException|MixinTransformerError' ../client-neoforge-26.1.2.log
+          ! grep -Eqi 'Failed to create mod instance|ModLoadingException|Block id not set|Item id not set|Exception caught during firing event|Mixin apply failed|InjectionError|InvalidInjectionException|MixinTransformerError' run/client/logs/latest.log
+          kill -TERM -- -"$pid" 2>/dev/null || true
+          wait "$pid" 2>/dev/null || true
+          echo 'Client passed bootstrap, registries, resource/model loading, and post-load soak without mod-loading exceptions.'
+
+      - name: Collect final release artifact and diagnostics
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifact
+          tar -czf artifact/Extra-Golems-Reborn-NeoForge-26.1.2-V4-Final-source.tar.gz -C project src build.gradle gradle.properties settings.gradle
+          if [ -d project/build/libs ]; then
+            JAR=$(find project/build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*sources*' ! -name '*javadoc*' | head -n1 || true)
+            if [ -n "$JAR" ]; then
+              cp "$JAR" artifact/Extra-Golems-Reborn-NeoForge-26.1.2-V4-Final.jar
+              unzip -t artifact/Extra-Golems-Reborn-NeoForge-26.1.2-V4-Final.jar
+              sha256sum artifact/Extra-Golems-Reborn-NeoForge-26.1.2-V4-Final.jar > artifact/SHA256SUMS.txt
+            fi
+          fi
+          cp build-neoforge-26.1.2.log artifact/ 2>/dev/null || true
+          cp server-neoforge-26.1.2.log artifact/ 2>/dev/null || true
+          cp client-neoforge-26.1.2.log artifact/ 2>/dev/null || true
+          [ -f project/run/server/logs/latest.log ] && cp project/run/server/logs/latest.log artifact/server-latest.log || true
+          [ -f project/run/client/logs/latest.log ] && cp project/run/client/logs/latest.log artifact/client-latest.log || true
+
+      - name: Upload final release artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: extra-golems-neoforge-26.1.2-V4-final
+          if-no-files-found: error
+          path: artifact/*
+
+      - name: Enforce all release gates
+        if: always()
+        shell: bash
+        run: |
+          test '${{ steps.build.outcome }}' = 'success'
+          test '${{ steps.verify.outcome }}' = 'success'
+          test '${{ steps.server.outcome }}' = 'success'
+          test '${{ steps.client.outcome }}' = 'success'
