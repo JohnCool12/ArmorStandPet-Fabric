@@ -1,4 +1,4 @@
-name: Build Extra Golems Fabric
+name: Build Extra Golems Strict Neutral
 
 on:
   pull_request:
@@ -49,19 +49,34 @@ jobs:
           patch -p1 --batch --forward < ../ci/eg-bedrock-provocation.patch
           patch -p1 --batch --forward < ../ci/eg-all-eyes-neutral.patch
           cp ../ci/GolemFinalEyesLayer.java src/main/java/com/mcmoddev/golems/client/entity/layer/GolemFinalEyesLayer.java
+          cd ..
+          python3 ci/apply-strict-neutral.py
+          cd project
 
           test -f build.gradle
           test -f src/main/resources/fabric.mod.json
           test -f src/main/resources/assets/golems/models/item/golem_spawn_egg.json
           test -f src/main/java/com/mcmoddev/golems/client/entity/layer/GolemFinalEyesLayer.java
           grep -q 'GolemFinalEyesLayer' src/main/java/com/mcmoddev/golems/client/entity/GolemRenderer.java
-          grep -q 'golem.setPlayerCreated(false);' src/main/java/com/mcmoddev/golems/block/GolemHeadBlock.java
+          grep -q 'golem.markConstructedNeutral();' src/main/java/com/mcmoddev/golems/block/GolemHeadBlock.java
+          ! grep -q 'golem.setPlayerCreated(false);' src/main/java/com/mcmoddev/golems/block/GolemHeadBlock.java
+          grep -q 'NEUTRAL_CONSTRUCTED_TAG' src/main/java/com/mcmoddev/golems/entity/GolemBase.java
+          grep -q 'configureConstructedNeutralTargeting' src/main/java/com/mcmoddev/golems/entity/GolemBase.java
+          grep -q 'maintainConstructedNeutralRetaliation' src/main/java/com/mcmoddev/golems/entity/GolemBase.java
+          grep -q 'new HurtByTargetGoal(this)' src/main/java/com/mcmoddev/golems/entity/GolemBase.java
+          grep -q 'entity instanceof Enemy && !(entity instanceof Creeper)' src/main/java/com/mcmoddev/golems/entity/GolemBase.java
+          grep -q 'this.setRemainingPersistentAngerTime(0);' src/main/java/com/mcmoddev/golems/entity/GolemBase.java
+          grep -q 'this.setLastHurtByMob(null);' src/main/java/com/mcmoddev/golems/entity/GolemBase.java
+          grep -q 'this.targetSelector.getAvailableGoals().clear();' src/main/java/com/mcmoddev/golems/entity/GolemBase.java
           grep -q 'this.setInvulnerable(false);' src/main/java/com/mcmoddev/golems/entity/GolemBase.java
           grep -q 'usesIronGolemSounds' src/main/java/com/mcmoddev/golems/entity/GolemBase.java
           grep -q 'Surface swimming AI' src/main/java/com/mcmoddev/golems/entity/GolemBase.java
           grep -q '"knockback_resistance": 1.0' src/main/resources/data/golems/golems/golem/diamond.json
           grep -q '"knockback_resistance": 1.0' src/main/resources/data/golems/golems/golem/emerald.json
-          grep -q 'this.setPersistentAngerTarget(player.getUUID());' src/main/java/com/mcmoddev/golems/entity/GolemBase.java
+          grep -q '"knockback_resistance": 1.0' src/main/resources/data/golems/golems/golem/sculk_catalyst.json
+          grep -q '"knockback_resistance": 1.0' src/main/resources/data/golems/golems/golem/ancient_debris.json
+          grep -q '"knockback_resistance": 1.0' src/main/resources/data/golems/golems/golem/obsidian.json
+          grep -q '"knockback_resistance": 1.0' src/main/resources/data/golems/golems/golem/crying_obsidian.json
 
       - name: Build
         working-directory: project
@@ -131,6 +146,6 @@ jobs:
       - name: Upload mod JAR
         uses: actions/upload-artifact@v4
         with:
-          name: extra-golems-reborn-fabric-1.21.1-all-eyes-neutral
+          name: extra-golems-reborn-fabric-1.21.1-strict-neutral
           path: artifact/*.jar
           if-no-files-found: error

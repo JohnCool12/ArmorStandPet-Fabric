@@ -1,4 +1,4 @@
-name: Build Extra Golems Fabric
+name: Build Extra Golems Hybrid Village Neutral
 
 on:
   pull_request:
@@ -49,19 +49,32 @@ jobs:
           patch -p1 --batch --forward < ../ci/eg-bedrock-provocation.patch
           patch -p1 --batch --forward < ../ci/eg-all-eyes-neutral.patch
           cp ../ci/GolemFinalEyesLayer.java src/main/java/com/mcmoddev/golems/client/entity/layer/GolemFinalEyesLayer.java
+          cd ..
+          python3 ci/apply-strict-neutral.py
+          python3 ci/apply-legacy-neutral-migration.py
+          python3 ci/apply-hybrid-village-neutral.py
+          cd project
 
           test -f build.gradle
           test -f src/main/resources/fabric.mod.json
-          test -f src/main/resources/assets/golems/models/item/golem_spawn_egg.json
           test -f src/main/java/com/mcmoddev/golems/client/entity/layer/GolemFinalEyesLayer.java
-          grep -q 'GolemFinalEyesLayer' src/main/java/com/mcmoddev/golems/client/entity/GolemRenderer.java
-          grep -q 'golem.setPlayerCreated(false);' src/main/java/com/mcmoddev/golems/block/GolemHeadBlock.java
+          grep -q 'golem.markConstructedNeutral();' src/main/java/com/mcmoddev/golems/block/GolemHeadBlock.java
+          grep -q 'isConstructedNeutralInVillage' src/main/java/com/mcmoddev/golems/entity/GolemBase.java
+          grep -q 'serverLevel.isVillage(this.blockPosition())' src/main/java/com/mcmoddev/golems/entity/GolemBase.java
+          grep -q 'configureConstructedVillageTargeting' src/main/java/com/mcmoddev/golems/entity/GolemBase.java
+          grep -q 'new DefendVillageTargetGoal(this)' src/main/java/com/mcmoddev/golems/entity/GolemBase.java
+          grep -q 'this::isAngryAt' src/main/java/com/mcmoddev/golems/entity/GolemBase.java
+          grep -q 'new ResetUniversalAngerTargetGoal' src/main/java/com/mcmoddev/golems/entity/GolemBase.java
+          grep -q 'this.setPlayerCreated(false);' src/main/java/com/mcmoddev/golems/entity/GolemBase.java
+          grep -q 'this.setPlayerCreated(true);' src/main/java/com/mcmoddev/golems/entity/GolemBase.java
+          grep -q 'configureConstructedNeutralTargeting' src/main/java/com/mcmoddev/golems/entity/GolemBase.java
+          grep -q 'legacyAttacker' src/main/java/com/mcmoddev/golems/entity/GolemBase.java
           grep -q 'this.setInvulnerable(false);' src/main/java/com/mcmoddev/golems/entity/GolemBase.java
           grep -q 'usesIronGolemSounds' src/main/java/com/mcmoddev/golems/entity/GolemBase.java
           grep -q 'Surface swimming AI' src/main/java/com/mcmoddev/golems/entity/GolemBase.java
-          grep -q '"knockback_resistance": 1.0' src/main/resources/data/golems/golems/golem/diamond.json
-          grep -q '"knockback_resistance": 1.0' src/main/resources/data/golems/golems/golem/emerald.json
-          grep -q 'this.setPersistentAngerTarget(player.getUUID());' src/main/java/com/mcmoddev/golems/entity/GolemBase.java
+          for f in diamond emerald sculk_catalyst ancient_debris obsidian crying_obsidian; do
+            grep -q '"knockback_resistance": 1.0' "src/main/resources/data/golems/golems/golem/$f.json"
+          done
 
       - name: Build
         working-directory: project
@@ -97,28 +110,19 @@ jobs:
           for i in $(seq 1 90); do
             if [ -f run/client/logs/latest.log ] && grep -q 'minecraft:textures/atlas/blocks.png-atlas' run/client/logs/latest.log; then
               sleep 10
-              if kill -0 "$pid" 2>/dev/null; then
-                success=1
-              fi
+              if kill -0 "$pid" 2>/dev/null; then success=1; fi
               break
             fi
-            if ! kill -0 "$pid" 2>/dev/null; then
-              break
-            fi
+            if ! kill -0 "$pid" 2>/dev/null; then break; fi
             sleep 1
           done
           cat ../client-smoke.log
-          if [ -f run/client/logs/latest.log ]; then
-            if grep -q 'Mixin apply for mod golems failed' run/client/logs/latest.log; then
-              success=0
-            fi
+          if [ -f run/client/logs/latest.log ] && grep -q 'Mixin apply for mod golems failed' run/client/logs/latest.log; then
+            success=0
           fi
           kill -TERM -- -"$pid" 2>/dev/null || true
           wait "$pid" 2>/dev/null || true
-          if [ "$success" -ne 1 ]; then
-            echo 'Fabric client did not remain alive after renderer/resource initialization.' >&2
-            exit 1
-          fi
+          if [ "$success" -ne 1 ]; then exit 1; fi
 
       - name: Collect production JAR
         shell: bash
@@ -131,6 +135,6 @@ jobs:
       - name: Upload mod JAR
         uses: actions/upload-artifact@v4
         with:
-          name: extra-golems-reborn-fabric-1.21.1-all-eyes-neutral
+          name: extra-golems-reborn-fabric-1.21.1-hybrid-village-neutral
           path: artifact/*.jar
           if-no-files-found: error
