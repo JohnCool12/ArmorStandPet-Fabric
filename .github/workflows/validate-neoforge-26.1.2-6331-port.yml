@@ -45,11 +45,11 @@ jobs:
           mkdir -p project artifact
           unzip -q /tmp/base-artifact/ArmorStandPet-NeoForge-26.1.2-uninterrupted-follow-source.zip -d project
           (cd project && patch --batch --forward -p1 < /tmp/port.patch)
-          (cd project && patch --batch --forward -p1 < ../ci/port6331/compile-fix-001-last-hurt-player.patch)
+          (cd project && patch --batch --forward -p1 < ../ci/port6331/compile-fix-001-last-hurt-player.patch)\n          (cd project && patch --batch --forward -p1 < ../ci/port6331/compile-fix-002-runtime-safe.patch)
 
           grep -q '^minecraft_version=26.1.2$' project/gradle.properties
           grep -q '^neo_version=26.1.2.95$' project/gradle.properties
-          grep -Fq 'mod_version=3.1.0+neoforge.26.1.2-fabric-6.33.1-parity' project/gradle.properties
+          grep -Fq 'mod_version=3.1.1+neoforge.26.1.2-fabric-6.33.1-parity-runtime-safe' project/gradle.properties
           grep -q 'JavaLanguageVersion.of(25)' project/build.gradle
           test -f project/src/main/resources/META-INF/neoforge.mods.toml
           if find project -name fabric.mod.json -print -quit | grep -q .; then exit 1; fi
@@ -89,27 +89,27 @@ jobs:
           set -euo pipefail
           jarfile="$(find project/build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*-sources.jar' ! -name '*-dev.jar' -print -quit)"
           test -n "$jarfile"
-          cp "$jarfile" artifact/ArmorStandPet-NeoForge-26.1.2.95-3.1.0-fabric-6.33.1-parity.jar
+          cp "$jarfile" artifact/ArmorStandPet-NeoForge-26.1.2.95-3.1.1-fabric-6.33.1-parity-runtime-safe.jar
 
-          unzip -t artifact/ArmorStandPet-NeoForge-26.1.2.95-3.1.0-fabric-6.33.1-parity.jar
-          unzip -p artifact/ArmorStandPet-NeoForge-26.1.2.95-3.1.0-fabric-6.33.1-parity.jar META-INF/neoforge.mods.toml | grep -q 'modId="armorstandpet"'
-          jar tf artifact/ArmorStandPet-NeoForge-26.1.2.95-3.1.0-fabric-6.33.1-parity.jar | grep -q 'io/github/kyzderp/armorstandpet/swim/AquaticRuntime.class'
-          jar tf artifact/ArmorStandPet-NeoForge-26.1.2.95-3.1.0-fabric-6.33.1-parity.jar | grep -q 'io/github/kyzderp/armorstandpet/normalcommands/TargetLockCommand.class'
-          jar tf artifact/ArmorStandPet-NeoForge-26.1.2.95-3.1.0-fabric-6.33.1-parity.jar | grep -q 'io/github/kyzderp/armorstandpet/combat/PetBowCombatRuntime.class'
-          jar tf artifact/ArmorStandPet-NeoForge-26.1.2.95-3.1.0-fabric-6.33.1-parity.jar | grep -q 'io/github/kyzderp/armorstandpet/combat/PetSpecialRangedCombatRuntime.class'
-          if jar tf artifact/ArmorStandPet-NeoForge-26.1.2.95-3.1.0-fabric-6.33.1-parity.jar | grep -q 'fabric.mod.json'; then exit 1; fi
+          unzip -t artifact/ArmorStandPet-NeoForge-26.1.2.95-3.1.1-fabric-6.33.1-parity-runtime-safe.jar
+          unzip -p artifact/ArmorStandPet-NeoForge-26.1.2.95-3.1.1-fabric-6.33.1-parity-runtime-safe.jar META-INF/neoforge.mods.toml | grep -q 'modId="armorstandpet"'
+          jar tf artifact/ArmorStandPet-NeoForge-26.1.2.95-3.1.1-fabric-6.33.1-parity-runtime-safe.jar | grep -q 'io/github/kyzderp/armorstandpet/swim/AquaticRuntime.class'
+          jar tf artifact/ArmorStandPet-NeoForge-26.1.2.95-3.1.1-fabric-6.33.1-parity-runtime-safe.jar | grep -q 'io/github/kyzderp/armorstandpet/normalcommands/TargetLockCommand.class'
+          jar tf artifact/ArmorStandPet-NeoForge-26.1.2.95-3.1.1-fabric-6.33.1-parity-runtime-safe.jar | grep -q 'io/github/kyzderp/armorstandpet/combat/PetBowCombatRuntime.class'
+          jar tf artifact/ArmorStandPet-NeoForge-26.1.2.95-3.1.1-fabric-6.33.1-parity-runtime-safe.jar | grep -q 'io/github/kyzderp/armorstandpet/combat/PetSpecialRangedCombatRuntime.class'
+          if jar tf artifact/ArmorStandPet-NeoForge-26.1.2.95-3.1.1-fabric-6.33.1-parity-runtime-safe.jar | grep -q 'fabric.mod.json'; then exit 1; fi\n          unzip -p artifact/ArmorStandPet-NeoForge-26.1.2.95-3.1.1-fabric-6.33.1-parity-runtime-safe.jar io/github/kyzderp/armorstandpet/combat/PetBowCombatRuntime.class | strings | grep -qv FabricLookRuntime\n          unzip -p artifact/ArmorStandPet-NeoForge-26.1.2.95-3.1.1-fabric-6.33.1-parity-runtime-safe.jar io/github/kyzderp/armorstandpet/combat/PetSpecialRangedCombatRuntime.class | strings | grep -qv FabricLookRuntime
 
-          cp /tmp/port.patch artifact/ArmorStandPet-NeoForge-26.1.2.95-3.1.0-fabric-6.33.1-parity.patch
+          cat /tmp/port.patch ../ci/port6331/compile-fix-001-last-hurt-player.patch ../ci/port6331/compile-fix-002-runtime-safe.patch > artifact/ArmorStandPet-NeoForge-26.1.2.95-3.1.1-fabric-6.33.1-parity-runtime-safe.patch
 
-          printf '%s\n'             'ArmorStandPet NeoForge 26.1.2.95 — Fabric 6.33.1 parity port'             '================================================================'             'Target: Minecraft 26.1.2 / NeoForge 26.1.2.95 / Java 25'             'Port version: 3.1.0+neoforge.26.1.2-fabric-6.33.1-parity'             ''             'Port base: exact previously validated NeoForge 26.1.2 source, with later NeoForge lifecycle/persistence/dimension/presentation fixes and Fabric 6.33.1 gameplay parity merged.'             ''             'Parity includes targetlock, swim/aquatic movement, surface buoyancy, shore fixes, bow/trident/potion ranged combat, Loyalty cleanup, unlimited pursuit, teleport behavior, independent health, ghost-aggro cleanup, and NeoForge-specific stability fixes.'             ''             'Validation: exact baseline and patch hashes verified; no Fabric loader/API refs; Java 25 NeoForge build succeeded; dedicated server reached Done; key parity classes present in production JAR.'             > artifact/VALIDATION.txt
+          printf '%s\n'             'ArmorStandPet NeoForge 26.1.2.95 — Fabric 6.33.1 parity port'             '================================================================'             'Target: Minecraft 26.1.2 / NeoForge 26.1.2.95 / Java 25'             'Port version: 3.1.1+neoforge.26.1.2-fabric-6.33.1-parity-runtime-safe'             ''             'Port base: exact previously validated NeoForge 26.1.2 source, with later NeoForge lifecycle/persistence/dimension/presentation fixes and Fabric 6.33.1 gameplay parity merged.'             ''             'Parity includes targetlock, swim/aquatic movement, surface buoyancy, shore fixes, bow/trident/potion ranged combat, Loyalty cleanup, unlimited pursuit, teleport behavior, independent health, ghost-aggro cleanup, and NeoForge-specific stability fixes.'             ''             'Validation: exact baseline and patch hashes verified; no Fabric loader/API refs; Java 25 NeoForge build succeeded; dedicated server reached Done; key parity classes present in production JAR.'             > artifact/VALIDATION.txt
 
           rm -rf project/.gradle project/build project/run
-          (cd project && zip -qr ../artifact/ArmorStandPet-NeoForge-26.1.2.95-3.1.0-fabric-6.33.1-parity-source.zip . -x '.git/*' '.github/*' '.gradle/*' 'build/*' 'run/*')
-          sha256sum             artifact/ArmorStandPet-NeoForge-26.1.2.95-3.1.0-fabric-6.33.1-parity.jar             artifact/ArmorStandPet-NeoForge-26.1.2.95-3.1.0-fabric-6.33.1-parity-source.zip             artifact/ArmorStandPet-NeoForge-26.1.2.95-3.1.0-fabric-6.33.1-parity.patch             artifact/VALIDATION.txt             artifact/server-smoke.log > artifact/SHA256SUMS.txt
+          (cd project && zip -qr ../artifact/ArmorStandPet-NeoForge-26.1.2.95-3.1.1-fabric-6.33.1-parity-runtime-safe-source.zip . -x '.git/*' '.github/*' '.gradle/*' 'build/*' 'run/*')
+          sha256sum             artifact/ArmorStandPet-NeoForge-26.1.2.95-3.1.1-fabric-6.33.1-parity-runtime-safe.jar             artifact/ArmorStandPet-NeoForge-26.1.2.95-3.1.1-fabric-6.33.1-parity-runtime-safe-source.zip             artifact/ArmorStandPet-NeoForge-26.1.2.95-3.1.1-fabric-6.33.1-parity-runtime-safe.patch             artifact/VALIDATION.txt             artifact/server-smoke.log > artifact/SHA256SUMS.txt
 
       - name: Upload validated port
         uses: actions/upload-artifact@v4
         with:
-          name: armorstandpet-neoforge-26.1.2-6331-parity
+          name: armorstandpet-neoforge-26.1.2-6331-parity-final
           path: artifact/
           if-no-files-found: error
