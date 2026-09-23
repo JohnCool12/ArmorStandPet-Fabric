@@ -1,0 +1,134 @@
+diff -ruN '--exclude=.gradle' '--exclude=build' '--exclude=run' success_src/NEOFORGE_6331_PARITY_RUNTIME_SAFE.md final_src/NEOFORGE_6331_PARITY_RUNTIME_SAFE.md
+--- success_src/NEOFORGE_6331_PARITY_RUNTIME_SAFE.md	1970-01-01 00:00:00.000000000 +0000
++++ final_src/NEOFORGE_6331_PARITY_RUNTIME_SAFE.md	2026-09-23 17:02:49.110029001 +0000
+@@ -0,0 +1,3 @@
++# NeoForge 26.1.2.95 Fabric 6.33.1 parity runtime-safe follow-up
++
++Based on the server-smoke-validated 3.1.0 parity port. This follow-up removes the last stale Fabric-only reflective owner-credit class reference from bow/trident/potion combat and adds official-name fallbacks to ghost-aggro cleanup fields. No movement, target-lock, swimming, rendering, persistence, dimension, or combat tuning is otherwise changed.
+diff -ruN '--exclude=.gradle' '--exclude=build' '--exclude=run' success_src/gradle.properties final_src/gradle.properties
+--- success_src/gradle.properties	2026-09-23 16:38:42.000000000 +0000
++++ final_src/gradle.properties	2026-09-23 17:02:49.109348898 +0000
+@@ -11,7 +11,7 @@
+ mod_id=armorstandpet
+ mod_name=ArmorStandPet
+ mod_license=All Rights Reserved
+-mod_version=3.1.0+neoforge.26.1.2-fabric-6.33.1-parity
++mod_version=3.1.1+neoforge.26.1.2-fabric-6.33.1-parity-runtime-safe
+ mod_group_id=io.github.kyzderp
+ mod_authors=Kyzeragon (original Bukkit plugin), NeoForge port
+ mod_description=Adopt an armor stand as a pet that follows you around, greets visitors, or just stands there being silly. NeoForge 26.1.2 port preserving the complete independent-health and uninterrupted-follow behavior set.
+diff -ruN '--exclude=.gradle' '--exclude=build' '--exclude=run' success_src/src/main/java/io/github/kyzderp/armorstandpet/combat/GhostAggroRelease.java final_src/src/main/java/io/github/kyzderp/armorstandpet/combat/GhostAggroRelease.java
+--- success_src/src/main/java/io/github/kyzderp/armorstandpet/combat/GhostAggroRelease.java	2026-09-23 16:38:42.000000000 +0000
++++ final_src/src/main/java/io/github/kyzderp/armorstandpet/combat/GhostAggroRelease.java	2026-09-23 17:02:49.109954289 +0000
+@@ -66,9 +66,9 @@
+             boolean matched = false;
+ 
+             // Core LivingEntity/Mob runtime references observed in the diagnostic.
+-            matched |= clearEntityField(killer, "field_6199", petId); // Mob.target
+-            matched |= clearEntityField(killer, "field_6274", petId); // lastHurtByMob
+-            matched |= clearEntityField(killer, "field_6236", petId); // lastHurtMob
++            matched |= clearEntityFieldAny(killer, petId, "field_6199", "target");
++            matched |= clearEntityFieldAny(killer, petId, "field_6274", "lastHurtByMob");
++            matched |= clearEntityFieldAny(killer, petId, "field_6236", "lastHurtMob");
+ 
+             // Some installed mixins add direct transient LivingEntity references
+             // (the diagnostic exposed one named be_lastAttacker).  Clear only direct
+@@ -83,9 +83,9 @@
+ 
+             // Neutral-mob persistent anger.  The diagnostic proved IronGolem.angryAt
+             // remains equal to the removed pet UUID for the entire stuck period.
+-            boolean angerCleared = clearUuidField(killer, "field_25367", petId); // IronGolem.angryAt
++            boolean angerCleared = clearUuidFieldAny(killer, petId, "field_25367", "persistentAngerTarget", "angryAt");
+             if (angerCleared) {
+-                setIntField(killer, "field_25366", 0); // IronGolem.angerTime
++                setIntFieldAny(killer, 0, "field_25366", "remainingPersistentAngerTime", "angerTime");
+                 matched = true;
+             }
+ 
+@@ -220,6 +220,32 @@
+         return changed;
+     }
+ 
++    private static boolean clearEntityFieldAny(Object obj, UUID petId, String... fields) {
++        for (String field : fields) if (clearEntityField(obj, field, petId)) return true;
++        return false;
++    }
++
++    private static boolean clearUuidFieldAny(Object obj, UUID petId, String... fields) {
++        for (String field : fields) if (clearUuidField(obj, field, petId)) return true;
++        return false;
++    }
++
++    private static void setIntFieldAny(Object obj, int value, String... fields) {
++        for (String field : fields) {
++            Field f = findField(obj == null ? null : obj.getClass(), field);
++            if (f == null) continue;
++            try { f.setAccessible(true); f.setInt(obj, value); return; } catch (Throwable ignored) {}
++        }
++    }
++
++    private static Field findFieldAny(Class<?> c, String... names) {
++        for (String name : names) {
++            Field f = findField(c, name);
++            if (f != null) return f;
++        }
++        return null;
++    }
++
+     private static boolean clearEntityField(Object obj, String field, UUID petId) {
+         Field f = findField(obj == null ? null : obj.getClass(), field);
+         if (f == null) return false;
+@@ -245,7 +271,7 @@
+     }
+ 
+     private static boolean clearDamageSourceIfPet(Object living, UUID petId) {
+-        Field f = findField(living == null ? null : living.getClass(), "field_6276");
++        Field f = findFieldAny(living == null ? null : living.getClass(), "field_6276", "lastDamageSource");
+         if (f == null) return false;
+         try {
+             f.setAccessible(true);
+diff -ruN '--exclude=.gradle' '--exclude=build' '--exclude=run' success_src/src/main/java/io/github/kyzderp/armorstandpet/combat/OwnerAttackCombatController.java final_src/src/main/java/io/github/kyzderp/armorstandpet/combat/OwnerAttackCombatController.java
+--- success_src/src/main/java/io/github/kyzderp/armorstandpet/combat/OwnerAttackCombatController.java	2026-09-23 16:38:42.000000000 +0000
++++ final_src/src/main/java/io/github/kyzderp/armorstandpet/combat/OwnerAttackCombatController.java	2026-09-23 17:02:49.109532975 +0000
+@@ -75,6 +75,17 @@
+         AquaticRuntime.markCombat(pet, target);
+     }
+ 
++    /** Shared ranged-projectile kill-credit bridge. */
++    public static void creditOwnerKill(Object petObject, Object targetObject)
++    {
++        if (!(petObject instanceof Pet pet) || !(targetObject instanceof Mob target)) return;
++        PetArmorStandEntity stand = pet.getStand();
++        if (stand == null || stand.isRemoved()) return;
++        ServerLevel level = stand.serverLevel();
++        ServerPlayer creditedOwner = level.getServer().getPlayerList().getPlayerByName(pet.getOwner());
++        if (creditedOwner != null) target.setLastHurtByPlayer(creditedOwner, 100);
++    }
++
+     public static void disable(Pet pet)
+     {
+         if (pet == null) return;
+diff -ruN '--exclude=.gradle' '--exclude=build' '--exclude=run' success_src/src/main/java/io/github/kyzderp/armorstandpet/combat/PetBowCombatRuntime.java final_src/src/main/java/io/github/kyzderp/armorstandpet/combat/PetBowCombatRuntime.java
+--- success_src/src/main/java/io/github/kyzderp/armorstandpet/combat/PetBowCombatRuntime.java	2026-09-23 16:38:42.000000000 +0000
++++ final_src/src/main/java/io/github/kyzderp/armorstandpet/combat/PetBowCombatRuntime.java	2026-09-23 17:02:49.109714999 +0000
+@@ -245,7 +245,7 @@
+             // Keep player-kill attribution fresh before launching the projectile,
+             // matching the existing melee XP behavior.
+             try {
+-                invokeStaticByName("io.github.kyzderp.armorstandpet.look.FabricLookRuntime",
++                invokeStaticByName("io.github.kyzderp.armorstandpet.combat.OwnerAttackCombatController",
+                         "creditOwnerKill", pet, target);
+             } catch (Throwable ignored) {}
+ 
+diff -ruN '--exclude=.gradle' '--exclude=build' '--exclude=run' success_src/src/main/java/io/github/kyzderp/armorstandpet/combat/PetSpecialRangedCombatRuntime.java final_src/src/main/java/io/github/kyzderp/armorstandpet/combat/PetSpecialRangedCombatRuntime.java
+--- success_src/src/main/java/io/github/kyzderp/armorstandpet/combat/PetSpecialRangedCombatRuntime.java	2026-09-23 16:38:42.000000000 +0000
++++ final_src/src/main/java/io/github/kyzderp/armorstandpet/combat/PetSpecialRangedCombatRuntime.java	2026-09-23 17:02:49.109827729 +0000
+@@ -392,7 +392,7 @@
+ 
+     private static void creditOwner(Object pet, Object target) {
+         try {
+-            invokeStaticByName("io.github.kyzderp.armorstandpet.look.FabricLookRuntime",
++            invokeStaticByName("io.github.kyzderp.armorstandpet.combat.OwnerAttackCombatController",
+                     "creditOwnerKill", pet, target);
+         } catch (Throwable ignored) {}
+     }
