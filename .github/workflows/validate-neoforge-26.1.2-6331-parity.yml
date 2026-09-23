@@ -1,0 +1,162 @@
+name: Validate ArmorStandPet NeoForge 26.1.2 6.33.1 parity
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+
+      - name: Download exact validated NeoForge 1.21.1 baseline
+        uses: actions/download-artifact@v4
+        with:
+          name: armorstandpet-neoforge-1.21.1-uninterrupted-follow
+          path: /tmp/base-artifact
+          run-id: 30962742017
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Reconstruct NeoForge 26.1.2 parity candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo '22c4221bc3a220f0f357f8c0e721912738ede9c2ed733235618372d713e0b370  /tmp/base-artifact/ArmorStandPet-NeoForge-1.21.1-uninterrupted-follow-source.zip' | sha256sum --check
+          rm -rf baseline project artifact
+          mkdir baseline project artifact
+          unzip -q /tmp/base-artifact/ArmorStandPet-NeoForge-1.21.1-uninterrupted-follow-source.zip -d baseline
+          cp -a baseline/. project/
+
+          cat ci/neoforge6331-port.patch.xz.b64.part-* | base64 --decode > /tmp/neoforge6331-port.patch.xz
+          echo 'fe01befa9720e4f5d62a4920789f61649c6a16d7b8468426795ac7f433556083  /tmp/neoforge6331-port.patch.xz' | sha256sum --check
+          xz --decompress --stdout /tmp/neoforge6331-port.patch.xz > /tmp/neoforge6331-port.patch
+          (cd project && patch --batch --forward -p1 < /tmp/neoforge6331-port.patch)
+
+          grep -q '^minecraft_version=26.1.2$' project/gradle.properties
+          grep -q '^neo_version=26.1.2.95$' project/gradle.properties
+          grep -q '^mod_version=3.1.0+neoforge.26.1.2-fabric-6.33.1-parity$' project/gradle.properties
+          grep -q 'JavaLanguageVersion.of(25)' project/build.gradle
+          ! grep -R --line-number -E 'net\.fabricmc|fabric\.api|fabric\.mod\.json|fabric-loom' project/src project/build.gradle project/settings.gradle project/gradle.properties
+
+          cp /tmp/neoforge6331-port.patch artifact/ArmorStandPet-NeoForge-26.1.2-6.33.1-parity.patch
+
+      - name: Build production NeoForge JAR
+        working-directory: project
+        run: ./gradlew clean build --stacktrace --no-daemon --console=plain
+
+      - name: Dedicated-server smoke test
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p project/run
+          printf 'eula=true\n' > project/run/eula.txt
+          printf 'online-mode=false\nserver-port=25591\n' > project/run/server.properties
+          set +e
+          (cd project && (sleep 100; echo stop) | timeout 420s ./gradlew runServer --no-daemon --console=plain) > artifact/ArmorStandPet-NeoForge-26.1.2-6.33.1-server-smoke.log 2>&1
+          status=$?
+          set -e
+          cat artifact/ArmorStandPet-NeoForge-26.1.2-6.33.1-server-smoke.log
+          grep -q 'Done (' artifact/ArmorStandPet-NeoForge-26.1.2-6.33.1-server-smoke.log
+          ! grep -q 'Failed to complete lifecycle event' artifact/ArmorStandPet-NeoForge-26.1.2-6.33.1-server-smoke.log
+          ! grep -q 'Exception caught during firing event' artifact/ArmorStandPet-NeoForge-26.1.2-6.33.1-server-smoke.log
+          ! grep -Eiq '(^|\]) *(ERROR|FATAL) ' artifact/ArmorStandPet-NeoForge-26.1.2-6.33.1-server-smoke.log
+          if [ "$status" -ne 0 ] && [ "$status" -ne 124 ]; then exit "$status"; fi
+
+      - name: Inspect and package artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          jar="$(find project/build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*-sources.jar' ! -name '*-dev.jar' -print -quit)"
+          test -n "$jar"
+          cp "$jar" artifact/ArmorStandPet-NeoForge-26.1.2.95-6.33.1-parity.jar
+
+          unzip -t artifact/ArmorStandPet-NeoForge-26.1.2.95-6.33.1-parity.jar
+          unzip -p artifact/ArmorStandPet-NeoForge-26.1.2.95-6.33.1-parity.jar META-INF/neoforge.mods.toml | grep -q 'modId="armorstandpet"'
+          ! jar tf artifact/ArmorStandPet-NeoForge-26.1.2.95-6.33.1-parity.jar | grep -q 'fabric.mod.json'
+
+          for c in \
+            io/github/kyzderp/armorstandpet/combat/OwnerAttackCombatController.class \
+            io/github/kyzderp/armorstandpet/combat/PetBowCombatRuntime.class \
+            io/github/kyzderp/armorstandpet/combat/PetSpecialRangedCombatRuntime.class \
+            io/github/kyzderp/armorstandpet/swim/AquaticRuntime.class \
+            io/github/kyzderp/armorstandpet/swim/ShoreExitRuntime.class \
+            io/github/kyzderp/armorstandpet/normalcommands/TargetLockCommand.class \
+            io/github/kyzderp/armorstandpet/listeners/PetPresentationFix.class \
+            io/github/kyzderp/armorstandpet/listeners/PetDimensionStayFix.class
+          do
+            jar tf artifact/ArmorStandPet-NeoForge-26.1.2.95-6.33.1-parity.jar | grep -q "$c"
+          done
+
+          cat > artifact/VALIDATION.txt <<'TXT'
+ArmorStandPet NeoForge 26.1.2.95 — Fabric 6.33.1 gameplay parity port
+=====================================================================
+
+Baseline:
+- validated NeoForge 1.21.1 uninterrupted-follow source
+- migration incorporates the validated NeoForge 26.1.2 ABI/lifecycle fixes through 3.0.15
+- gameplay target is Fabric 1.21.1 build 2.1.7.6.3.6.33.1-targetlock
+
+Target:
+- Minecraft / NeoForge 26.1.2.95
+- Java 25
+- Mod ID armorstandpet
+
+Ported gameplay:
+- /aspet targetlock on|off, OFF by default, persisted per pet
+- owner-directed melee target lock behavior
+- bow/trident/splash-potion ranged combat and ammo modes
+- combat movement and unlimited pursuit
+- owner XP kill attribution
+- /aspet swim and aquatic combat/follow
+- pet-driven surface swimming
+- surface buoyancy/bobbing profile from Fabric 6.33
+- shore transition helpers
+- land-parity aquatic follow handoff
+- bounded A* / movement fixes
+- look modes
+
+NeoForge-specific behavior retained:
+- safe dimension transfer
+- universal sitting dimension-stay
+- universal post-load/client presentation synchronization
+- persistent pet chunk tickets
+- ghost-safe persistence
+- ditch-release behavior
+- NeoForge 26.1.2 runtime ABI corrections
+
+Validation gates:
+- exact NeoForge 1.21.1 baseline checksum verified
+- deterministic full migration patch checksum verified
+- no active Fabric Loader/API production references
+- Java 25 NeoForge production build succeeded
+- dedicated NeoForge server reached Done
+- no ERROR/FATAL lifecycle/event failure in smoke test
+- expected targetlock/combat/swim and NeoForge lifecycle classes found in final JAR
+TXT
+
+          rm -rf project/.gradle project/build project/run
+          (cd project && zip -qr ../artifact/ArmorStandPet-NeoForge-26.1.2.95-6.33.1-parity-source.zip . -x '.git/*' '.github/*' '.gradle/*' 'build/*' 'run/*')
+          sha256sum artifact/ArmorStandPet-NeoForge-26.1.2.95-6.33.1-parity.jar \
+            artifact/ArmorStandPet-NeoForge-26.1.2.95-6.33.1-parity-source.zip \
+            artifact/ArmorStandPet-NeoForge-26.1.2-6.33.1-parity.patch \
+            artifact/ArmorStandPet-NeoForge-26.1.2-6.33.1-server-smoke.log \
+            artifact/VALIDATION.txt > artifact/SHA256SUMS.txt
+
+      - name: Upload validated parity build
+        uses: actions/upload-artifact@v4
+        with:
+          name: armorstandpet-neoforge-26.1.2-6331-parity
+          path: artifact/
+          if-no-files-found: error
