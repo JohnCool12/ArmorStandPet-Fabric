@@ -1,0 +1,11 @@
+--- a/src/main/java/io/github/kyzderp/armorstandpet/combat/OwnerAttackCombatController.java
++++ b/src/main/java/io/github/kyzderp/armorstandpet/combat/OwnerAttackCombatController.java
+@@ -176,7 +176,7 @@
+                 attackDamage = EnchantmentHelper.modifyDamage(level, weapon, target, damageSource, attackDamage);
+ 
+             ServerPlayer creditedOwner = level.getServer().getPlayerList().getPlayerByName(pet.getOwner());
+-            if (creditedOwner != null) target.setLastHurtByPlayer(creditedOwner);
++            if (creditedOwner != null) target.setLastHurtByPlayer(creditedOwner, 100);
+ 
+             boolean damaged = target.hurtServer(level, damageSource, attackDamage);
+             if (damaged && !weapon.isEmpty())
