@@ -2,7 +2,8 @@ name: Validate ArmorStandPet 6.33.1 NeoForge 26.1.2 Port
 
 on:
   push:
-    branches: [chatgpt/neoforge-26.1.2-6331-port-build2]
+    branches:
+      - chatgpt/neoforge-26.1.2-6331-port-build2
   workflow_dispatch:
 
 permissions:
@@ -50,8 +51,8 @@ jobs:
           grep -Fq 'mod_version=3.1.0+neoforge.26.1.2-fabric-6.33.1-parity' project/gradle.properties
           grep -q 'JavaLanguageVersion.of(25)' project/build.gradle
           test -f project/src/main/resources/META-INF/neoforge.mods.toml
-          ! find project -name fabric.mod.json -print -quit | grep -q .
-          ! grep -R --line-number -E 'net\.fabricmc|fabric-loom' project/src project/build.gradle project/settings.gradle project/gradle.properties
+          if find project -name fabric.mod.json -print -quit | grep -q .; then exit 1; fi
+          if grep -R --line-number -E 'net\.fabricmc|fabric-loom' project/src project/build.gradle project/settings.gradle project/gradle.properties; then exit 1; fi
 
           grep -R -q 'targetlock' project/src/main/java/io/github/kyzderp/armorstandpet
           grep -R -q 'SwimCommand' project/src/main/java/io/github/kyzderp/armorstandpet
@@ -76,9 +77,9 @@ jobs:
           set -e
           cat artifact/server-smoke.log
           grep -q 'Done (' artifact/server-smoke.log
-          ! grep -q 'Failed to complete lifecycle event' artifact/server-smoke.log
-          ! grep -q 'Exception caught during firing event' artifact/server-smoke.log
-          ! grep -Eiq '(^|\]) *(ERROR|FATAL) ' artifact/server-smoke.log
+          if grep -q 'Failed to complete lifecycle event' artifact/server-smoke.log; then exit 1; fi
+          if grep -q 'Exception caught during firing event' artifact/server-smoke.log; then exit 1; fi
+          if grep -Eiq '(^|\]) *(ERROR|FATAL) ' artifact/server-smoke.log; then exit 1; fi
           if [ "$status" -ne 0 ] && [ "$status" -ne 124 ]; then exit "$status"; fi
 
       - name: Package validated port
@@ -95,46 +96,11 @@ jobs:
           jar tf artifact/ArmorStandPet-NeoForge-26.1.2.95-3.1.0-fabric-6.33.1-parity.jar | grep -q 'io/github/kyzderp/armorstandpet/normalcommands/TargetLockCommand.class'
           jar tf artifact/ArmorStandPet-NeoForge-26.1.2.95-3.1.0-fabric-6.33.1-parity.jar | grep -q 'io/github/kyzderp/armorstandpet/combat/PetBowCombatRuntime.class'
           jar tf artifact/ArmorStandPet-NeoForge-26.1.2.95-3.1.0-fabric-6.33.1-parity.jar | grep -q 'io/github/kyzderp/armorstandpet/combat/PetSpecialRangedCombatRuntime.class'
-          ! jar tf artifact/ArmorStandPet-NeoForge-26.1.2.95-3.1.0-fabric-6.33.1-parity.jar | grep -q 'fabric.mod.json'
+          if jar tf artifact/ArmorStandPet-NeoForge-26.1.2.95-3.1.0-fabric-6.33.1-parity.jar | grep -q 'fabric.mod.json'; then exit 1; fi
 
           cp /tmp/port.patch artifact/ArmorStandPet-NeoForge-26.1.2.95-3.1.0-fabric-6.33.1-parity.patch
 
-          cat > artifact/VALIDATION.txt <<'TXT'
-ArmorStandPet NeoForge 26.1.2.95 — Fabric 6.33.1 parity port
-==============================================================
-Target: Minecraft 26.1.2 / NeoForge 26.1.2.95 / Java 25
-Port version: 3.1.0+neoforge.26.1.2-fabric-6.33.1-parity
-
-Port base:
-- exact previously validated NeoForge 26.1.2 uninterrupted-follow source artifact
-- later NeoForge lifecycle, persistence, dimension, ditch, chunk, and presentation/ABI fixes merged
-- Fabric 6.33.1 gameplay features ported into that NeoForge architecture
-
-Feature parity carried forward:
-- independent pet health / death / healing
-- smooth movement and bounded pathfinding improvements
-- owner-directed melee combat and ghost-aggro cleanup
-- bow combat, tipped/spectral arrow support and ranged repositioning
-- trident and splash-potion combat behavior
-- Loyalty cleanup behavior
-- unlimited combat pursuit behavior
-- /aspet swim on|off and custom aquatic movement
-- surface buoyancy/bobbing from the 6.33 line
-- shore transition fixes
-- /aspet teleport behavior
-- /aspet targetlock on|off, OFF by default and persisted per pet
-- target lock holds one living target until death/removal
-- NeoForge-specific persistence, chunk, dimension and presentation fixes retained
-
-Validation gates:
-- exact baseline source SHA-256 verified
-- exact parity patch SHA-256 verified
-- no Fabric loader/API production references
-- full Java 25 NeoForge production compilation succeeded
-- dedicated NeoForge server reached Done
-- no ERROR/FATAL lifecycle/event failure in smoke log
-- production JAR metadata and key parity classes inspected
-TXT
+          printf '%s\n'             'ArmorStandPet NeoForge 26.1.2.95 — Fabric 6.33.1 parity port'             '================================================================'             'Target: Minecraft 26.1.2 / NeoForge 26.1.2.95 / Java 25'             'Port version: 3.1.0+neoforge.26.1.2-fabric-6.33.1-parity'             ''             'Port base: exact previously validated NeoForge 26.1.2 source, with later NeoForge lifecycle/persistence/dimension/presentation fixes and Fabric 6.33.1 gameplay parity merged.'             ''             'Parity includes targetlock, swim/aquatic movement, surface buoyancy, shore fixes, bow/trident/potion ranged combat, Loyalty cleanup, unlimited pursuit, teleport behavior, independent health, ghost-aggro cleanup, and NeoForge-specific stability fixes.'             ''             'Validation: exact baseline and patch hashes verified; no Fabric loader/API refs; Java 25 NeoForge build succeeded; dedicated server reached Done; key parity classes present in production JAR.'             > artifact/VALIDATION.txt
 
           rm -rf project/.gradle project/build project/run
           (cd project && zip -qr ../artifact/ArmorStandPet-NeoForge-26.1.2.95-3.1.0-fabric-6.33.1-parity-source.zip . -x '.git/*' '.github/*' '.gradle/*' 'build/*' 'run/*')
