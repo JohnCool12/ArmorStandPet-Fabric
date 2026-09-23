@@ -1,0 +1,1 @@
+Fresh validation PR after simplifying the NeoForge parity workflow.
