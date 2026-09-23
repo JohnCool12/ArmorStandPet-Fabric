@@ -1,0 +1,115 @@
+name: Build ArmorStandPet NeoForge 26.1.2 6.33.1 parity
+
+on:
+  push:
+    branches:
+      - chatgpt/neoforge-26.1.2-6331-port-build2
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+
+      - name: Download validated NeoForge 26.1.2 baseline
+        uses: actions/download-artifact@v4
+        with:
+          name: armorstandpet-neoforge-26.1.2-uninterrupted-follow-clean
+          path: /tmp/base-artifact
+          run-id: 34103115504
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Reconstruct 6.33.1 parity candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo 'f74690679b3b6fe763851e6c2502f5706803facb4a403d9a73e56eb18eab5c19  /tmp/base-artifact/ArmorStandPet-NeoForge-26.1.2-uninterrupted-follow-source.zip' | sha256sum --check
+          rm -rf project artifact
+          mkdir project artifact
+          unzip -q /tmp/base-artifact/ArmorStandPet-NeoForge-26.1.2-uninterrupted-follow-source.zip -d project
+          base64 --decode ci/armorstandpet-neoforge-26.1.2-6331-prod.patch.xz.b64 > /tmp/6331.patch.xz
+          echo '4ca66efebdc38d92cd07abbe47e10415db7e8f86adf61c9557251522ef245c57  /tmp/6331.patch.xz' | sha256sum --check
+          xz -dc /tmp/6331.patch.xz > /tmp/6331.patch
+          (cd project && patch --batch -p1 < /tmp/6331.patch)
+          cp /tmp/6331.patch artifact/ArmorStandPet-NeoForge-26.1.2.95-6.33.1-parity.patch
+          grep -q '^minecraft_version=26.1.2$' project/gradle.properties
+          grep -q '^neo_version=26.1.2.95$' project/gradle.properties
+          grep -q '^mod_version=3.1.0+neoforge.26.1.2-fabric-6.33.1-parity$' project/gradle.properties
+          grep -q 'JavaLanguageVersion.of(25)' project/build.gradle
+          ! grep -R --line-number 'net\.fabricmc\|fabric\.mod\.json\|fabric-loom' project/src project/build.gradle project/settings.gradle project/gradle.properties
+
+      - name: Build production JAR
+        working-directory: project
+        run: ./gradlew clean build --stacktrace --no-daemon --console=plain
+
+      - name: Dedicated-server smoke test
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p project/run
+          printf 'eula=true\n' > project/run/eula.txt
+          printf 'online-mode=false\nserver-port=25593\n' > project/run/server.properties
+          set +e
+          (cd project && (sleep 90; echo stop) | timeout 360s ./gradlew runServer --no-daemon --console=plain) > artifact/server-smoke.log 2>&1
+          status=$?
+          set -e
+          cat artifact/server-smoke.log
+          grep -q 'Done (' artifact/server-smoke.log
+          ! grep -q 'Failed to complete lifecycle event' artifact/server-smoke.log
+          ! grep -q 'Exception caught during firing event' artifact/server-smoke.log
+          ! grep -Eiq '(^|\]) *(ERROR|FATAL) ' artifact/server-smoke.log
+          if [ "$status" -ne 0 ] && [ "$status" -ne 124 ]; then exit "$status"; fi
+
+      - name: Package validated port
+        shell: bash
+        run: |
+          set -euo pipefail
+          jar="$(find project/build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*-sources.jar' ! -name '*-dev.jar' -print -quit)"
+          test -n "$jar"
+          cp "$jar" artifact/ArmorStandPet-NeoForge-26.1.2.95-6.33.1-parity-targetlock-swim.jar
+          unzip -t artifact/ArmorStandPet-NeoForge-26.1.2.95-6.33.1-parity-targetlock-swim.jar
+          unzip -p artifact/ArmorStandPet-NeoForge-26.1.2.95-6.33.1-parity-targetlock-swim.jar META-INF/neoforge.mods.toml | grep -q 'modId="armorstandpet"'
+          jar tf artifact/ArmorStandPet-NeoForge-26.1.2.95-6.33.1-parity-targetlock-swim.jar | grep -q 'io/github/kyzderp/armorstandpet/swim/AquaticRuntime.class'
+          jar tf artifact/ArmorStandPet-NeoForge-26.1.2.95-6.33.1-parity-targetlock-swim.jar | grep -q 'io/github/kyzderp/armorstandpet/combat/PetBowCombatRuntime.class'
+          jar tf artifact/ArmorStandPet-NeoForge-26.1.2.95-6.33.1-parity-targetlock-swim.jar | grep -q 'io/github/kyzderp/armorstandpet/combat/PetSpecialRangedCombatRuntime.class'
+          jar tf artifact/ArmorStandPet-NeoForge-26.1.2.95-6.33.1-parity-targetlock-swim.jar | grep -q 'io/github/kyzderp/armorstandpet/normalcommands/TargetLockCommand.class'
+          ! jar tf artifact/ArmorStandPet-NeoForge-26.1.2.95-6.33.1-parity-targetlock-swim.jar | grep -q 'fabric.mod.json'
+          cat > artifact/VALIDATION.txt <<'TXT'
+ArmorStandPet NeoForge 26.1.2.95 - Fabric 6.33.1 gameplay parity port
+====================================================================
+Target: Minecraft 26.1.2 / NeoForge 26.1.2.95 / Java 25
+Source gameplay baseline: Fabric 1.21.1 2.1.7.6.3.6.33.1-targetlock
+NeoForge lifecycle baseline: validated 26.1.2 uninterrupted-follow branch plus 3.0.x lifecycle/state fixes included in the applied parity patch.
+
+Validation gates:
+- exact validated NeoForge source baseline checksum verified
+- 6.33.1 parity patch applied cleanly
+- no Fabric API/loader production references
+- Java 25 production compile succeeded
+- dedicated NeoForge server reached Done
+- no ERROR/FATAL lifecycle/event failure in smoke log
+- JAR contains swim, bow, trident/potion and target-lock runtime classes
+- NeoForge metadata present; fabric.mod.json absent
+
+Ported behavior includes target lock, owner-directed melee/ranged combat, bow/trident/splash-potion logic, unlimited combat pursuit, aquatic movement and pet-driven surface buoyancy, swim command, safe teleport command, XP owner attribution, and ghost-aggro cleanup while retaining NeoForge lifecycle/presentation/persistence fixes.
+TXT
+          rm -rf project/.gradle project/build project/run
+          (cd project && zip -qr ../artifact/ArmorStandPet-NeoForge-26.1.2.95-6.33.1-parity-targetlock-swim-source.zip . -x '.git/*' '.github/*' '.gradle/*' 'build/*' 'run/*')
+          sha256sum artifact/ArmorStandPet-NeoForge-26.1.2.95-6.33.1-parity-targetlock-swim.jar artifact/ArmorStandPet-NeoForge-26.1.2.95-6.33.1-parity-targetlock-swim-source.zip artifact/ArmorStandPet-NeoForge-26.1.2.95-6.33.1-parity.patch artifact/server-smoke.log artifact/VALIDATION.txt > artifact/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: armorstandpet-neoforge-26.1.2.95-6331-parity
+          path: artifact/
+          if-no-files-found: error
