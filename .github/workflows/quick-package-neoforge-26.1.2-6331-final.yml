@@ -1,0 +1,75 @@
+name: Quick package ArmorStandPet NeoForge 26.1.2 6.33.1 final
+
+on:
+  push:
+    branches:
+      - chatgpt/neoforge-26.1.2-6331-port-build2
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+
+      - name: Download server-validated parity source
+        uses: actions/download-artifact@v4
+        with:
+          name: armorstandpet-neoforge-26.1.2-6331-parity
+          path: /tmp/validated
+          run-id: 35890156568
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Apply runtime-safe follow-up
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir project artifact
+          unzip -q /tmp/validated/ArmorStandPet-NeoForge-26.1.2.95-3.1.0-fabric-6.33.1-parity-source.zip -d project
+          (cd project && patch --batch -p1 < ../ci/port6331/compile-fix-002-runtime-safe.patch)
+          grep -q '^mod_version=3.1.1+neoforge.26.1.2-fabric-6.33.1-parity-runtime-safe$' project/gradle.properties
+          ! grep -R --line-number 'FabricLookRuntime' project/src/main/java
+
+      - name: Build Java 25 NeoForge JAR
+        working-directory: project
+        run: ./gradlew clean build --stacktrace --no-daemon --console=plain
+
+      - name: Package
+        shell: bash
+        run: |
+          set -euo pipefail
+          jarfile="$(find project/build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*-sources.jar' ! -name '*-dev.jar' -print -quit)"
+          cp "$jarfile" artifact/ArmorStandPet-NeoForge-26.1.2.95-6.33.1-targetlock-parity.jar
+          unzip -t artifact/ArmorStandPet-NeoForge-26.1.2.95-6.33.1-targetlock-parity.jar
+          jar tf artifact/ArmorStandPet-NeoForge-26.1.2.95-6.33.1-targetlock-parity.jar | grep -q 'io/github/kyzderp/armorstandpet/normalcommands/TargetLockCommand.class'
+          jar tf artifact/ArmorStandPet-NeoForge-26.1.2.95-6.33.1-targetlock-parity.jar | grep -q 'io/github/kyzderp/armorstandpet/swim/AquaticRuntime.class'
+          if unzip -p artifact/ArmorStandPet-NeoForge-26.1.2.95-6.33.1-targetlock-parity.jar io/github/kyzderp/armorstandpet/combat/PetBowCombatRuntime.class | strings | grep -q FabricLookRuntime; then exit 1; fi
+          if unzip -p artifact/ArmorStandPet-NeoForge-26.1.2.95-6.33.1-targetlock-parity.jar io/github/kyzderp/armorstandpet/combat/PetSpecialRangedCombatRuntime.class | strings | grep -q FabricLookRuntime; then exit 1; fi
+          cp ci/port6331/compile-fix-002-runtime-safe.patch artifact/runtime-safe-followup.patch
+          rm -rf project/.gradle project/build project/run
+          (cd project && zip -qr ../artifact/ArmorStandPet-NeoForge-26.1.2.95-6.33.1-targetlock-parity-source.zip .)
+          cat > artifact/VALIDATION.txt <<'TXT'
+ArmorStandPet NeoForge 26.1.2.95 — Fabric 6.33.1 target-lock parity port
+=======================================================================
+Java 25 production build: PASS
+Base 3.1.0 parity port dedicated-server smoke: PASS (server reached Done)
+3.1.1 runtime-safe follow-up: Java 25 rebuild PASS
+Stale FabricLookRuntime ranged owner-credit reference: removed
+Targetlock/swim/ranged classes: present
+Target: Minecraft 26.1.2 / NeoForge 26.1.2.95
+TXT
+          sha256sum artifact/ArmorStandPet-NeoForge-26.1.2.95-6.33.1-targetlock-parity.jar artifact/ArmorStandPet-NeoForge-26.1.2.95-6.33.1-targetlock-parity-source.zip artifact/runtime-safe-followup.patch artifact/VALIDATION.txt > artifact/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: armorstandpet-neoforge-26.1.2.95-6331-quick-final
+          path: artifact/
+          if-no-files-found: error
