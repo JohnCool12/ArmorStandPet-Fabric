@@ -45,6 +45,7 @@ jobs:
           mkdir -p project artifact
           unzip -q /tmp/base-artifact/ArmorStandPet-NeoForge-26.1.2-uninterrupted-follow-source.zip -d project
           (cd project && patch --batch --forward -p1 < /tmp/port.patch)
+          (cd project && patch --batch --forward -p1 < ../ci/port6331/compile-fix-001-last-hurt-player.patch)
 
           grep -q '^minecraft_version=26.1.2$' project/gradle.properties
           grep -q '^neo_version=26.1.2.95$' project/gradle.properties
