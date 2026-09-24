@@ -1,0 +1,47 @@
+--- a/gradle.properties
++++ b/gradle.properties
+@@ -11,7 +11,7 @@
+ mod_id=armorstandpet
+ mod_name=ArmorStandPet
+ mod_license=All Rights Reserved
+-mod_version=3.0.1+neoforge.26.1.2-uninterrupted-follow
++mod_version=3.0.2+neoforge.26.1.2-uninterrupted-follow
+ mod_group_id=io.github.kyzderp
+ mod_authors=Kyzeragon (original Bukkit plugin), NeoForge port
+ mod_description=Adopt an armor stand as a pet that follows you around, greets visitors, or just stands there being silly. NeoForge 26.1.2 port preserving the complete independent-health and uninterrupted-follow behavior set.
+--- a/src/main/java/io/github/kyzderp/armorstandpet/client/PetArmorStandRenderer.java
++++ b/src/main/java/io/github/kyzderp/armorstandpet/client/PetArmorStandRenderer.java
+@@ -5,6 +5,9 @@
+ 
+ import net.minecraft.client.renderer.entity.ArmorStandRenderer;
+ import net.minecraft.client.renderer.entity.EntityRendererProvider;
++import net.minecraft.client.renderer.entity.state.ArmorStandRenderState;
++import net.minecraft.world.entity.EntityType;
++import net.minecraft.world.entity.decoration.ArmorStand;
+ 
+ /** Uses the vanilla 26.1.2 armor-stand renderer for the custom pet entity. */
+ public final class PetArmorStandRenderer extends ArmorStandRenderer
+@@ -13,4 +16,23 @@
+ 	{
+ 		super(context);
+ 	}
++
++	@Override
++	public void extractRenderState(ArmorStand entity, ArmorStandRenderState state, float partialTick)
++	{
++		super.extractRenderState(entity, state, partialTick);
++
++		/*
++		 * Minecraft 26.1.x's ItemInHandLayer applies a generic baby held-item
++		 * offset whenever state.isBaby is true unless state.entityType is exactly
++		 * EntityType.ARMOR_STAND. PetArmorStandEntity inherits ArmorStand.isBaby(),
++		 * so a small pet is correctly marked as a baby but its custom entity type
++		 * accidentally triggers that non-armor-stand offset. Normalize only the
++		 * small pet's render-state type to the vanilla armor stand type so vanilla
++		 * hand-item placement is reproduced exactly without changing the real
++		 * registered entity type or any server/gameplay behavior.
++		 */
++		if (state.isSmall)
++			state.entityType = EntityType.ARMOR_STAND;
++	}
+ }

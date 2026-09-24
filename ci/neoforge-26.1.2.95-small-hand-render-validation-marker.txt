@@ -1,0 +1,1 @@
+Trigger corrected final validation for the small armor stand held-item render fix.
